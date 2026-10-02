@@ -1,0 +1,10 @@
+{
+  "default_line": "32",
+  "allowed_lines": ["64", "32", "16", "8"],
+  "ban_policy": "yellow",
+  "report_window_sec": 120,
+  "max_reports_per_hour": 10,
+  "max_call_minutes": 0,
+  "maintenance": false,
+  "apply_delay_ms": 1000
+}

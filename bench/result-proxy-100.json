@@ -1,0 +1,27 @@
+{
+  "channels": 100,
+  "calls": 50,
+  "talking_legs": 100,
+  "failed": 0,
+  "seconds": 30.030529418,
+  "cpu_cores": {
+    "media": 0.2611,
+    "signal": 0.0007,
+    "total": 0.5471,
+    "web": 0.2854
+  },
+  "rss_mb": {
+    "media": 20.3046875,
+    "signal": 16.73046875,
+    "web": 20.5078125
+  },
+  "threads": {
+    "media": 9,
+    "signal": 8,
+    "web": 6
+  },
+  "tx_pps": 5000.078350600059,
+  "rx_talk_pps": 5000.011751707573,
+  "delivery_pct": 100,
+  "rtp_kbps_per_channel_each_way": 68.80107810425682
+}

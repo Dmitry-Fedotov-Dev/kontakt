@@ -1,0 +1,17 @@
+[Unit]
+Description=Kontakt web (страница, кука, прокси)
+After=kontakt-signal.service
+
+[Service]
+User=kontakt
+WorkingDirectory=/opt/kontakt
+ExecStart=/opt/kontakt/bin/web -http 127.0.0.1:8080 -signal http://127.0.0.1:8081 -media http://127.0.0.1:8082
+Restart=always
+RestartSec=1
+MemoryMax=200M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

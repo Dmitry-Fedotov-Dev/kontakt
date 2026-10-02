@@ -1,0 +1,58 @@
+// Контракт медиа-сервиса «Контакта».
+// Сигнальный сервис (signal) управляет медиа-сервисом (media) только через эти вызовы.
+// Сейчас по проводу идёт gRPC с JSON-кодеком (content-subtype "json"), стабы — internal/mediaapi/api.go.
+// Если поставить protoc, можно сгенерировать protobuf-стабы из этого файла и заменить api.go —
+// интерфейс MediaServer и имена методов совпадают.
+
+syntax = "proto3";
+
+package kontakt.media.v1;
+
+option go_package = "kontakt/internal/mediaapi";
+
+service Media {
+  // Создать медиа-точку для одной ноги звонка. Для UDP — открывает RTP-порт,
+  // для WS — выдаёт путь, по которому браузер откроет медиа-WebSocket.
+  rpc CreateEndpoint(CreateEndpointRequest) returns (Endpoint);
+  // Соединить две точки: звук A → эффект линии B → B, и обратно.
+  rpc Bridge(BridgeRequest) returns (Empty);
+  // Удалить точку (закрыть порт / WebSocket).
+  rpc Delete(DeleteRequest) returns (Empty);
+  // Что звучит в точке, пока она ни с кем не соединена: "ring" (гудки), "noise" (белый шум эфира),
+  // "silence". Если seconds > 0 — через столько секунд переключиться на then.
+  // Звук идёт через эффект линии точки, т.е. «жмётся» тем же кодеком, что и голос.
+  rpc SetTone(SetToneRequest) returns (Empty);
+  // Поменять звук линии на лету ("64" | "32" | "16" | "8" | "clean").
+  rpc SetLine(SetLineRequest) returns (Empty);
+  rpc Stats(Empty) returns (StatsReply);
+}
+
+message CreateEndpointRequest {
+  string call_id = 1;
+  string transport = 2;     // "udp" | "ws"
+  int32 payload_type = 3;   // 8 = PCMA, 0 = PCMU
+  string line_mode = 4;     // "64" | "32" | "16" | "8" | "clean"
+  string remote_ip = 5;     // для udp: адрес из SDP абонента
+  int32 remote_port = 6;
+}
+
+message Endpoint {
+  string id = 1;
+  string transport = 2;
+  string local_ip = 3;      // для udp: что писать в SDP
+  int32 local_port = 4;
+  string ws_path = 5;       // для ws: "media?ep=<токен>"
+}
+
+message BridgeRequest { string a = 1; string b = 2; }
+message DeleteRequest { string id = 1; }
+message SetToneRequest { string id = 1; string tone = 2; double seconds = 3; string then = 4; }
+message SetLineRequest { string id = 1; string line_mode = 2; }
+message Empty {}
+
+message StatsReply {
+  int32 endpoints = 1;
+  int32 bridges = 2;
+  uint64 packets_in = 3;
+  uint64 packets_out = 4;
+}

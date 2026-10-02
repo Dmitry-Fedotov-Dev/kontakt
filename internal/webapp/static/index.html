@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Контакт</title>
+<meta name="description" content="Снимите трубку — и говорите со случайным человеком. Только голос, звук старой линии.">
+<meta name="theme-color" content="#D5DBD6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --wall: #D5DBD6;
+  --wall-line: rgba(0,0,0,.035);
+  --cream: #F3E9D2;
+  --cream-dim: #E0CFAE;
+  --bake: #A3201C;
+  --bake-deep: #6B100D;
+  --ink: #2A0806;
+  --lamp: #E2B23A;
+  --green: #8FD16A;
+  --focus: #FFE36E;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --wall: #1D2321; --wall-line: rgba(255,255,255,.025); }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--wall);
+  background-image: repeating-linear-gradient(0deg, transparent 0 3px, var(--wall-line) 3px 4px);
+  font: 400 15px/1.3 "Pixelify Sans", ui-monospace, monospace;
+  color: var(--cream);
+  display: grid; place-items: center;
+  min-height: 100dvh; padding: 12px;
+  -webkit-font-smoothing: none;
+}
+
+/* Трубка 40 × 88 «пикселей». Всё приложение — внутри неё. */
+.handset {
+  position: relative;
+  height: min(calc(100dvh - 24px), 860px);
+  aspect-ratio: 40 / 88;
+  max-width: calc(100vw - 24px);
+  container-type: size;
+}
+@supports not (aspect-ratio: 1) { .handset { width: 320px; height: 704px; } }
+.handset canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.handset.ring { animation: ring .09s steps(2) 6; }
+@keyframes ring { 50% { transform: rotate(1.4deg) translateX(1px); } }
+
+/* Ручка трубки: колонки 5–34, строки 25–63 */
+.panel {
+  position: absolute;
+  left: calc(6 / 40 * 100%); width: calc(28 / 40 * 100%);
+  top: calc(25.5 / 88 * 100%); height: calc(37.5 / 88 * 100%);
+  display: flex; flex-direction: column; align-items: stretch; gap: 1.6cqh;
+  font-size: clamp(11px, 2.05cqh, 17px);
+  text-align: center;
+  overflow: hidden;
+}
+.brand { font-weight: 600; font-size: 1.9em; line-height: 1; margin: .1em 0 0; color: var(--cream); text-shadow: 0 .09em 0 var(--bake-deep); letter-spacing: .02em; }
+.lcd {
+  background: #1B2014; color: var(--green);
+  border: .25em solid var(--ink); box-shadow: inset 0 0 0 .2em #2E3624;
+  padding: .55em .5em .5em; min-height: 5.6em;
+  display: flex; flex-direction: column; justify-content: center; gap: .25em;
+  image-rendering: pixelated;
+}
+.lcd { order: 0; }
+.lcd .state { font-weight: 600; font-size: 1.12em; display: flex; align-items: center; justify-content: center; gap: .45em; }
+.lcd .sub { color: #B9E39C; font-size: .9em; min-height: 1.3em; }
+.lamp { width: .62em; height: .62em; background: #39421F; flex: none; }
+.lamp.on { background: var(--lamp); }
+.lamp.blink { animation: blink 1s steps(1) infinite; }
+.lamp.red { background: #FF5A3C; }
+@keyframes blink { 50% { background: #39421F; } }
+
+.lines { display: grid; grid-template-columns: repeat(4, 1fr); gap: .3em; }
+.lines legend { grid-column: 1 / -1; font-size: .85em; color: var(--cream-dim); padding: 0; margin: 0 auto .25em; }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.lines label {
+  position: relative; cursor: pointer; padding: .3em 0 .25em; line-height: 1;
+  background: var(--bake-deep); color: var(--cream-dim);
+  box-shadow: inset 0 -.18em 0 rgba(0,0,0,.35);
+}
+.lines input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.lines b { display: block; font-size: 1.15em; font-weight: 600; }
+.lines small { font-size: .72em; }
+.lines label:has(input:checked) { background: var(--cream); color: var(--ink); box-shadow: inset 0 .18em 0 rgba(0,0,0,.18); }
+.lines label:has(input:focus-visible) { outline: .2em solid var(--focus); outline-offset: .1em; }
+
+.btn {
+  font: inherit; font-weight: 600; width: 100%; cursor: pointer;
+  padding: .55em .4em .5em; border: 0;
+  background: var(--cream); color: var(--ink);
+  box-shadow: inset 0 -.25em 0 var(--cream-dim), 0 .25em 0 var(--ink);
+}
+.btn:active { transform: translateY(.18em); box-shadow: inset 0 -.1em 0 var(--cream-dim), 0 .07em 0 var(--ink); }
+.btn.ghost { background: var(--bake-deep); color: var(--cream); box-shadow: inset 0 -.25em 0 rgba(0,0,0,.35), 0 .25em 0 var(--ink); }
+.btn.warn { background: var(--lamp); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:focus-visible, .check input:focus-visible { outline: .2em solid var(--focus); outline-offset: .15em; }
+.actions { display: grid; gap: .9em; margin-top: auto; padding-bottom: .4em; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .5em; }
+
+.online { font-size: .8em; color: var(--cream-dim); margin: 0; }
+.gate { display: flex; flex-direction: column; gap: .45em; text-align: left; }
+.gate p { margin: 0; font-size: .92em; }
+.check { display: flex; gap: .5em; align-items: flex-start; cursor: pointer; font-size: .9em; }
+.check input { width: 1.1em; height: 1.1em; margin: .1em 0 0; flex: none; accent-color: var(--lamp); }
+.gate a, .foot a { color: var(--cream); }
+.foot { font-size: .72em; color: var(--cream-dim); margin: 0; }
+[hidden] { display: none !important; }
+.handset.entry .lines { display: none; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .handset.ring { animation: none; }
+  .lamp.blink { animation: none; }
+}
+</style>
+</head>
+<body>
+<main class="handset" id="handset">
+  <canvas id="art" width="40" height="88" aria-hidden="true"></canvas>
+
+  <section class="panel">
+    <h1 class="brand">Контакт</h1>
+
+    <!-- вход: правила и выбор линии -->
+    <form class="gate" id="gate" hidden>
+      <label class="check"><input type="checkbox" id="c-age"> <span>Мне есть 18 лет</span></label>
+      <label class="check"><input type="checkbox" id="c-terms"> <span>Принимаю <a href="terms.html" target="_blank" rel="noopener">правила</a> и сам(а) отвечаю за свои слова</span></label>
+    </form>
+
+    <div class="lcd" id="lcd" role="status" aria-live="polite">
+      <div class="state"><span class="lamp" id="lamp"></span><span id="state">Трубка лежит</span></div>
+      <div class="sub" id="sub"></div>
+    </div>
+
+    <fieldset class="lines" id="lines">
+      <legend>Звук линии, кбит/с</legend>
+    </fieldset>
+
+    <div class="actions">
+      <button class="btn" id="main-btn" type="button">Снять трубку</button>
+      <div class="row2" id="call-btns" hidden>
+        <button class="btn warn" id="report-btn" type="button">Пожаловаться</button>
+        <button class="btn ghost" id="hangup-btn" type="button">Положить</button>
+      </div>
+      <p class="online" id="online">&nbsp;</p>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+// ================= пиксельная трубка =================
+(function drawHandset() {
+  const W = 40, H = 88, cv = document.getElementById("art"), g = cv.getContext("2d");
+  const C = { out: "#2A0806", base: "#A3201C", hi: "#CF3A2E", hi2: "#E2614F", lo: "#7E1512", lo2: "#5C0D0A", hole: "#2A0806", holeHi: "#4A0F0B" };
+  // ширина корпуса на каждой строке: [левая, правая] (включительно)
+  function span(y) {
+    const cup = (y0, y1, x0, x1, rTop, rBot) => { // «чашка», скруглённая сверху и снизу своими радиусами
+      const top = y - y0 < rTop, r = top ? rTop : rBot, dy = top ? y - y0 : y1 - y;
+      const cut = dy < r ? Math.round(r - Math.sqrt(r * r - (r - dy) * (r - dy))) : 0;
+      return [x0 + cut, x1 - cut];
+    };
+    if (y <= 21) return cup(0, 21, 0, 39, 7, 2);                    // ушная чашка
+    if (y <= 25) { const k = (y - 21) / 4; return [Math.round(k * 5), 39 - Math.round(k * 5)]; } // шейка
+    if (y <= 62) return [5, 34];                                   // ручка
+    if (y <= 66) { const k = (66 - y) / 4; return [Math.round(k * 5), 39 - Math.round(k * 5)]; }
+    return cup(66, 87, 0, 39, 2, 7);                                  // микрофонная чашка
+  }
+  for (let y = 0; y < H; y++) {
+    const [l, r] = span(y), [pl, pr] = y > 0 ? span(y - 1) : [99, -1], [nl, nr] = y < H - 1 ? span(y + 1) : [99, -1];
+    for (let x = l; x <= r; x++) {
+      const edge = x === l || x === r || x < pl || x > pr || x < nl || x > nr;
+      const t = (x - l) / Math.max(1, r - l);
+      let c = C.base;
+      if (edge) c = C.out;
+      else if (t < .1) c = C.hi2; else if (t < .22) c = C.hi;
+      else if (t > .9) c = C.lo2; else if (t > .78) c = C.lo;
+      g.fillStyle = c; g.fillRect(x, y, 1, 1);
+    }
+  }
+  // решётка динамика: сетка отверстий
+  for (let y = 6; y <= 15; y += 3) for (let x = 11; x <= 28; x += 3) {
+    const dx = x - 19.5, dy = (y - 10.5) * 1.3; if (dx * dx + dy * dy > 85) continue;
+    g.fillStyle = C.hole; g.fillRect(x, y, 2, 2); g.fillStyle = C.holeHi; g.fillRect(x + 1, y + 1, 1, 1);
+  }
+  // микрофон, «стандартный телефонный»: центр + два кольца отверстий
+  const cx = 19.5, cy = 77;
+  g.fillStyle = C.lo; for (let a = 0; a < 360; a += 4) g.fillRect(Math.round(cx + 9.5 * Math.cos(a * Math.PI / 180)), Math.round(cy + 7.5 * Math.sin(a * Math.PI / 180)), 1, 1);
+  const hole = (x, y) => { g.fillStyle = C.hole; g.fillRect(x, y, 2, 2); };
+  hole(19, 76);
+  for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; hole(Math.round(cx - 1 + 3.6 * Math.cos(a)), Math.round(cy - 1 + 3 * Math.sin(a))); }
+  for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 + .3; hole(Math.round(cx - 1 + 6.6 * Math.cos(a)), Math.round(cy - 1 + 5.2 * Math.sin(a))); }
+})();
+
+// ================= интерфейс =================
+const $ = id => document.getElementById(id);
+const handset = $("handset"), lamp = $("lamp"), stateEl = $("state"), sub = $("sub"),
+      mainBtn = $("main-btn"), callBtns = $("call-btns"), reportBtn = $("report-btn"),
+      hangupBtn = $("hangup-btn"), gate = $("gate"), linesSet = $("lines"), cAge = $("c-age"), cTerms = $("c-terms");
+
+const LINE_HINT = { "64": "G.711", "32": "4 бита", "16": "2 бита", "8": "1 бит", "clean": "чисто" };
+let cfg = { allowed_lines: ["64", "32", "16", "8"], default_line: "32", ban_policy: "yellow", report_window_sec: 120 };
+let me = { banned: false, cards: 0 };
+const TERMS_VERSION = "1";
+let termsOk = false;
+try { termsOk = localStorage.getItem("kontakt-terms") === TERMS_VERSION; } catch {}
+
+function lcd(kind, text, hint) {
+  stateEl.textContent = text;
+  sub.textContent = hint || "";
+  lamp.className = "lamp" + ({ search: " on blink", talk: " on", bad: " red" }[kind] || "");
+}
+
+function renderLines() {
+  linesSet.querySelectorAll("label").forEach(l => l.remove());
+  let saved = cfg.default_line;
+  try { saved = localStorage.getItem("kontakt-line") || saved; } catch {}
+  if (!cfg.allowed_lines.includes(saved)) saved = cfg.default_line;
+  for (const v of cfg.allowed_lines) {
+    const lab = document.createElement("label");
+    lab.innerHTML = `<input type="radio" name="line" value="${v}"${v === saved ? " checked" : ""}><b>${v}</b><small>${LINE_HINT[v] || ""}</small>`;
+    lab.querySelector("input").onchange = () => {
+      try { localStorage.setItem("kontakt-line", v); } catch {}
+      if (call.state === "searching" || call.state === "talking") sendInfo({ line: v });
+    };
+    linesSet.appendChild(lab);
+  }
+}
+const currentLine = () => (document.querySelector("input[name=line]:checked") || {}).value || cfg.default_line;
+
+function setIdle(kind, text, hint) {
+  call.state = "idle";
+  callBtns.hidden = true;
+  mainBtn.hidden = false;
+  gate.hidden = termsOk;
+  handset.classList.toggle("entry", !termsOk);
+  syncMain();
+  lcd(kind || "", text || "Трубка лежит", hint || (termsOk ? "Снимите трубку — вас соединят со случайным человеком." : "Случайный собеседник, только голос. Ничего не записывается."));
+}
+function syncMain() {
+  if (me.banned) { mainBtn.hidden = true; return; }
+  mainBtn.textContent = "Снять трубку";
+  mainBtn.disabled = !termsOk && !(cAge.checked && cTerms.checked);
+}
+cAge.onchange = cTerms.onchange = syncMain;
+
+function showBanned() {
+  me.banned = true;
+  callBtns.hidden = true; mainBtn.hidden = true; gate.hidden = true; linesSet.disabled = true;
+  lcd("bad", "Вход закрыт", "На вас пожаловались собеседники. С этого браузера войти больше нельзя.");
+}
+
+async function loadState() {
+  try { cfg = Object.assign(cfg, await (await fetch("api/config", { cache: "no-store" })).json()); } catch {}
+  try { me = await (await fetch("api/me", { cache: "no-store" })).json(); } catch {}
+  renderLines();
+  if (me.banned) return showBanned();
+  if (cfg.maintenance) return setIdle("bad", "Станция на обслуживании", "Попробуйте снять трубку чуть позже.");
+  setIdle();
+  if (me.cards > 0) sub.textContent = "У вас жёлтая карточка: ещё одна жалоба — и вход закроется навсегда.";
+}
+
+async function pollStats() {
+  try {
+    const s = await (await fetch("api/stats", { cache: "no-store" })).json();
+    $("online").textContent = s.online ? `На станции: ${s.online}, говорят: ${s.talking}` : "На станции пока никого";
+  } catch {}
+}
+
+// ================= аудио =================
+const SEG_END = [0x1F, 0x3F, 0x7F, 0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF];
+const ALAW_ENC = new Uint8Array(8192);
+for (let i = 0; i < 8192; i++) {
+  let s = i - 4096, mask = 0xD5;
+  if (s < 0) { mask = 0x55; s = -s - 1; }
+  let seg = 0; while (seg < 8 && s > SEG_END[seg]) seg++;
+  ALAW_ENC[i] = seg >= 8 ? 0x7F ^ mask : ((seg << 4) | (seg < 2 ? (s >> 1) & 0xF : (s >> seg) & 0xF)) ^ mask;
+}
+const ALAW_DEC = new Float32Array(256);
+for (let i = 0; i < 256; i++) {
+  const a = i ^ 0x55; let t = (a & 0x0F) << 4; const seg = (a & 0x70) >> 4;
+  if (seg === 0) t += 8; else if (seg === 1) t += 0x108; else { t += 0x108; t <<= seg - 1; }
+  ALAW_DEC[i] = ((a & 0x80) ? t : -t) / 32768;
+}
+
+const WORKLET = `
+class Capture extends AudioWorkletProcessor {
+  constructor() { super(); this.step = sampleRate / 8000; this.pos = 0; this.l1 = 0; this.l2 = 0;
+    this.a = 1 - Math.exp(-2 * Math.PI * 3400 / sampleRate); this.buf = new Int16Array(160); this.n = 0; }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0]; if (!ch) return true;
+    for (let i = 0; i < ch.length; i++) {
+      this.l1 += this.a * (ch[i] - this.l1); this.l2 += this.a * (this.l1 - this.l2);
+      if (++this.pos >= this.step) { this.pos -= this.step;
+        this.buf[this.n++] = Math.max(-1, Math.min(1, this.l2 * 1.6)) * 32767;
+        if (this.n === 160) { this.port.postMessage(this.buf.buffer, [this.buf.buffer]); this.buf = new Int16Array(160); this.n = 0; }
+      }
+    }
+    return true;
+  }
+}
+class Player extends AudioWorkletProcessor {
+  constructor() { super();
+    this.ring = new Float32Array(16000); this.w = 0; this.r = 0; this.fill = 0; this.frac = 0; this.on = false;
+    this.step = 8000 / sampleRate;
+    this.port.onmessage = e => {
+      if (e.data.flush) { this.fill = 0; this.r = this.w; this.on = false; return; }
+      const p = e.data.pcm, n = this.ring.length;
+      for (let i = 0; i < p.length; i++) { this.ring[this.w] = p[i]; this.w = (this.w + 1) % n; }
+      this.fill = Math.min(this.fill + p.length, n);
+      if (this.fill > 4000) { this.r = (this.r + this.fill - 800) % n; this.fill = 800; } // не копим задержку
+    };
+  }
+  process(_, outputs) {
+    const out = outputs[0][0], n = this.ring.length;
+    for (let i = 0; i < out.length; i++) {
+      if (!this.on && this.fill >= 480) this.on = true;   // джиттер-буфер 60 мс
+      let v = 0;
+      if (this.on) {
+        if (this.fill < 2) this.on = false;
+        else {
+          const a = this.ring[this.r], b = this.ring[(this.r + 1) % n];
+          v = a + (b - a) * this.frac; this.frac += this.step;
+          while (this.frac >= 1) { this.frac -= 1; this.r = (this.r + 1) % n; this.fill--; }
+        }
+      }
+      out[i] = v;
+    }
+    return true;
+  }
+}
+registerProcessor("k-capture", Capture);
+registerProcessor("k-player", Player);`;
+
+let ctx, mic, capture, player;
+async function startAudio() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+    player = new AudioWorkletNode(ctx, "k-player", { numberOfInputs: 0, outputChannelCount: [1] });
+    player.connect(ctx.destination);
+  }
+  await ctx.resume();
+  mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+  const src = ctx.createMediaStreamSource(mic);
+  capture = new AudioWorkletNode(ctx, "k-capture", { outputChannelCount: [1] });
+  const mute = ctx.createGain(); mute.gain.value = 0;
+  src.connect(capture); capture.connect(mute); mute.connect(ctx.destination);
+  capture.port.onmessage = e => sendRTP(new Int16Array(e.data));
+}
+function stopAudio() {
+  if (mic) mic.getTracks().forEach(t => t.stop());
+  if (capture) { capture.port.onmessage = null; capture.disconnect(); }
+  mic = capture = null;
+  if (player) player.port.postMessage({ flush: true });
+}
+
+// ================= RTP (бинарные кадры по медиа-WebSocket) =================
+let mediaWS = null, rtpSeq = 0, rtpTs = 0, rtpSsrc = 0, marker = true;
+function sendRTP(pcm) {
+  // голос уходит только в разговоре; пока ищем — слышим станцию, но молчим
+  if (call.state !== "talking" || !mediaWS || mediaWS.readyState !== 1 || mediaWS.bufferedAmount > 16000) return;
+  const p = new Uint8Array(12 + pcm.length), dv = new DataView(p.buffer);
+  p[0] = 0x80; p[1] = 8 | (marker ? 0x80 : 0); marker = false;
+  dv.setUint16(2, rtpSeq); dv.setUint32(4, rtpTs); dv.setUint32(8, rtpSsrc);
+  rtpSeq = (rtpSeq + 1) & 0xFFFF; rtpTs = (rtpTs + pcm.length) >>> 0;
+  for (let i = 0; i < pcm.length; i++) p[12 + i] = ALAW_ENC[(pcm[i] >> 3) + 4096];
+  mediaWS.send(p);
+}
+function onRTP(buf) {
+  const p = new Uint8Array(buf);
+  if (p.length < 12 || (p[0] >> 6) !== 2 || (p[1] & 0x7F) !== 8) return;
+  let off = 12 + 4 * (p[0] & 0x0F);
+  if (p[0] & 0x10) off += 4 + 4 * ((p[off + 2] << 8) | p[off + 3]);
+  const out = new Float32Array(p.length - off);
+  for (let i = off; i < p.length; i++) out[i - off] = ALAW_DEC[p[i]];
+  player.port.postMessage({ pcm: out }, [out.buffer]);
+}
+
+// ================= SIP поверх WebSocket =================
+const rnd = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => b.toString(16).padStart(2, "0")).join("");
+const host = rnd(5) + ".invalid";
+const call = { state: "idle" };
+let ws = null, pending = {}, talkStart = 0, talkTimer = 0, lastTalkEnd = 0;
+
+const build = (first, headers, body = "") =>
+  first + "\r\n" + headers.map(h => h + "\r\n").join("") + `Content-Length: ${new TextEncoder().encode(body).length}\r\n\r\n` + body;
+
+function parse(text) {
+  const i = text.indexOf("\r\n\r\n"), head = i < 0 ? text : text.slice(0, i), body = i < 0 ? "" : text.slice(i + 4);
+  const lines = head.split("\r\n"), h = {}, short = { v: "via", f: "from", t: "to", i: "call-id", m: "contact" };
+  for (const l of lines.slice(1)) {
+    const c = l.indexOf(":"); if (c < 0) continue;
+    let k = l.slice(0, c).trim().toLowerCase(); k = short[k] || k;
+    (h[k] = h[k] || []).push(l.slice(c + 1).trim());
+  }
+  const m = /^SIP\/2\.0 (\d+)/.exec(lines[0]);
+  return { status: m ? +m[1] : 0, method: m ? "" : lines[0].split(" ")[0], h, body };
+}
+const reasonText = m => (/text="([^"]*)"/.exec((m.h.reason || [""])[0]) || [])[1] || "";
+
+function hdrs(method, cseq, toTag) {
+  return [`Via: SIP/2.0/WSS ${host};branch=z9hG4bK${rnd(8)}`, "Max-Forwards: 70",
+    `From: <sip:anon@${host}>;tag=${call.fromTag}`, `To: <${call.ruri}>${toTag ? ";tag=" + toTag : ""}`,
+    `Call-ID: ${call.id}`, `CSeq: ${cseq} ${method}`];
+}
+function sendRaw(s) { if (ws && ws.readyState === 1) ws.send(s); }
+function sendInfo(obj) {
+  const cseq = ++call.cseq;
+  return new Promise(res => {
+    pending[cseq] = res;
+    sendRaw(build(`INFO ${call.ruri} SIP/2.0`, [...hdrs("INFO", cseq, call.toTag), "Content-Type: application/json"], JSON.stringify(obj)));
+    setTimeout(() => { if (pending[cseq]) { delete pending[cseq]; res(null); } }, 4000);
+  });
+}
+function reply200(m) {
+  sendRaw(build("SIP/2.0 200 OK", [...m.h.via.map(v => "Via: " + v), "From: " + m.h.from[0], "To: " + m.h.to[0],
+    "Call-ID: " + m.h["call-id"][0], "CSeq: " + m.h.cseq[0]]));
+}
+
+function onSIP(text) {
+  const m = parse(text);
+  if (m.status) {
+    const [cseqNum, method] = (m.h.cseq || ["0 X"])[0].split(" ");
+    if (method === "INFO" && pending[cseqNum]) { const r = pending[cseqNum]; delete pending[cseqNum]; try { r(JSON.parse(m.body)); } catch { r(null); } return; }
+    if (method !== "INVITE" || m.status < 200) return;
+    if (m.status === 200) {
+      call.toTag = (/;tag=([^;>\s]+)/.exec(m.h.to[0]) || [])[1];
+      sendRaw(build(`ACK ${call.ruri} SIP/2.0`, hdrs("ACK", 1, call.toTag)));
+      const path = (/a=x-kontakt-media:ws (\S+)/.exec(m.body) || [])[1];
+      if (path) openMedia(path);
+      return;
+    }
+    const why = reasonText(m);
+    sendRaw(build(`ACK ${call.ruri} SIP/2.0`, hdrs("ACK", 1, (/;tag=([^;>\s]+)/.exec(m.h.to[0]) || [])[1])));
+    teardown(false);
+    if (why === "banned") return showBanned();
+    if (m.status === 503 && why === "maintenance") return setIdle("bad", "Станция на обслуживании", "Попробуйте снять трубку чуть позже.");
+    return setIdle("bad", "Станция не отвечает", "Попробуйте снять трубку ещё раз.");
+  }
+  if (m.method === "INFO") {
+    reply200(m);
+    let st = {}; try { st = JSON.parse(m.body); } catch {}
+    onStation(st.state, st.reason);
+  } else if (m.method === "BYE") {
+    reply200(m);
+    const why = reasonText(m);
+    teardown(false);
+    if (why === "banned") return showBanned();
+    if (why === "yellow-card") { me.cards = (me.cards || 0) + 1; return setIdle("bad", "Жёлтая карточка", "На вас пожаловались. Ещё одна жалоба — и вход закроется навсегда."); }
+    if (why === "time-limit") return setIdle("", "Время вышло", "Снимите трубку, чтобы продолжить.");
+    setIdle("bad", "Станция положила трубку", "Попробуйте снять трубку ещё раз.");
+  } else if (m.method === "OPTIONS") reply200(m);
+}
+
+function onStation(state, reason) {
+  if (state === "talking") {
+    call.state = "talking"; marker = true;
+    talkStart = Date.now(); clearInterval(talkTimer);
+    talkTimer = setInterval(tick, 1000);
+    lcd("talk", "На линии", "00:00");
+    handset.classList.remove("ring"); void handset.offsetWidth; handset.classList.add("ring");
+  } else if (state === "searching") {
+    if (call.state === "talking") lastTalkEnd = Date.now();
+    call.state = "searching"; clearInterval(talkTimer);
+    const text = { "peer-left": "Собеседник ушёл", "report-accepted": "Жалоба принята", "time-limit": "Время вышло" }[reason];
+    lcd("search", text || "Ищем собеседника", text ? "Слушаем эфир… сейчас найдём следующего." : "Гудки — значит, ищем. Не кладите трубку.");
+  }
+  syncReport();
+}
+function tick() {
+  const s = Math.floor((Date.now() - talkStart) / 1000);
+  sub.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  syncReport();
+}
+
+function openMedia(path) {
+  const base = location.href.replace(/[^/]*$/, "").replace(/^http/, "ws");
+  mediaWS = new WebSocket(base + path);
+  mediaWS.binaryType = "arraybuffer";
+  mediaWS.onmessage = e => onRTP(e.data);
+}
+
+async function pickUp() {
+  if (!termsOk) {
+    termsOk = true;
+    try { localStorage.setItem("kontakt-terms", TERMS_VERSION); } catch {}
+    gate.hidden = true;
+    handset.classList.remove("entry");
+  }
+  if (!window.isSecureContext) return setIdle("bad", "Нужен https", "Браузер даёт микрофон только по https или на localhost.");
+  mainBtn.hidden = true;
+  lcd("search", "Снимаю трубку…", "Разрешите доступ к микрофону.");
+  try { await startAudio(); }
+  catch { return setIdle("bad", "Нет микрофона", "Разрешите микрофон в настройках браузера и попробуйте снова."); }
+
+  call.state = "dialing";
+  call.id = rnd(10); call.fromTag = rnd(4); call.cseq = 1; call.toTag = null;
+  call.ruri = `sip:${currentLine()}@kontakt`;
+  rtpSeq = crypto.getRandomValues(new Uint16Array(1))[0];
+  rtpTs = crypto.getRandomValues(new Uint32Array(1))[0];
+  rtpSsrc = crypto.getRandomValues(new Uint32Array(1))[0];
+  callBtns.hidden = false; syncReport();
+
+  ws = new WebSocket(location.href.replace(/[^/]*$/, "").replace(/^http/, "ws") + "sip", "sip");
+  ws.onopen = () => {
+    const sdp = "v=0\r\no=- " + Date.now() + " 1 IN IP4 0.0.0.0\r\ns=Kontakt\r\nc=IN IP4 0.0.0.0\r\nt=0 0\r\n" +
+      "m=audio 9 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\na=ptime:20\r\na=sendrecv\r\n";
+    sendRaw(build(`INVITE ${call.ruri} SIP/2.0`, [...hdrs("INVITE", 1), `Contact: <sip:anon@${host};transport=ws>`,
+      "Content-Type: application/sdp"], sdp));
+  };
+  ws.onmessage = e => typeof e.data === "string" && onSIP(e.data);
+  ws.onclose = () => { if (call.state !== "idle") { teardown(false); setIdle("bad", "Связь со станцией потеряна", "Снимите трубку ещё раз."); } };
+}
+
+function teardown(sendBye) {
+  if (sendBye && call.toTag) sendRaw(build(`BYE ${call.ruri} SIP/2.0`, hdrs("BYE", ++call.cseq, call.toTag)));
+  call.state = "idle";
+  clearInterval(talkTimer);
+  stopAudio();
+  const s = ws, m = mediaWS; ws = mediaWS = null;
+  if (s) { s.onclose = null; setTimeout(() => s.close(), 100); }
+  if (m) m.close();
+}
+
+// ---------- жалоба: два нажатия ----------
+let armTimer = 0;
+function syncReport() {
+  const canReport = call.state === "talking" ||
+    (call.state === "searching" && lastTalkEnd && Date.now() - lastTalkEnd < cfg.report_window_sec * 1000);
+  reportBtn.disabled = !canReport;
+}
+reportBtn.onclick = async () => {
+  if (!reportBtn.classList.contains("armed")) {
+    reportBtn.classList.add("armed");
+    reportBtn.textContent = cfg.ban_policy === "instant" ? "Забанить?" : "Точно?";
+    clearTimeout(armTimer);
+    armTimer = setTimeout(() => { reportBtn.classList.remove("armed"); reportBtn.textContent = "Пожаловаться"; }, 3000);
+    return;
+  }
+  clearTimeout(armTimer);
+  reportBtn.classList.remove("armed"); reportBtn.textContent = "Пожаловаться";
+  const r = await sendInfo({ report: true });
+  const text = {
+    yellow: "Собеседнику выдана жёлтая карточка.", banned: "Собеседник заблокирован навсегда.",
+    already: "На этого собеседника вы уже жаловались.", no_recent_call: "Жаловаться не на кого.",
+    rate_limited: "Слишком много жалоб за час."
+  }[r && r.result] || "Жалоба не дошла, попробуйте ещё раз.";
+  lastTalkEnd = 0; syncReport();
+  setTimeout(() => { if (call.state === "searching") sub.textContent = text; }, 50);
+};
+
+mainBtn.onclick = pickUp;
+hangupBtn.onclick = () => { teardown(true); setIdle(); };
+window.addEventListener("pagehide", () => teardown(true));
+
+loadState(); pollStats(); setInterval(pollStats, 5000);
+</script>
+</body>
+</html>

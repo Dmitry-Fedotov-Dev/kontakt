@@ -1,0 +1,17 @@
+[Unit]
+Description=Kontakt media (RTP, кодеки, эффект линии)
+After=network-online.target
+
+[Service]
+User=kontakt
+WorkingDirectory=/opt/kontakt
+ExecStart=/opt/kontakt/bin/media -grpc 127.0.0.1:7002 -ws 127.0.0.1:8082 -rtp 10000-10200
+Restart=always
+RestartSec=1
+MemoryMax=300M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

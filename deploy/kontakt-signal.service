@@ -1,0 +1,21 @@
+[Unit]
+Description=Kontakt signal (SIP, очередь, баны)
+After=kontakt-media.service
+Wants=kontakt-media.service
+
+[Service]
+User=kontakt
+WorkingDirectory=/opt/kontakt
+ExecStart=/opt/kontakt/bin/signal -http 127.0.0.1:8081 -admin 127.0.0.1:8091 -media 127.0.0.1:7002 -config /opt/kontakt/config/kontakt.json -bans /opt/kontakt/data/bans.json
+# systemctl reload kontakt-signal — перечитать конфиг (SIGHUP); идущие разговоры не рвутся
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=1
+MemoryMax=200M
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/kontakt/data
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+bin/
+data/
+bench/*.log
+*.tmp
+.env
+.env.*
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
