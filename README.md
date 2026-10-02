@@ -1,4 +1,6 @@
 # Контакт
+[English version](README.en.md)
+
 <img width="427" height="900" alt="image" src="https://github.com/user-attachments/assets/ee221aa9-4ef8-4bf3-8cf6-3c27cf632ed8" />
 
 Снимаешь трубку, и говоришь со случайным человеком.
