@@ -16,9 +16,9 @@ import { Rate, Trend } from 'k6/metrics';
 const env = (k, d) => __ENV[k] || d;
 const nodes = env('NODES', '127.0.0.1:5060').split(',');
 const hold = Number(env('HOLD', 8));
-// Линия и порог — как в functional/lib.js: на линии 64 чистый мост даёт 0.87–0.92.
-const line = env('LINE', '64');
-const minScore = Number(env('MIN_SCORE', 0.8));
+// Линия и порог — как в functional/lib.js: на линии 32 чистый мост даёт 0.78–0.82.
+const line = env('LINE', '32');
+const minScore = Number(env('MIN_SCORE', 0.7));
 // Звук сравнивается у каждого SAMPLE-го абонента: compareAudio стоит ~15 мс CPU
 // и 32 КБ памяти на секунду записи, под нагрузкой — только выборка.
 const sample = Number(env('SAMPLE', 4));
@@ -37,7 +37,7 @@ export const options = {
     sip_call_setup_time: ['p(95)<300'],
     rtp_audio_heard: ['rate>0.99'], // в трубке хоть что-то: гудки, шум или собеседник
     kontakt_peer_heard: ['rate>0.9'], // в трубке живой собеседник, а не только гудки
-    rtp_audio_score: [`p(50)>${Number(__ENV.MIN_SCORE || 0.8)}`], // сравнивается только у выборки, см. SAMPLE
+    rtp_audio_score: [`p(50)>${Number(__ENV.MIN_SCORE || 0.7)}`], // сравнивается только у выборки, см. SAMPLE
   },
 };
 

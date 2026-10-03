@@ -1,6 +1,8 @@
 {
   "default_line": "32",
-  "allowed_lines": ["64", "32", "16", "8"],
+  "allowed_lines": [
+    "32"
+  ],
   "ban_policy": "yellow",
   "report_window_sec": 120,
   "max_reports_per_hour": 10,

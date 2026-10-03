@@ -77,33 +77,19 @@ body {
 .lamp.red { background: #FF5A3C; }
 @keyframes blink { 50% { background: #39421F; } }
 
-.lines { display: grid; grid-template-columns: repeat(4, 1fr); gap: .3em; }
-.lines legend { grid-column: 1 / -1; font-size: .85em; color: var(--cream-dim); padding: 0; margin: 0 auto .25em; }
-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-.lines label {
-  position: relative; cursor: pointer; padding: .3em 0 .25em; line-height: 1;
-  background: var(--bake-deep); color: var(--cream-dim);
-  box-shadow: inset 0 -.18em 0 rgba(0,0,0,.35);
+/* Круглые пиксельные кнопки: картинка — спрайт 24×24, нарисованный на canvas (выпуклый и
+   вдавленный); подпись под ней. По нажатию на 1 с ставится вдавленный спрайт. */
+.rbtn {
+  font: inherit; font-weight: 600; color: var(--cream); background: none; border: 0; padding: 0;
+  cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: .15em;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-.lines input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
-.lines b { display: block; font-size: 1.15em; font-weight: 600; }
-.lines small { font-size: .72em; }
-.lines label:has(input:checked) { background: var(--cream); color: var(--ink); box-shadow: inset 0 .18em 0 rgba(0,0,0,.18); }
-.lines label:has(input:focus-visible) { outline: .2em solid var(--focus); outline-offset: .1em; }
-
-.btn {
-  font: inherit; font-weight: 600; width: 100%; cursor: pointer;
-  padding: .55em .4em .5em; border: 0;
-  background: var(--cream); color: var(--ink);
-  box-shadow: inset 0 -.25em 0 var(--cream-dim), 0 .25em 0 var(--ink);
-}
-.btn:active { transform: translateY(.18em); box-shadow: inset 0 -.1em 0 var(--cream-dim), 0 .07em 0 var(--ink); }
-.btn.ghost { background: var(--bake-deep); color: var(--cream); box-shadow: inset 0 -.25em 0 rgba(0,0,0,.35), 0 .25em 0 var(--ink); }
-.btn.warn { background: var(--lamp); }
-.btn:disabled { opacity: .45; cursor: not-allowed; }
-.btn:focus-visible, .check input:focus-visible { outline: .2em solid var(--focus); outline-offset: .15em; }
-.actions { display: grid; gap: .9em; margin-top: auto; padding-bottom: .4em; }
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .5em; }
+.rbtn img { width: 4.4em; height: 4.4em; image-rendering: pixelated; display: block; }
+.rbtn span { font-size: 1em; letter-spacing: .04em; text-shadow: 0 .09em 0 var(--bake-deep); }
+.rbtn:disabled { opacity: .45; cursor: not-allowed; }
+.rbtn:focus-visible { outline: .2em solid var(--focus); outline-offset: .1em; }
+.actions { display: grid; gap: .6em; margin-top: auto; padding-bottom: .4em; justify-items: center; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2em; justify-items: center; }
 
 .online { font-size: .8em; color: var(--cream-dim); margin: 0; }
 .gate { display: flex; flex-direction: column; gap: .45em; text-align: left; }
@@ -113,7 +99,6 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .gate a, .foot a { color: var(--cream); }
 .foot { font-size: .72em; color: var(--cream-dim); margin: 0; }
 [hidden] { display: none !important; }
-.handset.entry .lines { display: none; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 @media (prefers-reduced-motion: reduce) {
@@ -140,15 +125,11 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
       <div class="sub" id="sub"></div>
     </div>
 
-    <fieldset class="lines" id="lines">
-      <legend>Звук линии, кбит/с</legend>
-    </fieldset>
-
     <div class="actions">
-      <button class="btn" id="main-btn" type="button">Снять трубку</button>
+      <button class="rbtn" id="main-btn" type="button" aria-label="pick up"><img alt=""><span>pick up</span></button>
       <div class="row2" id="call-btns" hidden>
-        <button class="btn warn" id="report-btn" type="button">Пожаловаться</button>
-        <button class="btn ghost" id="hangup-btn" type="button">Положить</button>
+        <button class="rbtn" id="report-btn" type="button" aria-label="ban"><img alt=""><span>ban</span></button>
+        <button class="rbtn" id="hangup-btn" type="button" aria-label="bye"><img alt=""><span>bye</span></button>
       </div>
       <p class="online" id="online">&nbsp;</p>
     </div>
@@ -200,14 +181,76 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
   for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 + .3; hole(Math.round(cx - 1 + 6.6 * Math.cos(a)), Math.round(cy - 1 + 5.2 * Math.sin(a))); }
 })();
 
+// ================= круглые пиксельные кнопки =================
+// Спрайт 24×24: круг с обводкой, объём светом сверху-слева (выпуклая) или наоборот
+// (вдавленная, значок на пиксель ниже), значок цвета крема. Рисуется один раз в data URL.
+const ICONS = {
+  // корзина
+  trash: ["...####...", "##########", "..........", ".########.", ".#.#..#.#.", ".#.#..#.#.",
+          ".#.#..#.#.", ".#.#..#.#.", ".#.#..#.#.", ".########."],
+  // трубка рычагом вниз — «положить»
+  bye: ["..########..", ".##########.", "###......###", "##........##", "##........##"],
+  // трубка по диагонали — «снять» (классический значок звонка)
+  pick: ["###........", "####.......", "####.......", ".###.......", "..##.......", "..###......",
+         "...###.....", "....###....", ".....####..", "......#####", ".......####"],
+};
+function sprite(base, light, dark, icon, pressed) {
+  const S = 24, cv = document.createElement("canvas"); cv.width = cv.height = S;
+  const g = cv.getContext("2d"), c = 11.5, r = 11;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = x - c, dy = y - c, d = Math.sqrt(dx * dx + dy * dy);
+    if (d > r + 0.5) continue;
+    let col = base;
+    if (d > r - 0.7) col = "#2A0806";                             // обводка
+    else if (d > r - 2.6) {                                        // кольцо объёма
+      const lit = (dx + dy) < 0;                                   // сверху-слева
+      col = (lit !== pressed) ? light : dark;
+    }
+    g.fillStyle = col; g.fillRect(x, y, 1, 1);
+  }
+  const rows = ICONS[icon], h = rows.length, w = rows[0].length;
+  const ox = Math.round(c - w / 2 + .5), oy = Math.round(c - h / 2 + .5) + (pressed ? 1 : 0);
+  g.fillStyle = "#F3E9D2";
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === "#") g.fillRect(ox + x, oy + y, 1, 1); }));
+  return cv.toDataURL();
+}
+const RED = ["#C8302A", "#E2614F", "#7E1512"], GREEN = ["#4E9A36", "#8FD16A", "#2F6420"];
+let pressUntil = 0, pendingGroup = null, pendingTimer = 0;
+function initButtons() {
+  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"]]) {
+    const img = btn.querySelector("img");
+    btn.spriteUp = sprite(col[0], col[1], col[2], icon, false);
+    btn.spriteDown = sprite(col[0], col[1], col[2], icon, true);
+    img.src = btn.spriteUp;
+    // вдавленный спрайт на секунду, затем исходный; срабатывает и на мышь, и на палец
+    btn.addEventListener("pointerdown", () => {
+      if (btn.disabled) return;
+      img.src = btn.spriteDown;
+      pressUntil = Date.now() + 1000;
+      clearTimeout(btn.upTimer);
+      btn.upTimer = setTimeout(() => { img.src = btn.spriteUp; }, 1000);
+    });
+  }
+}
+// showButtons — какая группа кнопок видна: "main" (pick up), "call" (ban + bye), "none".
+// Пока идёт анимация нажатия, смена откладывается до её конца: иначе нажатая кнопка
+// исчезала бы мгновенно и вдавленного состояния никто бы не увидел.
+function showButtons(group) {
+  const apply = () => { pendingGroup = null; mainBtn.hidden = group !== "main"; callBtns.hidden = group !== "call"; };
+  clearTimeout(pendingTimer);
+  const wait = pressUntil - Date.now();
+  if (wait > 0) { pendingGroup = group; pendingTimer = setTimeout(apply, wait); } else apply();
+}
+
 // ================= интерфейс =================
 const $ = id => document.getElementById(id);
 const handset = $("handset"), lamp = $("lamp"), stateEl = $("state"), sub = $("sub"),
-      mainBtn = $("main-btn"), callBtns = $("call-btns"), reportBtn = $("report-btn"),
-      hangupBtn = $("hangup-btn"), gate = $("gate"), linesSet = $("lines"), cAge = $("c-age"), cTerms = $("c-terms");
+      mainBtn = $("main-btn"), callBtns = $("call-btns"), reportBtn = $("report-btn"), reportLabel = $("report-btn").querySelector("span"),
+      hangupBtn = $("hangup-btn"), gate = $("gate"), cAge = $("c-age"), cTerms = $("c-terms");
 
-const LINE_HINT = { "64": "G.711", "32": "4 бита", "16": "2 бита", "8": "1 бит", "clean": "чисто" };
-let cfg = { allowed_lines: ["64", "32", "16", "8"], default_line: "32", ban_policy: "yellow", report_window_sec: 120 };
+// Линия одна: G.711 со звучанием «32». Выбора битрейта в интерфейсе нет.
+const LINE = "32";
+let cfg = { ban_policy: "yellow", report_window_sec: 120 };
 let me = { banned: false, cards: 0 };
 const TERMS_VERSION = "1";
 let termsOk = false;
@@ -219,27 +262,9 @@ function lcd(kind, text, hint) {
   lamp.className = "lamp" + ({ search: " on blink", talk: " on", bad: " red" }[kind] || "");
 }
 
-function renderLines() {
-  linesSet.querySelectorAll("label").forEach(l => l.remove());
-  let saved = cfg.default_line;
-  try { saved = localStorage.getItem("kontakt-line") || saved; } catch {}
-  if (!cfg.allowed_lines.includes(saved)) saved = cfg.default_line;
-  for (const v of cfg.allowed_lines) {
-    const lab = document.createElement("label");
-    lab.innerHTML = `<input type="radio" name="line" value="${v}"${v === saved ? " checked" : ""}><b>${v}</b><small>${LINE_HINT[v] || ""}</small>`;
-    lab.querySelector("input").onchange = () => {
-      try { localStorage.setItem("kontakt-line", v); } catch {}
-      if (call.state === "searching" || call.state === "talking") sendInfo({ line: v });
-    };
-    linesSet.appendChild(lab);
-  }
-}
-const currentLine = () => (document.querySelector("input[name=line]:checked") || {}).value || cfg.default_line;
-
 function setIdle(kind, text, hint) {
   call.state = "idle";
-  callBtns.hidden = true;
-  mainBtn.hidden = false;
+  showButtons("main");
   gate.hidden = termsOk;
   handset.classList.toggle("entry", !termsOk);
   syncMain();
@@ -247,21 +272,19 @@ function setIdle(kind, text, hint) {
 }
 function syncMain() {
   if (me.banned) { mainBtn.hidden = true; return; }
-  mainBtn.textContent = "Снять трубку";
   mainBtn.disabled = !termsOk && !(cAge.checked && cTerms.checked);
 }
 cAge.onchange = cTerms.onchange = syncMain;
 
 function showBanned() {
   me.banned = true;
-  callBtns.hidden = true; mainBtn.hidden = true; gate.hidden = true; linesSet.disabled = true;
+  showButtons("none"); gate.hidden = true;
   lcd("bad", "Вход закрыт", "На вас пожаловались собеседники. С этого браузера войти больше нельзя.");
 }
 
 async function loadState() {
   try { cfg = Object.assign(cfg, await (await fetch("api/config", { cache: "no-store" })).json()); } catch {}
   try { me = await (await fetch("api/me", { cache: "no-store" })).json(); } catch {}
-  renderLines();
   if (me.banned) return showBanned();
   if (cfg.maintenance) return setIdle("bad", "Станция на обслуживании", "Попробуйте снять трубку чуть позже.");
   setIdle();
@@ -497,18 +520,18 @@ async function pickUp() {
     handset.classList.remove("entry");
   }
   if (!window.isSecureContext) return setIdle("bad", "Нужен https", "Браузер даёт микрофон только по https или на localhost.");
-  mainBtn.hidden = true;
+  showButtons("call");
   lcd("search", "Снимаю трубку…", "Разрешите доступ к микрофону.");
   try { await startAudio(); }
   catch { return setIdle("bad", "Нет микрофона", "Разрешите микрофон в настройках браузера и попробуйте снова."); }
 
   call.state = "dialing";
   call.id = rnd(10); call.fromTag = rnd(4); call.cseq = 1; call.toTag = null;
-  call.ruri = `sip:${currentLine()}@kontakt`;
+  call.ruri = `sip:${LINE}@kontakt`;
   rtpSeq = crypto.getRandomValues(new Uint16Array(1))[0];
   rtpTs = crypto.getRandomValues(new Uint32Array(1))[0];
   rtpSsrc = crypto.getRandomValues(new Uint32Array(1))[0];
-  callBtns.hidden = false; syncReport();
+  syncReport();
 
   ws = new WebSocket(location.href.replace(/[^/]*$/, "").replace(/^http/, "ws") + "sip", "sip");
   ws.onopen = () => {
@@ -541,13 +564,13 @@ function syncReport() {
 reportBtn.onclick = async () => {
   if (!reportBtn.classList.contains("armed")) {
     reportBtn.classList.add("armed");
-    reportBtn.textContent = cfg.ban_policy === "instant" ? "Забанить?" : "Точно?";
+    reportLabel.textContent = "sure?";
     clearTimeout(armTimer);
-    armTimer = setTimeout(() => { reportBtn.classList.remove("armed"); reportBtn.textContent = "Пожаловаться"; }, 3000);
+    armTimer = setTimeout(() => { reportBtn.classList.remove("armed"); reportLabel.textContent = "ban"; }, 3000);
     return;
   }
   clearTimeout(armTimer);
-  reportBtn.classList.remove("armed"); reportBtn.textContent = "Пожаловаться";
+  reportBtn.classList.remove("armed"); reportLabel.textContent = "ban";
   const r = await sendInfo({ report: true });
   const text = {
     yellow: "Собеседнику выдана жёлтая карточка.", banned: "Собеседник заблокирован навсегда.",
@@ -560,6 +583,7 @@ reportBtn.onclick = async () => {
 
 mainBtn.onclick = pickUp;
 hangupBtn.onclick = () => { teardown(true); setIdle(); };
+initButtons();
 window.addEventListener("pagehide", () => teardown(true));
 
 loadState(); pollStats(); setInterval(pollStats, 5000);
