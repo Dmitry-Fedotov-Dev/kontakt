@@ -20,8 +20,18 @@ STATE=data/cluster-tunnel
 mkdir -p "$STATE"
 
 command -v cloudflared >/dev/null || {
-  echo "cloudflared не найден: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-  echo "  Windows: winget install --id Cloudflare.cloudflared   Termux: pkg install cloudflared"
+  echo "cloudflared не найден."
+  if grep -qi microsoft /proc/version 2>/dev/null; then
+    # WSL: cloudflared из Windows здесь не виден, а cloudflared.exe не берём — по Ctrl+C
+    # скрипт гасит свой процесс по PID в WSL, и Windows-процесс туннеля мог бы остаться жить.
+    echo "  WSL: поставьте Linux-версию (Windows-туннели она не трогает):"
+    echo "    mkdir -p ~/.local/bin"
+    echo "    curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o ~/.local/bin/cloudflared"
+    echo "    chmod +x ~/.local/bin/cloudflared && export PATH=\"\$HOME/.local/bin:\$PATH\""
+  else
+    echo "  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+    echo "  Linux: ~/.local/bin/cloudflared из releases/latest (cloudflared-linux-amd64)   Termux: pkg install cloudflared"
+  fi
   exit 1
 }
 
