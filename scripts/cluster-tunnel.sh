@@ -112,6 +112,10 @@ done
 curl -fsS "http://127.0.0.1:$WEB_PORT/healthz" >/dev/null || { echo "web не отвечает, журнал: $STATE/cluster.log"; exit 1; }
 
 : >"$STATE/cloudflared.yml" # пустой собственный конфиг: ~/.cloudflared/config.yml не читается
+# Журналы — с чистого листа: cloudflared ДОПИСЫВАЕТ --logfile, и без очистки скрипт находил
+# адрес и «Registered tunnel connection» прошлого запуска.
+: >"$STATE/cloudflared.out"
+: >"$STATE/cloudflared.log"
 # http2 (TCP 7844) по умолчанию: QUIC (UDP 7844) часто не проходит через NAT WSL и фаерволы,
 # и туннель получал адрес без единого соединения — Cloudflare отвечал Error 1033.
 cloudflared tunnel --no-autoupdate --protocol "${CF_PROTOCOL:-http2}" --config "$STATE/cloudflared.yml" \
@@ -157,8 +161,24 @@ if [ "${MONITORING:-}" = 1 ]; then
   # и молча это выглядело зависанием
   echo "  (первый раз Docker скачивает образы Prometheus и Grafana — пара минут)"
   docker compose -f monitoring/docker-compose.yml up -d 2>&1 | while IFS= read -r l; do printf '%s %s\n' "$(date +%T)" "$l"; done | tee -a "$STATE/monitoring.log"
-  for _ in $(seq 60); do curl -fsS "http://127.0.0.1:$GRAFANA_PORT/api/health" >/dev/null 2>&1 && { grafana="http://localhost:$GRAFANA_PORT"; break; }; sleep 2; done
-  [ -n "$grafana" ] || printf '%s Grafana не ответила на 127.0.0.1:%s за 2 мин\n' "$(date +%T)" "$GRAFANA_PORT" | tee -a "$STATE/monitoring.log"
+  # Проверка изнутри контейнеров: с Docker Desktop «хост» контейнера — не WSL, и запрос из WSL
+  # на 127.0.0.1 не дошёл бы, хотя Grafana в Windows-браузере открывается.
+  in_ct() { docker exec "kontakt-monitoring-$1-1" wget -qO- "$2" 2>/dev/null; }
+  for _ in $(seq 60); do in_ct grafana "http://127.0.0.1:$GRAFANA_PORT/api/health" >/dev/null && { grafana="http://localhost:$GRAFANA_PORT"; break; }; sleep 2; done
+  [ -n "$grafana" ] || printf '%s Grafana не ответила за 2 мин — docker compose -f monitoring/docker-compose.yml logs grafana\n' "$(date +%T)" | tee -a "$STATE/monitoring.log"
+  # Видит ли Prometheus станцию: самая частая беда с Docker Desktop без host networking
+  seen=""
+  for _ in $(seq 15); do
+    in_ct prometheus "http://127.0.0.1:$PROMETHEUS_PORT/api/v1/targets?state=active" | grep -q "\"scrapeUrl\":\"http://127.0.0.1:$SIGNAL_ADMIN/metrics\"[^}]*\"health\":\"up\"" && { seen=1; break; }
+    sleep 2
+  done
+  if [ -n "$seen" ]; then
+    printf '%s Prometheus видит станцию (signal 127.0.0.1:%s — up)\n' "$(date +%T)" "$SIGNAL_ADMIN" | tee -a "$STATE/monitoring.log"
+  else
+    printf '%s Prometheus НЕ видит станцию на 127.0.0.1:%s — графики будут пустыми.\n' "$(date +%T)" "$SIGNAL_ADMIN" | tee -a "$STATE/monitoring.log"
+    echo "  Docker Desktop: Settings → Resources → Network → Enable host networking, затем перезапуск скрипта;"
+    echo "  либо docker прямо в WSL (sudo apt install docker.io) вместо Docker Desktop."
+  fi
 fi
 if [ -n "$grafana" ]; then
   echo "Мониторинг: $grafana (дашборды «Контакт: станция» и «Kontakt Mesh»)"
