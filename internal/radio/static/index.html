@@ -4,215 +4,237 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Открытое радио</title>
-<meta name="description" content="Займи свою волну и вещай: очередь mp3 и микрофон, G.711 64 кбит/с. Или просто крути ручку и слушай.">
-<meta name="theme-color" content="#1B1410">
+<meta name="description" content="Крути ручку — между станциями шорох. Или займи свою волну: микрофон, музыка, G.711 64 кбит/с.">
+<meta name="theme-color" content="#2B1B3D">
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --wall: #1B1410;
-  --wall-line: rgba(255,255,255,.025);
-  --wood: #7A3E1D;
-  --wood-hi: #A0582A;
-  --wood-lo: #4A220E;
-  --ink: #170A04;
-  --cream: #F3E2BF;
-  --cream-lo: #C9AE7D;
-  --lcd: #1A0F05;
-  --amber: #FFB347;
-  --amber-dim: #6A4318;
-  --red: #E0352B;
-  --red-lo: #7E140E;
-  --green: #8FD16A;
+  --sky: #2B1B3D;
+  --sky-dot: rgba(255,255,255,.06);
+  --ink: #1E0F0A;
+  --cream: #FFE9C2;
+  --cream-lo: #E2BE86;
+  --tomato: #E8573F;
+  --tomato-lo: #A83424;
+  --lcd: #21160B;
+  --amber: #FFC24B;
+  --amber-dim: #8A6224;
+  --red: #FF3B2F;
+  --mint: #7FE0A8;
   --focus: #FFE36E;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
 body {
-  background: var(--wall);
-  background-image: repeating-linear-gradient(0deg, transparent 0 3px, var(--wall-line) 3px 4px);
+  background-color: var(--sky);
+  background-image: radial-gradient(var(--sky-dot) 1px, transparent 1px);
+  background-size: 8px 8px;
   color: var(--cream);
   font: 400 15px/1.3 "Pixelify Sans", ui-monospace, monospace;
   -webkit-font-smoothing: none;
-  display: grid; place-items: start center;
   padding: 16px;
 }
+.wrap { width: min(560px, 100%); margin: 0 auto; }
 canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 button, input { font: inherit; color: inherit; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[hidden] { display: none !important; }
 
-/* Корпус: «пиксельная» рамка — ступенчатые тени без скруглений */
-.radio {
-  width: min(460px, 100%);
-  background: var(--wood);
-  padding: 18px 16px 16px;
-  box-shadow:
-    0 0 0 4px var(--ink),
-    inset 4px 4px 0 var(--wood-hi),
-    inset -4px -4px 0 var(--wood-lo),
-    8px 8px 0 4px rgba(0,0,0,.45);
-  position: relative;
+/* Вкладки: слушать / вещать */
+.tabs { display: flex; justify-content: center; gap: 10px; margin: 4px 0 18px; }
+.tab {
+  border: 0; cursor: pointer; padding: 7px 14px 8px; font-weight: 600; letter-spacing: .04em;
+  background: #4A3463; color: #C9B6E4;
+  box-shadow: 0 0 0 3px var(--ink), inset -3px -3px 0 #35244A;
 }
-.radio.shake { animation: shake .08s steps(2) 3; }
-@keyframes shake { 50% { transform: translate(2px, -1px); } }
+.tab.on { background: var(--amber); color: var(--ink); box-shadow: 0 0 0 3px var(--ink), inset -3px -3px 0 #C98B1E; }
 
-.top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
-.brand { font-weight: 600; font-size: 22px; line-height: 1; color: var(--cream); text-shadow: 0 2px 0 var(--wood-lo); letter-spacing: .02em; }
-.brand small { display: block; font-size: 11px; font-weight: 400; color: var(--cream-lo); text-shadow: none; margin-top: 3px; }
-
-/* Переключатель режима: рычажок RX ⇄ TX */
-.mode { display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px; cursor: pointer; }
-.mode .lbl { font-weight: 600; color: var(--cream-lo); }
-.mode .lbl.on { color: var(--amber); text-shadow: 0 0 6px rgba(255,179,71,.5); }
-.mode .track { width: 44px; height: 20px; background: var(--ink); position: relative; box-shadow: inset 2px 2px 0 #000; }
-.mode .lever { position: absolute; top: 2px; left: 2px; width: 18px; height: 16px; background: var(--cream); box-shadow: inset -2px -2px 0 var(--cream-lo); transition: left .12s steps(3); }
-.mode[aria-checked="true"] .lever { left: 24px; }
-
-.screen { background: var(--lcd); padding: 6px; box-shadow: 0 0 0 4px var(--ink), inset 0 0 0 2px #2A1A0A; position: relative; overflow: hidden; }
-.screen canvas { width: 100%; height: auto; }
-.screen::after { /* развёртка поверх экрана */
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px);
+/* ---------- приёмник: только радио и его ручка ---------- */
+.stage { position: relative; }
+#radio { width: 100%; height: auto; touch-action: none; transform-origin: 50% 100%; cursor: pointer; }
+#radio.grab { cursor: grab; }
+#radio.grabbing { cursor: grabbing; }
+.sticker {
+  margin: 14px auto 0; width: fit-content; max-width: 100%;
+  padding: 6px 14px 7px; background: var(--cream); color: var(--ink);
+  box-shadow: 0 0 0 3px var(--ink), 4px 4px 0 3px rgba(0,0,0,.35);
+  transform: rotate(-1.5deg); text-align: center;
 }
-.info {
-  margin-top: 8px; padding: 5px 8px; min-height: 2.6em;
-  background: var(--lcd); color: var(--amber); box-shadow: 0 0 0 4px var(--ink);
-  font-size: 13px; overflow: hidden;
-}
-.info div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.info .dim { color: #B8823A; }
-.info.glitch div { animation: tear .12s steps(1) infinite; }
+.sticker b { display: block; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sticker span { display: block; font-size: 13px; color: #6B4A2A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sticker.glitch b, .sticker.glitch span { animation: tear .12s steps(1) infinite; }
 @keyframes tear {
   0% { transform: translateX(0); text-shadow: 2px 0 #E0352B, -2px 0 #3BA7FF; }
   33% { transform: translateX(-3px); text-shadow: none; }
   66% { transform: translateX(2px) skewX(-8deg); text-shadow: -1px 0 #E0352B; }
 }
 
-.deck { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; margin-top: 16px; }
-.knob-wrap { text-align: center; }
-.knob { width: 148px; height: 148px; cursor: grab; touch-action: none; }
-.knob:active { cursor: grabbing; }
-.knob-wrap .hint { font-size: 11px; color: var(--cream-lo); margin-top: 2px; }
+/* ---------- ведущий ---------- */
+.studio { display: grid; gap: 16px; }
+.box { background: #3A2752; padding: 12px; box-shadow: 0 0 0 3px var(--ink), inset 3px 3px 0 #4E3870, inset -3px -3px 0 #2A1B3C; }
 
-.controls { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sign-row { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.sign {
+  border: 0; cursor: pointer; padding: 8px 16px 9px; min-width: 190px;
+  background: #3B2A2A; color: #7A5B55; text-align: center;
+  box-shadow: 0 0 0 3px var(--ink), inset 3px 3px 0 #000;
+}
+.sign .lamp { display: block; font-weight: 600; font-size: 24px; letter-spacing: .08em; line-height: 1.1; }
+.sign .freq { display: block; font-size: 13px; }
+.sign.live { background: var(--red); color: #FFF3E0; animation: signblink 1.2s steps(1) infinite; }
+.sign.live .lamp { text-shadow: 0 0 8px #FFD0C0; }
+@keyframes signblink { 50% { background: #D22A20; } }
+.arrow {
+  border: 0; cursor: pointer; width: 34px; height: 34px; font-weight: 600;
+  background: var(--cream); color: var(--ink); box-shadow: 0 0 0 3px var(--ink), inset -3px -3px 0 var(--cream-lo);
+}
+.arrow:active, .arrow.pressed { box-shadow: 0 0 0 3px var(--ink), inset 3px 3px 0 var(--cream-lo); transform: translateY(2px); }
+.arrow[disabled] { opacity: .4; cursor: not-allowed; }
+.name {
+  display: block; width: min(260px, 100%); margin: 12px auto 0; padding: 5px 8px; border: 0; text-align: center;
+  background: var(--lcd); color: var(--amber); box-shadow: 0 0 0 3px var(--ink);
+}
+.hint { text-align: center; font-size: 12px; color: #C9B6E4; margin-top: 8px; min-height: 1.3em; }
+.hint.warn { color: #FF9A8A; }
 
-/* Пиксельная кнопка: выпуклая; при нажатии на секунду — вдавленная */
+.desk { display: flex; align-items: flex-end; justify-content: center; gap: 22px; flex-wrap: wrap; }
+.micbtn { background: none; border: 0; padding: 0; cursor: pointer; text-align: center; color: var(--cream); }
+#mic { width: 168px; height: 168px; }
+.micbtn .cap { display: block; font-size: 12px; margin-top: 4px; color: #C9B6E4; }
+.micbtn[aria-pressed="true"] .cap { color: var(--red); font-weight: 600; }
+
+.mixer { display: flex; gap: 14px; align-items: flex-end; }
+.mixer, .micbtn, .tabs { -webkit-user-select: none; user-select: none; }
+.fader { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 44px; touch-action: none; cursor: ns-resize; }
+.fader .track { position: relative; width: 14px; height: 140px; background: var(--ink); box-shadow: inset 2px 2px 0 #000; }
+.fader .fill { position: absolute; left: 3px; right: 3px; bottom: 0; background: repeating-linear-gradient(0deg, var(--amber) 0 4px, transparent 4px 6px); opacity: .55; }
+.fader .cap { position: absolute; left: -11px; width: 36px; height: 16px; background: var(--cream); box-shadow: 0 0 0 2px var(--ink), inset -3px -3px 0 var(--cream-lo); }
+.fader .cap::after { content: ""; position: absolute; left: 6px; right: 6px; top: 7px; height: 2px; background: var(--ink); }
+.fader .lbl { font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+.fader .val { font-size: 11px; color: #C9B6E4; }
+.vu { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 22px; }
+.vu .track { position: relative; width: 12px; height: 140px; background: var(--ink); box-shadow: inset 2px 2px 0 #000; }
+.vu i { position: absolute; left: 2px; right: 2px; bottom: 2px; height: 0; background: repeating-linear-gradient(0deg, var(--mint) 0 4px, transparent 4px 6px); }
+.vu i.hot { background: repeating-linear-gradient(0deg, var(--red) 0 4px, transparent 4px 6px); }
+.vu .lbl { font-size: 11px; font-weight: 600; }
+
 .btn {
-  border: 0; cursor: pointer; padding: 8px 12px 9px; min-height: 36px;
-  background: var(--cream); color: var(--ink); font-weight: 600; letter-spacing: .03em;
-  box-shadow: 0 0 0 3px var(--ink), inset -3px -3px 0 var(--cream-lo), inset 3px 3px 0 #FFF6E0;
+  border: 0; cursor: pointer; padding: 5px 10px 6px; font-size: 13px; font-weight: 600; letter-spacing: .03em;
+  background: var(--cream); color: var(--ink); box-shadow: 0 0 0 3px var(--ink), inset -3px -3px 0 var(--cream-lo), inset 3px 3px 0 #FFF8E8;
 }
-.btn.pressed, .btn:active { box-shadow: 0 0 0 3px var(--ink), inset 3px 3px 0 var(--cream-lo), inset -2px -2px 0 #FFF6E0; transform: translateY(2px); }
-.btn.red { background: var(--red); color: var(--cream); box-shadow: 0 0 0 3px var(--ink), inset -3px -3px 0 var(--red-lo), inset 3px 3px 0 #FF7A66; }
-.btn.red.pressed, .btn.red:active { box-shadow: 0 0 0 3px var(--ink), inset 3px 3px 0 var(--red-lo); }
-.btn.live { background: var(--red); color: var(--cream); animation: live 1s steps(1) infinite; }
-@keyframes live { 50% { background: var(--red-lo); } }
-.btn[disabled] { opacity: .45; cursor: not-allowed; }
-.btn.small { padding: 4px 8px 5px; min-height: 0; font-size: 12px; }
-
-.vol { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--cream-lo); }
-input[type=range] { -webkit-appearance: none; appearance: none; width: 110px; height: 10px; background: var(--ink); box-shadow: inset 2px 2px 0 #000; }
-input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 18px; background: var(--cream); border: 0; box-shadow: inset -2px -2px 0 var(--cream-lo); }
-input[type=range]::-moz-range-thumb { width: 12px; height: 18px; background: var(--cream); border: 0; border-radius: 0; }
-
-input[type=text] {
-  width: 100%; padding: 6px 8px; border: 0; background: var(--lcd); color: var(--amber);
-  box-shadow: 0 0 0 3px var(--ink), inset 2px 2px 0 #000;
+.btn.pressed, .btn:active { box-shadow: 0 0 0 3px var(--ink), inset 3px 3px 0 var(--cream-lo); transform: translateY(2px); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.qhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.qhead h2 { margin: 0; font-size: 15px; letter-spacing: .06em; color: var(--amber); }
+.drop {
+  margin-top: 10px; padding: 14px 10px; text-align: center; font-size: 13px; color: #C9B6E4;
+  border: 3px dashed #6B5290;
 }
-label.field { display: grid; gap: 4px; font-size: 12px; color: var(--cream-lo); }
-
-.panel[hidden] { display: none; }
-.queue { margin-top: 14px; background: var(--lcd); box-shadow: 0 0 0 4px var(--ink); padding: 6px 8px; font-size: 13px; color: var(--amber); }
-.queue h3 { margin: 0; font-size: 12px; font-weight: 600; color: #B8823A; letter-spacing: .05em; }
-.queue ol { margin: 4px 0 0; padding: 0; list-style: none; max-height: 168px; overflow: auto; }
-.queue li { display: flex; gap: 6px; align-items: center; padding: 3px 0; border-top: 1px dashed var(--amber-dim); }
+.drop.over { border-color: var(--amber); color: var(--amber); background: rgba(255,194,75,.08); }
+.search { width: 100%; margin-top: 10px; padding: 5px 8px; border: 0; background: var(--lcd); color: var(--amber); box-shadow: 0 0 0 3px var(--ink); }
+.lib, .queue { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
+.lib { max-height: 150px; overflow: auto; background: #2A1B3C; }
+.lib li button { width: 100%; text-align: left; background: none; border: 0; padding: 4px 6px; cursor: pointer; color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.lib li button:hover { background: #4A3463; }
+.lib li button small { color: #9C86BC; }
+.libfoot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #9C86BC; margin-top: 6px; }
+.now { margin-top: 12px; background: var(--lcd); color: var(--amber); padding: 6px 8px; box-shadow: 0 0 0 3px var(--ink); }
+.now .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.prog { height: 6px; margin-top: 5px; background: #000; }
+.prog i { display: block; height: 100%; width: 0; background: var(--amber); }
+.queue li { display: flex; gap: 6px; align-items: center; padding: 4px 2px; border-top: 1px dashed #6B5290; }
 .queue li:first-child { border-top: 0; }
 .queue li span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .queue li button { background: none; border: 0; color: var(--amber); cursor: pointer; padding: 0 4px; font-weight: 600; }
 .queue li button[disabled] { opacity: .3; cursor: default; }
-.queue .empty { color: var(--amber-dim); }
-.now { color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.meter { height: 10px; width: 100%; background: var(--ink); box-shadow: inset 2px 2px 0 #000; position: relative; }
-.meter i { position: absolute; left: 2px; top: 2px; bottom: 2px; width: 0; background: repeating-linear-gradient(90deg, var(--green) 0 6px, transparent 6px 8px); }
-.meter i.hot { background: repeating-linear-gradient(90deg, var(--red) 0 6px, transparent 6px 8px); }
-
-.foot { margin: 14px 0 0; font-size: 11px; color: var(--cream-lo); line-height: 1.4; }
-
-@media (max-width: 420px) {
-  .deck { grid-template-columns: 1fr; }
-  .knob { width: 128px; height: 128px; margin: 0 auto; }
-}
+.queue .empty { color: #9C86BC; }
+.foot { margin: 18px 0 0; font-size: 11px; color: #9C86BC; text-align: center; line-height: 1.4; }
+.shake { animation: shake .08s steps(2) 3; }
+@keyframes shake { 50% { transform: translate(2px, -1px); } }
 </style>
 </head>
 <body>
-<main class="radio" id="radio">
-  <div class="top">
-    <div class="brand">OPEN RADIO<small>G.711 · 64 kbit/s · своя волна</small></div>
-    <button class="mode" id="mode" role="switch" aria-checked="false" aria-label="Режим: приёмник или передатчик">
-      <span class="lbl on" id="lblRx">RX</span>
-      <span class="track"><span class="lever"></span></span>
-      <span class="lbl" id="lblTx">TX</span>
-    </button>
-  </div>
+<div class="wrap">
+  <nav class="tabs" aria-label="Режим">
+    <button class="tab on" id="tabRx" aria-pressed="true">LISTEN</button>
+    <button class="tab" id="tabTx" aria-pressed="false">BROADCAST</button>
+  </nav>
 
-  <div class="screen"><canvas id="lcd" width="160" height="56" aria-hidden="true"></canvas></div>
-  <div class="info" id="info" aria-live="polite"><div id="info1">PRESS POWER</div><div class="dim" id="info2">&nbsp;</div></div>
-
-  <div class="deck">
-    <div class="controls">
-      <!-- Приёмник -->
-      <div class="panel" id="rxPanel">
-        <div class="row">
-          <button class="btn" id="power">POWER</button>
-          <button class="btn" id="seekDown" aria-label="Искать станцию ниже">◀ SEEK</button>
-          <button class="btn" id="seekUp" aria-label="Искать станцию выше">SEEK ▶</button>
-        </div>
-        <div class="vol" style="margin-top:12px">VOL <input type="range" id="vol" min="0" max="100" value="70" aria-label="Громкость"></div>
-      </div>
-      <!-- Передатчик -->
-      <div class="panel" id="txPanel" hidden>
-        <label class="field">НАЗВАНИЕ СТАНЦИИ<input type="text" id="name" maxlength="24" placeholder="RADIO PIRATE" autocomplete="off"></label>
-        <div class="row" style="margin-top:10px">
-          <button class="btn red" id="onair">ON AIR</button>
-          <button class="btn" id="mic" aria-pressed="false">MIC</button>
-        </div>
-        <div class="meter" style="margin-top:10px" aria-hidden="true"><i id="meter"></i></div>
-      </div>
+  <!-- Приёмник: радио и ручка, больше ничего -->
+  <section id="rxView">
+    <div class="stage">
+      <canvas id="radio" width="128" height="88" tabindex="0" role="slider"
+              aria-label="Ручка настройки: крутите, чтобы переключать станции"
+              aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
-    <div class="knob-wrap">
-      <canvas class="knob" id="knob" width="40" height="40" tabindex="0" role="slider"
-              aria-label="Настройка частоты" aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
-      <div class="hint" id="knobHint">крути · колесо · ← →</div>
-    </div>
-  </div>
-
-  <section class="queue panel" id="queuePanel" hidden>
-    <div class="row" style="justify-content:space-between">
-      <h3>QUEUE</h3>
-      <div class="row">
-        <button class="btn small" id="add">+ MP3</button>
-        <button class="btn small" id="play">PLAY</button>
-        <button class="btn small" id="skip">SKIP</button>
-      </div>
-    </div>
-    <div class="now" id="now" style="margin-top:6px">—</div>
-    <ol id="list"></ol>
-    <input type="file" id="file" accept="audio/mpeg,audio/*,.mp3" multiple hidden>
+    <div class="sticker" id="sticker" aria-live="polite"><b id="st1">крутни ручку</b><span id="st2">&nbsp;</span></div>
   </section>
 
-  <p class="foot">Приёмник: включи POWER и крути ручку — между станциями только шорох.
-    Передатчик: выбери ручкой свободную волну, добавь mp3 или включи микрофон и жми ON AIR.
-    Файлы никуда не загружаются — играют из твоего браузера, в эфир уходит только звук.</p>
-</main>
+  <!-- Ведущий: табличка эфира, микрофон, три громкости, очередь -->
+  <section id="txView" class="studio" hidden>
+    <div class="box">
+      <div class="sign-row">
+        <button class="arrow" id="fDown" aria-label="Частота ниже">◀</button>
+        <button class="sign" id="onair" aria-pressed="false"><span class="lamp">ON AIR</span><span class="freq" id="hostFreq">— MHz</span></button>
+        <button class="arrow" id="fUp" aria-label="Частота выше">▶</button>
+      </div>
+      <input class="name" id="name" maxlength="24" placeholder="название станции" autocomplete="off" aria-label="Название станции">
+      <div class="hint" id="hostHint">&nbsp;</div>
+    </div>
+
+    <div class="box desk">
+      <button class="micbtn" id="micBtn" aria-pressed="false" aria-label="Микрофон">
+        <canvas id="mic" width="56" height="56"></canvas>
+        <span class="cap" id="micCap">MIC OFF</span>
+      </button>
+      <div class="mixer">
+        <div class="fader" id="fMic" tabindex="0" role="slider" aria-label="Громкость микрофона"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl">MIC</span><span class="val"></span></div>
+        <div class="fader" id="fMusic" tabindex="0" role="slider" aria-label="Громкость музыки"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl">MUSIC</span><span class="val"></span></div>
+        <div class="fader" id="fAir" tabindex="0" role="slider" aria-label="Громкость эфира"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl">AIR</span><span class="val"></span></div>
+        <div class="vu" aria-hidden="true"><div class="track"><i id="vu"></i></div><span class="lbl">OUT</span></div>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="qhead">
+        <h2>QUEUE</h2>
+        <div class="row">
+          <button class="btn" id="addFiles">+ FILES</button>
+          <button class="btn" id="addDir">+ FOLDER</button>
+        </div>
+      </div>
+      <div class="drop" id="drop">кинь сюда mp3 или целую папку</div>
+      <div id="libBox" hidden>
+        <input class="search" id="search" type="search" placeholder="поиск по найденному…" aria-label="Поиск mp3 в выбранной папке" autocomplete="off">
+        <ol class="lib" id="lib"></ol>
+        <div class="libfoot"><span id="libCount"></span><button class="btn" id="libAll">ADD ALL</button></div>
+      </div>
+      <div class="now">
+        <span class="t" id="now">—</span>
+        <div class="prog"><i id="prog"></i></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="play">PLAY</button>
+        <button class="btn" id="skip">SKIP</button>
+      </div>
+      <ol class="queue" id="queue"></ol>
+      <input type="file" id="files" accept="audio/mpeg,.mp3" multiple hidden>
+      <input type="file" id="dir" webkitdirectory multiple hidden>
+    </div>
+  </section>
+
+  <p class="foot">Файлы не загружаются на сервер: играют из твоего браузера, в эфир уходит только звук — G.711, 64 кбит/с.</p>
+</div>
 
 <script>
 "use strict";
-const MIN = 87.5, MAX = 108.0;
+const MIN = 87.5, MAX = 108.0, SPAN = MAX - MIN + 0.1; // шкала замкнута в кольцо: после 108.0 снова 87.5
 const $ = id => document.getElementById(id);
+const wrapF = f => MIN + (((f - MIN) % SPAN) + SPAN) % SPAN;
+const snap = f => Math.round(f * 10) / 10;
 
 // ---------- G.711 μ-law ----------
 const ULAW = new Float32Array(256);
@@ -346,7 +368,7 @@ registerProcessor("rx", RX);
 registerProcessor("tx", TX);
 `;
 
-let ctx = null, rx = null, audioReady = null;
+let ctx = null, rx = null, rxAn = null, audioReady = null;
 function ensureAudio() {
   if (audioReady) return audioReady;
   audioReady = (async () => {
@@ -356,9 +378,10 @@ function ensureAudio() {
     URL.revokeObjectURL(url);
     rx = new AudioWorkletNode(ctx, "rx", { numberOfInputs: 0, outputChannelCount: [2] });
     rx.connect(ctx.destination);
+    rxAn = ctx.createAnalyser(); rxAn.fftSize = 512; rx.connect(rxAn); // радио «пляшет» под звук
     if (ctx.state !== "running") await ctx.resume();
   })();
-  audioReady.catch(err => { audioReady = null; say("NO AUDIO", String(err && err.message || err)); });
+  audioReady.catch(err => { audioReady = null; hostHint("звук не включился: " + (err && err.message || err), true); });
   return audioReady;
 }
 
@@ -366,19 +389,18 @@ function ensureAudio() {
 const st = {
   mode: "rx",
   power: false,
-  dial: 100.0,       // куда смотрит стрелка приёмника, МГц
-  txFreq: 100.0,     // волна передатчика (в эфир идёт с шагом 0.1)
-  knobAngle: (100.0 - 87.5) / 2 * 2 * Math.PI, // TURN_MHZ = 2
-  stations: [],      // [{f, n, t, l, s}] — f в десятых МГц
-  tuned: -1,         // на что приёмник подписан у сервера, 0 — ни на что
+  dial: 100.0,
+  knobAngle: 0,
+  stations: [],      // от сервера; на экран не выводится — станции находят только ручкой
+  tuned: -1,
   strength: 0, dist: 1,
   scratchVis: 0,
+  hostFreq: 0,       // десятые МГц, 0 — ещё не выбрана
   onAir: false,
-  vol: 0.7,
 };
 window.radioState = st; // для отладки и проверки в браузере
 
-// ---------- список станций и подписка: одно соединение на страницу ----------
+// ---------- соединение со списком и эфиром ----------
 let lws = null;
 const wsURL = path => (location.protocol === "https:" ? "wss://" : "ws://") + location.host + path;
 function connectListen() {
@@ -390,6 +412,7 @@ function connectListen() {
       try { const m = JSON.parse(e.data); if (m.stations) st.stations = m.stations; }
       catch (_) { /* битый список: следующий придёт через секунду */ }
       retune();
+      if (st.mode === "tx") renderHost();
       return;
     }
     if (!rx || st.mode !== "rx") return;
@@ -401,324 +424,444 @@ function connectListen() {
   lws.onclose = () => setTimeout(connectListen, 2000);
 }
 
-// Ближайшая станция и сила сигнала по расстоянию стрелки до неё.
-const CATCH = 0.25; // МГц: дальше — только шорох
+// Расстояние по кольцу шкалы: ручка бесконечная, 108.0 и 87.5 — соседи.
+const CATCH = 0.25;
+function ringDist(a, b) { const d = Math.abs(a - b) % SPAN; return Math.min(d, SPAN - d); }
 function nearest(freqMHz) {
   let best = null, bd = 1e9;
-  for (const s of st.stations) { const d = Math.abs(s.f / 10 - freqMHz); if (d < bd) { bd = d; best = s; } }
+  for (const s of st.stations) { const d = ringDist(s.f / 10, freqMHz); if (d < bd) { bd = d; best = s; } }
   return { s: best, d: bd };
 }
-function strengthOf(d) { return d <= 0.03 ? 1 : Math.max(0, 1 - (d - 0.03) / (CATCH - 0.03)); }
+const strengthOf = d => d <= 0.03 ? 1 : Math.max(0, 1 - (d - 0.03) / (CATCH - 0.03));
 
 function retune() {
   if (!lws || lws.readyState !== 1) return;
   let want = 0;
-  if (st.mode === "rx" && st.power) {
-    const { s, d } = nearest(st.dial);
-    if (s && d < CATCH) want = s.f;
-  }
+  if (st.mode === "rx" && st.power) { const { s, d } = nearest(st.dial); if (s && d < CATCH) want = s.f; }
   if (want !== st.tuned) {
     st.tuned = want;
     lws.send(JSON.stringify({ tune: want }));
     if (rx) rx.port.postMessage({ flush: true });
   }
 }
-
 function updateSignal() {
   const { s, d } = nearest(st.dial);
-  const str = st.power && s ? strengthOf(d) : 0;
-  if (Math.abs(str - st.strength) > 0.005 || Math.abs(Math.min(d, 1) - st.dist) > 0.002) {
-    st.strength = str; st.dist = Math.min(d, 1);
-    if (rx) rx.port.postMessage({ s: str, d: st.dist });
+  const str = st.power && s ? strengthOf(d) : 0, dd = Math.min(d, 1);
+  if (Math.abs(str - st.strength) > 0.005 || Math.abs(dd - st.dist) > 0.002) {
+    st.strength = str; st.dist = dd;
+    if (rx) rx.port.postMessage({ s: str, d: dd });
   }
 }
 
-// ---------- ручка ----------
-const knob = $("knob");
-const TURN_MHZ = 2; // один оборот ручки — 2 МГц
-const snap = f => Math.round(f * 10) / 10;
-function knobDelta(rad) {
-  if (st.mode === "tx" && st.onAir) { shake(); return; } // в эфире волну не меняют
-  const before = st.mode === "rx" ? st.dial : st.txFreq;
-  const f = Math.min(MAX, Math.max(MIN, before + rad / (2 * Math.PI) * TURN_MHZ));
-  const moved = f - before;
-  if (!moved) return;
-  st.knobAngle += moved / TURN_MHZ * 2 * Math.PI; // у края шкалы ручка упирается
-  if (st.mode === "rx") { st.dial = f; scratch(Math.abs(moved) * 3); }
-  else st.txFreq = f;
-  knob.setAttribute("aria-valuenow", (st.mode === "rx" ? st.dial : snap(st.txFreq)).toFixed(1));
-  retune();
-}
-function scratch(a) {
-  st.scratchVis = Math.min(1, st.scratchVis + a);
-  if (rx) rx.port.postMessage({ scratch: a });
-}
-
-let dragAngle = null;
-function pointerAngle(e) {
-  const r = knob.getBoundingClientRect();
-  return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2));
-}
-knob.addEventListener("pointerdown", e => { knob.setPointerCapture(e.pointerId); dragAngle = pointerAngle(e); seekStop(); });
-knob.addEventListener("pointermove", e => {
-  if (dragAngle === null) return;
-  const a = pointerAngle(e);
-  let d = a - dragAngle;
-  if (d > Math.PI) d -= 2 * Math.PI;
-  if (d < -Math.PI) d += 2 * Math.PI;
-  dragAngle = a;
-  knobDelta(d);
-});
-const endDrag = () => { dragAngle = null; };
-knob.addEventListener("pointerup", endDrag);
-knob.addEventListener("pointercancel", endDrag);
-knob.addEventListener("wheel", e => {
-  e.preventDefault(); seekStop();
-  knobDelta((e.deltaY > 0 ? -1 : 1) * 0.05 / TURN_MHZ * 2 * Math.PI);
-}, { passive: false });
-knob.addEventListener("keydown", e => {
-  const step = (e.shiftKey ? 1 : 0.1) / TURN_MHZ * 2 * Math.PI;
-  if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); seekStop(); knobDelta(step); }
-  if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); seekStop(); knobDelta(-step); }
-});
-
-// Ручка рисуется попиксельно: 40×40, рифлёный обод и риска вращаются вместе.
-const kctx = knob.getContext("2d"), kimg = kctx.createImageData(40, 40);
-let drawnAngle = null;
-function drawKnob() {
-  if (drawnAngle === st.knobAngle) return;
-  drawnAngle = st.knobAngle;
-  const a = st.knobAngle - Math.PI / 2, px = kimg.data;
-  const put = (i, c) => { px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = 255; };
-  const INK = [23, 10, 4], RIM = [201, 174, 125], RIM_LO = [122, 92, 52],
-        FACE = [243, 226, 191], FACE_HI = [255, 246, 224], FACE_LO = [214, 190, 146], RED = [224, 53, 43];
-  for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) {
-    const dx = x - 19.5, dy = y - 19.5, r = Math.hypot(dx, dy), i = (y * 40 + x) * 4;
-    if (r > 19.2) { px[i + 3] = 0; continue; }
-    if (r > 17.6) { put(i, INK); continue; }
-    const th = Math.atan2(dy, dx);
-    if (r > 14) {
-      let ph = ((th - a) / (2 * Math.PI) * 20) % 1; if (ph < 0) ph += 1;
-      put(i, ph < 0.4 ? RIM_LO : RIM); continue;
-    }
-    if (r > 13) { put(i, INK); continue; }
-    let da = th - a; da = Math.atan2(Math.sin(da), Math.cos(da));
-    if (Math.abs(da) * r < 1.3 && r > 4 && r < 12) { put(i, RED); continue; }
-    const light = (-dx - dy) / (r + 0.01); // свет сверху слева
-    put(i, light > 0.5 && r > 6 ? FACE_HI : light < -0.6 && r > 7 ? FACE_LO : FACE);
-  }
-  kctx.putImageData(kimg, 0, 0);
-}
-
-// ---------- экран 160×56, свой пиксельный шрифт 3×5 ----------
+// ---------- радио: всё нарисовано на холсте 128×88 ----------
 const FONT = {
   "0": "111101101101111", "1": "010110010010111", "2": "111001111100111", "3": "111001111001111",
   "4": "101101111001001", "5": "111100111001111", "6": "111100111101111", "7": "111001010010010",
   "8": "111101111101111", "9": "111101111001111", ".": "000000000000010", " ": "000000000000000",
-  "-": "000000111000000", ":": "000010000010000", "/": "001001010100100", "%": "101001010100101",
-  A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110",
-  E: "111100110100111", F: "111100110100100", G: "011100101101011", H: "101101111101101",
-  I: "111010010010111", J: "001001001101010", K: "101101110101101", L: "100100100100111",
+  "-": "000000111000000", A: "010101111101101", C: "011100100100011", D: "110101101101110",
+  E: "111100110100111", F: "111100110100100", G: "011100101101011", I: "111010010010111", L: "100100100100111",
   M: "101111111101101", N: "110101101101101", O: "010101101101010", P: "110101110100100",
-  Q: "010101101110011", R: "110101110101101", S: "011100010001110", T: "111010010010010",
-  U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101",
-  Y: "101101010010010", Z: "111001010100111",
+  R: "110101110101101", S: "011100010001110", T: "111010010010010", U: "101101101101111",
+  W: "101101111111101", Z: "111001010100111",
 };
-const lcd = $("lcd"), g = lcd.getContext("2d", { willReadFrequently: true });
-const C = { bg: "#1A0F05", fg: "#FFB347", dim: "#6A4318", mid: "#B8823A", red: "#FF3B2F" };
-function text(s, x, y, color, k = 1) {
+function text(g, s, x, y, color, k = 1) {
   g.fillStyle = color;
   for (const ch of s.toUpperCase()) {
     const gl = FONT[ch] || FONT[" "];
     for (let i = 0; i < 15; i++) if (gl[i] === "1") g.fillRect(x + (i % 3) * k, y + (i / 3 | 0) * k, k, k);
     x += 4 * k;
   }
-  return x;
 }
-const xOf = f => 6 + (f - MIN) / (MAX - MIN) * 148;
-let tick = 0;
-function drawLCD() {
-  tick++;
-  g.fillStyle = C.bg; g.fillRect(0, 0, 160, 56);
-  const rxMode = st.mode === "rx";
-  if (!st.power && rxMode) {
-    if ((tick >> 5) & 1) text("PRESS POWER", 58, 25, C.dim);
-    return;
+// Скруглённый прямоугольник и круг «по пикселям» — никакого сглаживания.
+function rrect(g, x, y, w, h, r, c) {
+  g.fillStyle = c;
+  for (let dy = 0; dy < h; dy++) {
+    const e = dy < r ? r - dy - 0.5 : dy >= h - r ? dy - (h - r) + 0.5 : -1;
+    const inset = e >= 0 ? Math.round(r - Math.sqrt(Math.max(0, r * r - e * e))) : 0;
+    g.fillRect(x + inset, y + dy, w - 2 * inset, 1);
   }
-  const f = rxMode ? st.dial : snap(st.txFreq);
-  text(rxMode ? "RX" : "TX", 2, 2, C.mid);
-  text(f.toFixed(1).padStart(5, " "), 26, 2, C.fg, 3);
-  text("MHZ", 92, 10, C.mid);
-  const bars = rxMode ? Math.round(st.strength * 5) : (st.onAir ? 5 : 0);
-  for (let b = 0; b < 5; b++) { g.fillStyle = b < bars ? C.fg : C.dim; g.fillRect(126 + b * 6, 14 - b * 3, 4, 3 + b * 3); }
-  // шкала
-  g.fillStyle = C.dim; g.fillRect(6, 30, 148, 1);
-  for (let m = 88; m <= 108; m += 0.5) {
-    const x = Math.round(xOf(m)), big = m % 2 === 0;
-    g.fillStyle = big ? C.mid : C.dim; g.fillRect(x, big ? 27 : 29, 1, big ? 4 : 2);
-    if (big && m % 4 === 0) text(String(m), x - (m >= 100 ? 5 : 3), 33, C.dim);
-  }
-  for (const s of st.stations) { // станции в эфире — огоньки над шкалой
-    const x = Math.round(xOf(s.f / 10));
-    g.fillStyle = (tick >> 4) & 1 ? C.fg : C.mid; g.fillRect(x - 1, 22, 2, 2);
-  }
-  g.fillStyle = C.red; g.fillRect(Math.round(xOf(f)), 20, 1, 20); // стрелка
-  let status, color = C.fg;
-  if (rxMode) status = st.strength > 0.95 ? "TUNED" : st.strength > 0 ? "SIGNAL " + Math.round(st.strength * 100) + "%" : "STATIC";
-  else if (st.onAir) status = (tick >> 4) & 1 ? "ON AIR" : "";
-  else if (st.stations.some(s => s.f === Math.round(f * 10))) { status = "BUSY - TURN KNOB"; color = C.red; }
-  else status = "FREE";
-  text(status, 2, 48, color);
-  text("G.711 64K", 122, 48, C.dim);
+}
+function disc(g, cx, cy, r, c) {
+  g.fillStyle = c;
+  for (let y = -r; y <= r; y++) { const w = Math.floor(Math.sqrt(r * r - y * y) + 0.5); g.fillRect(cx - w, cy + y, 2 * w + 1, 1); }
+}
+function line(g, x0, y0, x1, y1, c, t = 1) {
+  g.fillStyle = c;
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+  for (let i = 0; i <= n; i++) g.fillRect(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), t, t);
+}
+const P = {
+  ink: "#1E0F0A", body: "#E8573F", hi: "#FF9274", lo: "#A83424", cream: "#FFE9C2", cream2: "#F2C98A",
+  spk: "#3B2620", spk2: "#5C3A2C", cone: "#6E4838", lcd: "#21160B", amber: "#FFC24B", amberDim: "#7A5420",
+  red: "#FF3B2F", grey: "#A9A3B5", yellow: "#FFE36E", knob: "#FFF1D6", knobHi: "#FFFFFF", knobLo: "#E2C38F",
+  rim: "#D9B67E", rimLo: "#8E6A3A",
+};
+const KX = 90, KY = 63, KR = 13; // ручка
+const base = document.createElement("canvas"); base.width = 128; base.height = 88;
+(function drawBase() {
+  const b = base.getContext("2d");
+  line(b, 100, 19, 116, 4, P.ink, 2);                       // антенна
+  rrect(b, 96, 16, 10, 5, 1, P.ink);
+  rrect(b, 16, 72, 14, 12, 2, P.ink); rrect(b, 98, 72, 14, 12, 2, P.ink); // ножки
+  b.fillStyle = P.lo; b.fillRect(18, 79, 10, 3); b.fillRect(100, 79, 10, 3);
+  rrect(b, 4, 19, 120, 60, 9, P.ink);                       // корпус
+  rrect(b, 6, 21, 116, 56, 7, P.body);
+  b.fillStyle = P.hi; b.fillRect(13, 23, 96, 2); b.fillRect(8, 30, 2, 30);
+  b.fillStyle = P.lo; b.fillRect(14, 73, 100, 2); b.fillRect(118, 32, 2, 34);
+  text(b, "OPEN RADIO", 13, 27, P.cream);
+  disc(b, 34, 54, 18, P.ink); disc(b, 34, 54, 16, P.cream2); disc(b, 34, 54, 14, P.ink); disc(b, 34, 54, 13, P.spk);
+  b.fillStyle = P.spk2;                                     // сетка динамика
+  for (let y = -12; y <= 12; y++) for (let x = -12; x <= 12; x++) if (x * x + y * y <= 140 && (x + 30) % 3 === 0 && (y + 30) % 3 === 0) b.fillRect(34 + x, 54 + y, 1, 1);
+  rrect(b, 61, 26, 58, 22, 3, P.ink); b.fillStyle = P.lcd; b.fillRect(63, 28, 54, 18); // окошко шкалы
+  disc(b, KX, KY, KR + 2, P.lo);                            // гнездо ручки
+})();
 
-  // помехи на экране: снег и разрывы строк — тем больше, чем слабее сигнал и быстрее крутят
-  const noise = rxMode ? (1 - st.strength) * 0.6 + st.scratchVis : 0;
-  if (noise > 0.02) {
-    g.fillStyle = C.dim;
-    for (let n = 0; n < noise * 70; n++) g.fillRect(Math.random() * 160 | 0, Math.random() * 56 | 0, 1, 1);
-    if (Math.random() < noise * 0.5) {
-      const y = Math.random() * 50 | 0, h = 2 + (Math.random() * 6 | 0), dx = (Math.random() * 10 - 5) | 0;
-      g.putImageData(g.getImageData(0, y, 160, h), dx, y);
+const R = $("radio"), rg = R.getContext("2d", { willReadFrequently: true });
+let tick = 0, level = 0;
+function drawKnob(g) {
+  const a = st.knobAngle - Math.PI / 2;
+  for (let dy = -KR - 1; dy <= KR + 1; dy++) for (let dx = -KR - 1; dx <= KR + 1; dx++) {
+    const r = Math.hypot(dx, dy);
+    if (r > KR + 0.5) continue;
+    let c;
+    if (r > KR - 0.5) c = P.ink;
+    else if (r > KR - 3.5) { // рифление крутится вместе с ручкой — видно, что она вращается
+      let ph = ((Math.atan2(dy, dx) - a) / (2 * Math.PI) * 16) % 1; if (ph < 0) ph += 1;
+      c = ph < 0.45 ? P.rimLo : P.rim;
+    } else if (r > KR - 4.5) c = P.ink;
+    else {
+      let da = Math.atan2(dy, dx) - a; da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (Math.abs(da) * r < 1.1 && r > 2.5) c = P.red;
+      else { const l = (-dx - dy) / (r + 0.01); c = l > 0.55 && r > 4 ? P.knobHi : l < -0.55 && r > 5 ? P.knobLo : P.knob; }
+    }
+    g.fillStyle = c; g.fillRect(KX + dx, KY + dy, 1, 1);
+  }
+}
+function drawRadio() {
+  tick++;
+  rg.drawImage(base, 0, 0);
+  // динамик: диффузор прыгает со звуком
+  const cone = 5 + Math.round(level * 5);
+  disc(rg, 34, 54, cone + 1, P.ink); disc(rg, 34, 54, cone, P.cone); disc(rg, 34, 54, 1, P.cream2);
+  // шкала
+  if (!st.power) {
+    if ((tick >> 5) & 1) text(rg, "TURN ME", 76, 34, P.amberDim);
+  } else {
+    text(rg, st.dial.toFixed(1).padStart(5, " "), 65, 30, P.amber, 2);
+    const bars = Math.round(st.strength * 5);
+    for (let i = 0; i < 5; i++) { rg.fillStyle = i < bars ? P.amber : P.amberDim; rg.fillRect(107 + i * 2, 39 - (i * 2 + 2), 1, i * 2 + 2); }
+    const status = st.strength > 0.95 ? "TUNED" : st.strength > 0 ? "SIGNAL" : "STATIC";
+    text(rg, status, 65, 41, st.strength > 0 ? P.amber : P.amberDim);
+    text(rg, "FM", 108, 41, P.amberDim);
+    const noise = (1 - st.strength) * 0.6 + st.scratchVis; // снег и разрывы строк в окошке
+    if (noise > 0.02) {
+      rg.fillStyle = P.amberDim;
+      for (let n = 0; n < noise * 28; n++) rg.fillRect(63 + Math.random() * 54 | 0, 28 + Math.random() * 18 | 0, 1, 1);
+      if (Math.random() < noise * 0.5) {
+        const y = 28 + (Math.random() * 15 | 0), h = 1 + (Math.random() * 3 | 0), dx = (Math.random() * 6 - 3) | 0;
+        rg.putImageData(rg.getImageData(63, y, 54, h), 63 + dx, y);
+      }
     }
   }
+  // огонёк на антенне: мигает, когда поймана станция
+  rg.fillStyle = st.power && st.strength > 0.95 ? ((tick >> 3) & 1 ? P.yellow : P.amber) : st.power && st.strength > 0 ? P.amber : P.grey;
+  rg.fillRect(115, 2, 3, 3);
+  drawKnob(rg);
   st.scratchVis *= 0.9;
 }
 
-// ---------- строка под экраном ----------
-const info = $("info"), info1 = $("info1"), info2 = $("info2");
-function say(a, b) {
-  if (info1.textContent !== a) info1.textContent = a;
-  const b2 = b || " ";
-  if (info2.textContent !== b2) info2.textContent = b2;
-}
-let sayUntil = 0; // сообщение об ошибке держится пару секунд, а не затирается следующим кадром
-function sayFor(a, b) { say(a, b); sayUntil = performance.now() + 2500; }
-function drawInfo() {
-  if (performance.now() < sayUntil) return;
-  info.classList.remove("glitch");
-  if (st.mode === "rx") {
-    if (!st.power) { say("PRESS POWER", st.stations.length ? "в эфире станций: " + st.stations.length : "эфир пуст — займи волну в режиме TX"); return; }
-    const { s, d } = nearest(st.dial);
-    if (s && d < CATCH) {
-      say(s.n, (s.t ? s.t + " · " : "") + "слушают: " + s.l);
-      info.classList.toggle("glitch", st.strength < 0.7);
-    } else {
-      say("· · · шшшш · · ·", st.stations.length ? "станций в эфире: " + st.stations.length + " — ищи огоньки на шкале" : "эфир пуст");
-    }
-  } else {
-    const me = st.stations.find(s => s.f === Math.round(snap(st.txFreq) * 10));
-    if (st.onAir) say((me && me.n) || "ON AIR", (nowTitle() || "тишина в эфире") + (me ? " · слушают: " + me.l : ""));
-    else say("TX " + snap(st.txFreq).toFixed(1) + " MHz", me ? "занято: " + me.n : "свободно — жми ON AIR");
-  }
+// Мультяшная «пляска» корпуса под звук и дрожь при быстром вращении.
+const rxBuf = new Float32Array(512);
+let lastTf = "";
+function animateBody() {
+  if (rxAn && st.power && st.mode === "rx") {
+    rxAn.getFloatTimeDomainData(rxBuf);
+    let e = 0; for (const v of rxBuf) e += v * v;
+    const rms = Math.sqrt(e / rxBuf.length);
+    const target = Math.max(0, Math.min(1, rms * 3.2 - 0.25));
+    level += (target - level) * (target > level ? 0.6 : 0.15);
+  } else level *= 0.85;
+  const jx = st.scratchVis > 0.05 ? (Math.random() * 2 - 1) * st.scratchVis * 3 : 0;
+  const tf = `translateX(${jx.toFixed(1)}px) scale(${(1 + level * 0.025).toFixed(3)}, ${(1 - level * 0.035).toFixed(3)})`;
+  if (tf !== lastTf) { R.style.transform = tf; lastTf = tf; }
 }
 
-function frame() {
-  updateSignal();
-  drawKnob();
-  drawLCD();
-  drawInfo();
-  requestAnimationFrame(frame);
+// ---------- ручка: бесконечная, в обе стороны ----------
+const TURN_MHZ = 2; // оборот — 2 МГц
+function turn(rad) {
+  const before = st.dial;
+  st.dial = wrapF(st.dial + rad / (2 * Math.PI) * TURN_MHZ);
+  st.knobAngle += rad;
+  const moved = Math.abs(rad / (2 * Math.PI) * TURN_MHZ);
+  if (moved) scratch(moved * 3);
+  if (snap(before) !== snap(st.dial)) R.setAttribute("aria-valuenow", st.dial.toFixed(1));
+  retune();
 }
-
-// ---------- кнопки: на секунду вдавлены ----------
-document.addEventListener("pointerdown", e => {
-  const b = e.target.closest(".btn");
-  if (!b || b.disabled) return;
-  b.classList.add("pressed");
-  clearTimeout(b._t);
-  b._t = setTimeout(() => b.classList.remove("pressed"), 1000);
-});
-function shake() { const r = $("radio"); r.classList.remove("shake"); void r.offsetWidth; r.classList.add("shake"); }
-
-$("power").onclick = async () => {
-  if (st.power) {
-    st.power = false; $("power").textContent = "POWER";
-    if (rx) rx.port.postMessage({ vol: 0 });
-    seekStop(); retune(); return;
-  }
+function scratch(a) {
+  st.scratchVis = Math.min(1, st.scratchVis + a);
+  if (rx) rx.port.postMessage({ scratch: a });
+}
+async function powerOn() {
+  if (st.power) return;
   await ensureAudio();
-  st.power = true; $("power").textContent = "OFF";
-  rx.port.postMessage({ vol: st.mode === "rx" ? st.vol : 0, s: st.strength, d: st.dist });
+  st.power = true;
+  rx.port.postMessage({ vol: 0.8, s: st.strength, d: st.dist });
   scratch(0.6);
   retune();
-};
-$("vol").oninput = e => {
-  st.vol = e.target.value / 100;
-  if (rx && st.mode === "rx" && st.power) rx.port.postMessage({ vol: st.vol });
-};
-
-// Поиск: стрелка едет к следующей станции, по пути — шорох.
-let seekTimer = null;
-function seekStop() { clearInterval(seekTimer); seekTimer = null; }
-function seek(dir) {
-  seekStop();
-  if (!st.power || !st.stations.length) { shake(); return; }
-  const fs = st.stations.map(s => s.f / 10).sort((a, b) => a - b);
-  let target = dir > 0 ? fs.find(f => f > st.dial + 0.05) : [...fs].reverse().find(f => f < st.dial - 0.05);
-  if (target === undefined) target = dir > 0 ? fs[0] : fs[fs.length - 1];
-  seekTimer = setInterval(() => {
-    const left = target - st.dial;
-    const step = Math.abs(left) < 0.011 ? left : Math.sign(left) * Math.min(Math.abs(left), 0.06);
-    knobDelta(step / TURN_MHZ * 2 * Math.PI);
-    if (Math.abs(left) < 0.011) seekStop();
-  }, 20);
 }
-$("seekUp").onclick = () => seek(1);
-$("seekDown").onclick = () => seek(-1);
+function toLocal(e) { const r = R.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 128, (e.clientY - r.top) / r.height * 88]; }
+const onKnob = (x, y) => Math.hypot(x - KX, y - KY) < KR + 5;
+let dragA = null;
+R.addEventListener("pointerdown", e => {
+  powerOn(); // первое касание — это и включение: браузер даёт звук только после жеста
+  const [x, y] = toLocal(e);
+  if (!onKnob(x, y)) return;
+  R.setPointerCapture(e.pointerId);
+  dragA = Math.atan2(y - KY, x - KX);
+  R.classList.add("grabbing");
+});
+R.addEventListener("pointermove", e => {
+  const [x, y] = toLocal(e);
+  if (dragA === null) { R.classList.toggle("grab", onKnob(x, y)); return; }
+  const a = Math.atan2(y - KY, x - KX);
+  let d = a - dragA;
+  if (d > Math.PI) d -= 2 * Math.PI;
+  if (d < -Math.PI) d += 2 * Math.PI;
+  dragA = a;
+  turn(d);
+});
+const endDrag = () => { dragA = null; R.classList.remove("grabbing"); };
+R.addEventListener("pointerup", endDrag);
+R.addEventListener("pointercancel", endDrag);
+R.addEventListener("wheel", e => { e.preventDefault(); powerOn(); turn((e.deltaY > 0 ? -1 : 1) * 0.05 / TURN_MHZ * 2 * Math.PI); }, { passive: false });
+R.addEventListener("keydown", e => {
+  const step = (e.shiftKey ? 1 : 0.1) / TURN_MHZ * 2 * Math.PI;
+  if (["ArrowRight", "ArrowUp"].includes(e.key)) { e.preventDefault(); powerOn(); turn(step); }
+  if (["ArrowLeft", "ArrowDown"].includes(e.key)) { e.preventDefault(); powerOn(); turn(-step); }
+});
 
-// ---------- режим ----------
-$("mode").onclick = () => {
-  st.mode = st.mode === "rx" ? "tx" : "rx";
-  const isTx = st.mode === "tx";
-  $("mode").setAttribute("aria-checked", String(isTx));
-  $("lblRx").classList.toggle("on", !isTx); $("lblTx").classList.toggle("on", isTx);
-  $("rxPanel").hidden = isTx; $("txPanel").hidden = !isTx; $("queuePanel").hidden = !isTx;
-  $("knobHint").textContent = isTx ? "выбери свободную волну" : "крути · колесо · ← →";
-  if (rx) rx.port.postMessage({ vol: !isTx && st.power ? st.vol : 0, flush: true });
-  st.knobAngle = ((isTx ? st.txFreq : st.dial) - MIN) / TURN_MHZ * 2 * Math.PI; // ручка — частота текущего режима
-  seekStop();
+// Наклейка под радио: что играет. Не список — только то, на что настроена ручка.
+const sticker = $("sticker");
+function setSticker(a, b, glitch) {
+  if ($("st1").textContent !== a) $("st1").textContent = a;
+  const b2 = b || " ";
+  if ($("st2").textContent !== b2) $("st2").textContent = b2;
+  sticker.classList.toggle("glitch", !!glitch);
+}
+function drawSticker() {
+  if (!st.power) return setSticker("крутни ручку", "");
+  const { s, d } = nearest(st.dial);
+  if (s && d < CATCH) setSticker(s.n, s.t || "", st.strength < 0.7);
+  else setSticker("· · · шшшш · · ·", "");
+}
+
+// ---------- вкладки ----------
+function setMode(m) {
+  if (st.mode === m) return;
+  st.mode = m;
+  const tx = m === "tx";
+  $("tabRx").classList.toggle("on", !tx); $("tabTx").classList.toggle("on", tx);
+  $("tabRx").setAttribute("aria-pressed", String(!tx)); $("tabTx").setAttribute("aria-pressed", String(tx));
+  $("rxView").hidden = tx; $("txView").hidden = !tx;
+  if (rx) rx.port.postMessage({ vol: !tx && st.power ? 0.8 : 0, flush: true });
+  if (tx && !st.onAir && (!st.hostFreq || taken(st.hostFreq))) st.hostFreq = pickFree();
   retune();
-};
+  renderHost();
+}
+$("tabRx").onclick = () => setMode("rx");
+$("tabTx").onclick = () => setMode("tx");
 
-// ---------- передатчик ----------
-let tx = null;      // узлы смесителя
-let hws = null, micSrc = null, micOn = false;
-const queue = [];   // {file, name}
-let current = null; // {name, el, src}
-let playing = false;
+// ---------- ведущий ----------
+const taken = f => st.stations.some(s => s.f === f);
+function pickFree() { // случайная волна подальше от чужих — чтобы не делить эфир с соседом
+  for (let i = 0; i < 200; i++) {
+    const f = 876 + (Math.random() * 204 | 0);
+    if (!st.stations.some(s => Math.abs(s.f - f) < 6)) return f;
+  }
+  for (let f = 875; f <= 1080; f++) if (!taken(f)) return f;
+  return 1000;
+}
+const fmt = f => (f / 10).toFixed(1);
+function hostHint(msg, warn) { const h = $("hostHint"); h.textContent = msg || " "; h.classList.toggle("warn", !!warn); }
+let hintHold = 0;
+function renderHost() {
+  $("hostFreq").textContent = st.hostFreq ? fmt(st.hostFreq) + " MHz" : "— MHz";
+  $("fDown").disabled = $("fUp").disabled = st.onAir;
+  $("onair").classList.toggle("live", st.onAir);
+  $("onair").setAttribute("aria-pressed", String(st.onAir));
+  if (performance.now() < hintHold) return;
+  if (st.onAir) {
+    const me = st.stations.find(s => s.f === st.hostFreq);
+    hostHint("в эфире" + (me ? " · слушают: " + me.l : "") + (nowTitle() ? " · " + nowTitle() : ""));
+  } else if (taken(st.hostFreq)) hostHint("эта волна занята — стрелками на соседнюю", true);
+  else hostHint("волна свободна — нажми ON AIR");
+}
+function stepFreq(d) {
+  if (st.onAir) return;
+  let f = st.hostFreq + d;
+  if (f > 1080) f = 875;
+  if (f < 875) f = 1080;
+  st.hostFreq = f;
+  renderHost();
+}
+$("fDown").onclick = () => stepFreq(-1);
+$("fUp").onclick = () => stepFreq(1);
 
+// Смеситель: микрофон и музыка → громкость эфира → полоса телефона → компрессор → 8 кГц кадры.
+let tx = null, hws = null, micSrc = null, micOn = false, micAn = null;
+const vol = { mic: 0.7, music: 0.7, air: 0.8 };
 async function ensureTx() {
   await ensureAudio();
   if (tx) return tx;
   const mix = ctx.createGain();
   mix.channelCount = 1; mix.channelCountMode = "explicit"; mix.channelInterpretation = "speakers"; // в эфир — моно
+  const air = ctx.createGain();
   const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 80;
   const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 3400; lp.Q.value = 0.7; // выше 4 кГц G.711 не передаст
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -20; comp.ratio.value = 4; comp.attack.value = 0.005; comp.release.value = 0.2;
   const node = new AudioWorkletNode(ctx, "tx", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
   const sink = ctx.createGain(); sink.gain.value = 0; // ворклет должен быть подключён к выходу, иначе браузер его не крутит
-  mix.connect(hp).connect(lp).connect(comp).connect(node).connect(sink).connect(ctx.destination);
+  mix.connect(air).connect(hp).connect(lp).connect(comp).connect(node).connect(sink).connect(ctx.destination);
   const music = ctx.createGain(); music.connect(mix);
-  const monitor = ctx.createGain(); monitor.gain.value = 0.6; monitor.connect(ctx.destination); // ведущий слышит свою музыку
-  const mic = ctx.createGain(); mic.gain.value = 0; mic.connect(mix); // микрофон в монитор не идёт: иначе свист
+  const monitor = ctx.createGain(); monitor.connect(ctx.destination); // ведущий слышит свою музыку
+  const mic = ctx.createGain(); mic.gain.value = 0; mic.connect(mix);  // микрофон в монитор не идёт: иначе свист
+  micAn = ctx.createAnalyser(); micAn.fftSize = 512; mic.connect(micAn);
   node.port.onmessage = e => {
     const { f, p } = e.data;
-    meter(p);
+    vu(p);
     if (hws && hws.readyState === 1 && hws.bufferedAmount < 16000) { hws.send(ulawEncode(f)); st.framesTx = (st.framesTx || 0) + 1; }
   };
-  tx = { mix, music, monitor, mic, node };
+  tx = { mix, air, music, monitor, mic, node };
+  applyGains();
   return tx;
 }
-
-let meterPeak = 0;
-function meter(p) {
-  meterPeak = Math.max(p, meterPeak * 0.85);
-  const m = $("meter");
-  m.style.width = "calc(" + Math.min(100, meterPeak * 140) + "% - 4px)";
-  m.classList.toggle("hot", meterPeak > 0.8);
+function applyGains() {
+  if (!tx) return;
+  const t = ctx.currentTime;
+  tx.mic.gain.setTargetAtTime(micOn ? vol.mic * 1.6 : 0, t, 0.02);
+  tx.music.gain.setTargetAtTime(vol.music * 1.2 * (micOn ? 0.3 : 1), t, 0.15); // под голос музыка приглушается
+  tx.monitor.gain.setTargetAtTime(vol.music * 0.8, t, 0.05);
+  tx.air.gain.setTargetAtTime(vol.air * 1.25, t, 0.05);
+}
+let vuPeak = 0;
+function vu(p) {
+  vuPeak = Math.max(p, vuPeak * 0.85);
+  const m = $("vu");
+  m.style.height = "calc(" + Math.min(100, vuPeak * 140) + "% - 4px)";
+  m.classList.toggle("hot", vuPeak > 0.8);
 }
 
+// Фейдеры: вертикальные, тянуть мышью/пальцем, колесо, стрелки.
+function fader(id, key) {
+  const el = $(id), track = el.querySelector(".track"), cap = el.querySelector(".cap"), fill = el.querySelector(".fill"), val = el.querySelector(".val");
+  const show = () => {
+    const v = vol[key];
+    cap.style.bottom = "calc(" + v * 100 + "% - " + v * 16 + "px)";
+    fill.style.height = v * 100 + "%";
+    val.textContent = Math.round(v * 100);
+    el.setAttribute("aria-valuenow", String(Math.round(v * 100)));
+  };
+  const set = v => { vol[key] = Math.max(0, Math.min(1, v)); show(); applyGains(); };
+  const fromY = e => { const r = track.getBoundingClientRect(); set(1 - (e.clientY - r.top) / r.height); };
+  let drag = false;
+  el.addEventListener("pointerdown", e => { drag = true; el.setPointerCapture(e.pointerId); fromY(e); });
+  el.addEventListener("pointermove", e => { if (drag) fromY(e); });
+  el.addEventListener("pointerup", () => { drag = false; });
+  el.addEventListener("pointercancel", () => { drag = false; });
+  el.addEventListener("wheel", e => { e.preventDefault(); set(vol[key] + (e.deltaY > 0 ? -0.05 : 0.05)); }, { passive: false });
+  el.addEventListener("keydown", e => {
+    if (["ArrowUp", "ArrowRight"].includes(e.key)) { e.preventDefault(); set(vol[key] + 0.05); }
+    if (["ArrowDown", "ArrowLeft"].includes(e.key)) { e.preventDefault(); set(vol[key] - 0.05); }
+  });
+  el.setAttribute("aria-valuemin", "0"); el.setAttribute("aria-valuemax", "100");
+  show();
+}
+fader("fMic", "mic"); fader("fMusic", "music"); fader("fAir", "air");
+
+// Микрофон — большой, пиксельный, нажимается целиком.
+const micC = $("mic"), mg = micC.getContext("2d");
+const micBuf = new Float32Array(512);
+let micLevel = 0;
+function drawMic() {
+  if (micAn && micOn) {
+    micAn.getFloatTimeDomainData(micBuf);
+    let e = 0; for (const v of micBuf) e += v * v;
+    const t = Math.min(1, Math.sqrt(e / micBuf.length) * 4);
+    micLevel += (t - micLevel) * (t > micLevel ? 0.6 : 0.12);
+  } else micLevel *= 0.8;
+  mg.clearRect(0, 0, 56, 56);
+  const cx = 28;
+  // звуковые волны по бокам — сколько, зависит от громкости голоса
+  if (micOn) for (let k = 0; k < 3; k++) {
+    if (micLevel < k * 0.18 + 0.03) break;
+    const r = 15 + k * 4;
+    mg.fillStyle = k === 0 ? P.red : k === 1 ? P.amber : P.yellow;
+    for (let deg = -35; deg <= 35; deg += 7) {
+      const a = deg * Math.PI / 180;
+      mg.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(14 + Math.sin(a) * r), 1, 2);
+      mg.fillRect(Math.round(cx - Math.cos(a) * r), Math.round(14 + Math.sin(a) * r), 1, 2);
+    }
+  }
+  // дужка и стойка
+  mg.fillStyle = P.ink;
+  mg.fillRect(cx - 13, 14, 3, 16); mg.fillRect(cx + 10, 14, 3, 16); mg.fillRect(cx - 13, 28, 26, 3);
+  mg.fillRect(cx - 2, 30, 4, 16);
+  rrect(mg, cx - 12, 45, 24, 8, 2, P.ink); rrect(mg, cx - 10, 47, 20, 4, 1, "#7C7489");
+  // капсула с сеткой
+  rrect(mg, cx - 9, 1, 18, 28, 8, P.ink);
+  rrect(mg, cx - 7, 3, 14, 24, 6, micOn ? "#FFB1A6" : "#C9C4D4");
+  mg.fillStyle = micOn ? "#D9544A" : "#8E879E";
+  for (let y = 5; y < 26; y += 2) for (let x = cx - 6; x <= cx + 6; x += 2) if (((x + y) & 3) === 0) mg.fillRect(x, y, 1, 1);
+  mg.fillStyle = P.ink; mg.fillRect(cx - 8, 16, 16, 3);           // поясок
+  mg.fillStyle = micOn && (tick >> 4) & 1 ? P.red : "#5A3A3A"; mg.fillRect(cx - 1, 17, 2, 1); // огонёк
+}
+$("micBtn").onclick = async () => {
+  await ensureTx();
+  if (!micSrc) {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    } catch (_) { hintHold = performance.now() + 3000; hostHint("браузер не дал микрофон — нужен https или localhost", true); return; }
+    micSrc = ctx.createMediaStreamSource(stream);
+    micSrc.connect(tx.mic);
+  }
+  micOn = !micOn;
+  applyGains();
+  $("micBtn").setAttribute("aria-pressed", String(micOn));
+  $("micCap").textContent = micOn ? "MIC ON" : "MIC OFF";
+  sendTitle(); renderHost();
+};
+
+$("onair").onclick = async () => {
+  if (hws) { hws.close(); return; }
+  if (taken(st.hostFreq)) { shake($("onair")); hintHold = performance.now() + 2500; hostHint("волну " + fmt(st.hostFreq) + " уже заняли — стрелками на соседнюю", true); return; }
+  await ensureTx();
+  let opened = false;
+  hws = new WebSocket(wsURL("/ws/host?f=" + st.hostFreq + "&name=" + encodeURIComponent($("name").value.trim())));
+  hws.onopen = () => { opened = true; st.onAir = true; $("name").disabled = true; sendTitle(); renderHost(); };
+  hws.onclose = () => {
+    hws = null; st.onAir = false; $("name").disabled = false;
+    if (!opened) { shake($("onair")); hintHold = performance.now() + 2500; hostHint("не пустили: волну заняли раньше или эфир переполнен", true); }
+    renderHost();
+  };
+};
+function shake(el) { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); }
+
+// ---------- очередь ----------
+const queue = [];   // {file, name}
+let current = null, playing = false;
+let library = [];   // найденное в выбранной папке: {file, name, path}
+
+const isMp3 = f => /\.mp3$/i.test(f.name) || f.type === "audio/mpeg";
+const trackName = f => f.name.replace(/\.[^.]+$/, "");
+function enqueue(files) {
+  let n = 0;
+  for (const f of files) if (isMp3(f)) { queue.push({ file: f, name: trackName(f) }); n++; }
+  renderQueue();
+  if (n && !current) next();
+  return n;
+}
 function nowTitle() {
   const track = current && playing ? current.name : "";
   return micOn ? (track ? "MIC · " + track : "MIC") : track;
@@ -726,25 +869,22 @@ function nowTitle() {
 function sendTitle() { if (hws && hws.readyState === 1) hws.send(JSON.stringify({ title: nowTitle() })); }
 
 function renderQueue() {
-  const list = $("list");
+  const list = $("queue");
   list.textContent = "";
-  if (!queue.length) {
-    const li = document.createElement("li"); li.className = "empty"; li.textContent = "пусто — добавь mp3"; list.append(li);
-  }
+  if (!queue.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = "дальше ничего — добавь mp3"; list.append(li); }
   queue.forEach((q, i) => {
     const li = document.createElement("li");
-    const n = document.createElement("span"); n.textContent = (i + 1) + ". " + q.name;
+    const n = document.createElement("span"); n.textContent = (i + 1) + ". " + q.name; n.title = q.name;
     const up = document.createElement("button"); up.textContent = "▲"; up.setAttribute("aria-label", "Выше"); up.disabled = i === 0;
     up.onclick = () => { [queue[i - 1], queue[i]] = [queue[i], queue[i - 1]]; renderQueue(); };
-    const rm = document.createElement("button"); rm.textContent = "✕"; rm.setAttribute("aria-label", "Убрать");
+    const rm = document.createElement("button"); rm.textContent = "✕"; rm.setAttribute("aria-label", "Убрать из очереди");
     rm.onclick = () => { queue.splice(i, 1); renderQueue(); };
     li.append(n, up, rm);
     list.append(li);
   });
-  $("now").textContent = current ? (playing ? "▶ " : "❚❚ ") + current.name : "—";
+  $("now").textContent = current ? (playing ? "▶ " : "❚❚ ") + current.name : "— тишина —";
   $("play").textContent = playing ? "PAUSE" : "PLAY";
 }
-
 function stopCurrent() {
   if (!current) return;
   current.el.pause();
@@ -756,73 +896,117 @@ async function next() {
   await ensureTx();
   stopCurrent();
   const q = queue.shift();
-  if (!q) { playing = false; renderQueue(); sendTitle(); return; }
+  if (!q) { playing = false; renderQueue(); sendTitle(); renderHost(); return; }
   // <audio> читает mp3 потоком: весь файл в память не декодируется — так дешевле
   const el = new Audio(URL.createObjectURL(q.file));
   const src = ctx.createMediaElementSource(el);
   src.connect(tx.music); src.connect(tx.monitor);
   el.onended = () => next();
-  el.onerror = () => { sayFor("НЕ ЧИТАЕТСЯ", q.name); next(); };
+  el.onerror = () => { hintHold = performance.now() + 2500; hostHint("не читается: " + q.name, true); next(); };
   current = { name: q.name, el, src };
   playing = true;
   try { await el.play(); } catch (_) { playing = false; } // браузер не дал автозапуск — ждём PLAY
-  renderQueue(); sendTitle();
+  renderQueue(); sendTitle(); renderHost();
 }
-
-$("add").onclick = () => $("file").click();
-$("file").onchange = e => {
-  for (const f of e.target.files) queue.push({ file: f, name: f.name.replace(/\.[^.]+$/, "") });
-  e.target.value = "";
-  renderQueue();
-  if (!current) next();
-};
 $("play").onclick = async () => {
   await ensureTx();
   if (!current) return next();
   if (playing) { current.el.pause(); playing = false; }
   else { await current.el.play(); playing = true; }
-  renderQueue(); sendTitle();
+  renderQueue(); sendTitle(); renderHost();
 };
 $("skip").onclick = () => next();
 
-$("mic").onclick = async () => {
-  await ensureTx();
-  if (!micSrc) {
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-    } catch (err) { sayFor("NO MIC", "браузер не дал микрофон (нужен https или localhost)"); return; }
-    micSrc = ctx.createMediaStreamSource(stream);
-    micSrc.connect(tx.mic);
+$("addFiles").onclick = () => $("files").click();
+$("addDir").onclick = () => $("dir").click();
+$("files").onchange = e => { enqueue(e.target.files); e.target.value = ""; };
+// Папка не уходит в очередь целиком: из неё получается библиотека, по которой ищут.
+$("dir").onchange = e => {
+  setLibrary([...e.target.files].filter(isMp3).map(f => ({ file: f, name: trackName(f), path: f.webkitRelativePath || f.name })));
+  e.target.value = "";
+};
+function setLibrary(items) {
+  library = items.sort((a, b) => a.path.localeCompare(b.path));
+  $("libBox").hidden = false;
+  $("search").value = "";
+  renderLib();
+  $("search").focus();
+}
+// Поиск — простым вхождением подстроки, без регулярных выражений: точка или скобка в запросе ничего не ломают.
+function matches() {
+  const q = $("search").value.trim().toLowerCase();
+  return q ? library.filter(t => t.path.toLowerCase().includes(q)) : library;
+}
+function renderLib() {
+  const found = matches(), ol = $("lib");
+  ol.textContent = "";
+  for (const t of found.slice(0, 100)) {
+    const li = document.createElement("li"), b = document.createElement("button");
+    b.append(t.name);
+    const dir = t.path.includes("/") ? t.path.slice(0, t.path.lastIndexOf("/")) : "";
+    if (dir) { const s = document.createElement("small"); s.textContent = "  " + dir; b.append(s); }
+    b.title = "В очередь: " + t.path;
+    b.onclick = () => { enqueue([t.file]); };
+    li.append(b); ol.append(li);
   }
-  micOn = !micOn;
-  const t = ctx.currentTime;
-  tx.mic.gain.setTargetAtTime(micOn ? 1 : 0, t, 0.02);
-  tx.music.gain.setTargetAtTime(micOn ? 0.25 : 1, t, 0.15); // под голос музыка приглушается
-  $("mic").classList.toggle("live", micOn);
-  $("mic").setAttribute("aria-pressed", String(micOn));
-  sendTitle();
-};
+  $("libCount").textContent = library.length
+    ? "найдено mp3: " + found.length + (found.length > 100 ? " (показаны первые 100)" : "") + " из " + library.length
+    : "в папке нет mp3";
+  $("libAll").disabled = !found.length;
+}
+$("search").oninput = renderLib;
+$("libAll").onclick = () => enqueue(matches().map(t => t.file));
 
-$("onair").onclick = async () => {
-  if (hws) { hws.close(); return; }
-  const f = Math.round(snap(st.txFreq) * 10);
-  if (st.stations.some(s => s.f === f)) { shake(); sayFor("BUSY", "волна " + snap(st.txFreq).toFixed(1) + " занята — поверни ручку"); return; }
-  await ensureTx();
-  let opened = false;
-  hws = new WebSocket(wsURL("/ws/host?f=" + f + "&name=" + encodeURIComponent($("name").value.trim())));
-  hws.onopen = () => {
-    opened = true; st.onAir = true;
-    $("onair").textContent = "OFF AIR"; $("onair").classList.add("live");
-    sendTitle();
-  };
-  hws.onclose = () => {
-    hws = null; st.onAir = false;
-    $("onair").textContent = "ON AIR"; $("onair").classList.remove("live");
-    if (!opened) { shake(); sayFor("REFUSED", "волну заняли раньше или эфир переполнен"); }
-  };
-};
+// Перетаскивание: файлы — сразу в очередь, папка — в библиотеку для поиска.
+const drop = $("drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, () => drop.classList.remove("over")));
+drop.addEventListener("drop", async e => {
+  e.preventDefault();
+  const entries = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (entries.some(en => en.isDirectory)) {
+    const found = [];
+    await Promise.all(entries.map(en => walk(en, "", found)));
+    setLibrary(found);
+  } else enqueue(e.dataTransfer.files);
+});
+function walk(entry, prefix, out) {
+  if (entry.isFile) return new Promise(res => entry.file(f => { if (isMp3(f)) out.push({ file: f, name: trackName(f), path: prefix + f.name }); res(); }, () => res()));
+  return new Promise(res => {
+    const reader = entry.createReader(), all = [];
+    const read = () => reader.readEntries(async batch => { // отдаёт порциями — читаем до пустой
+      if (batch.length) { all.push(...batch); read(); return; }
+      await Promise.all(all.map(en => walk(en, prefix + entry.name + "/", out)));
+      res();
+    }, () => res());
+    read();
+  });
+}
 
+// ---------- кнопки на секунду вдавлены ----------
+document.addEventListener("pointerdown", e => {
+  const b = e.target.closest(".btn, .arrow");
+  if (!b || b.disabled) return;
+  b.classList.add("pressed");
+  clearTimeout(b._t);
+  b._t = setTimeout(() => b.classList.remove("pressed"), 1000);
+});
+
+function frame() {
+  if (st.mode === "rx") {
+    updateSignal();
+    animateBody();
+    drawRadio();
+    drawSticker();
+  } else {
+    drawMic();
+    if (current) { const d = current.el.duration; $("prog").style.width = d ? (current.el.currentTime / d * 100) + "%" : "0"; }
+    else $("prog").style.width = "0";
+  }
+  requestAnimationFrame(frame);
+}
+
+st.knobAngle = (st.dial - MIN) / TURN_MHZ * 2 * Math.PI;
 renderQueue();
 connectListen();
 requestAnimationFrame(frame);
