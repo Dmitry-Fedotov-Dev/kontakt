@@ -8,7 +8,7 @@
 # Нужен Chrome или Chromium (CHROME=путь, если его нет в PATH).
 set -euo pipefail
 
-testid=$1 from=$2 to=$3 out=$4 grafana=${5:-http://127.0.0.1:3002}
+testid=$1 from=$2 to=$3 out=$4 grafana=${5:-http://127.0.0.1:${GRAFANA_PORT:-3002}}
 chrome=${CHROME:-$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)}
 if [ -z "$chrome" ]; then
   echo "Chrome или Chromium не найден; задайте CHROME" >&2

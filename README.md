@@ -80,7 +80,7 @@ bin/k6 run k6/functional/leave-queue.js   # ушедший из очереди �
 bin/k6 run -e VUS=40 -e DURATION=2m k6/load.js
 ```
 
-Линия выбирается именем в адресе (`sip:64@…`); станция окрашивает голос и на 64, поэтому порог качества — по замеру: 64 → 0,87–0,92, 32 → 0,78–0,82, 8 → ~0,48.
+Звучание одно — G.711 с «окраской» линии 32 (выбора битрейта нет; в `config/kontakt.json` разрешена только `"32"`, другие имена в адресе станция приводит к ней). Порог качества — по замеру: на линии 32 score 0,76–0,82, порог 0,7; чужая речь < 0,4.
 
 ## Мониторинг
 
@@ -91,6 +91,8 @@ docker compose -f monitoring/docker-compose.yml up -d   # http://localhost:3002,
 K6_PROMETHEUS_RW_SERVER_URL=http://127.0.0.1:9092/api/v1/write K6_FEATURES=native-histograms \
   bin/k6 run -o experimental-prometheus-rw --tag testid=run-1 k6/load.js   # сторона абонентов на том же дашборде
 ```
+
+Порты заняты вашими сервисами — `GRAFANA_PORT=… PROMETHEUS_PORT=… docker compose …`, либо `MONITORING=1 ./scripts/cluster-tunnel.sh`: подберёт свободные, поднимет стек и напечатает адрес Grafana. Станцию, запущенную `cluster-tunnel.sh`, Prometheus находит сам (файлы целей в `monitoring/prometheus/targets/`).
 
 Сеть стека хостовая (метрики слушают только `127.0.0.1`); в Docker Desktop включите host networking или запускайте из WSL. Дашборд правится в `monitoring/grafana/gen_dashboard.py`, PNG за прогон — `monitoring/report.sh`.
 

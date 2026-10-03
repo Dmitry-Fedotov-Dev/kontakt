@@ -8,6 +8,7 @@
 #
 #   ./scripts/cluster-tunnel.sh              # адрес https://….trycloudflare.com — в выводе
 #   PORT_BASE=31000 ./scripts/cluster-tunnel.sh   # искать свободные порты, начиная с 31000
+#   MONITORING=1 ./scripts/cluster-tunnel.sh      # плюс Prometheus и Grafana (Docker) на свободных портах
 #
 # Quick Tunnel — только для проверки и демонстраций: без гарантии доступности, до 200
 # одновременных HTTP-запросов, адрес меняется при каждом запуске. Для постоянного адреса —
@@ -66,13 +67,22 @@ pick SIGNAL_ADMIN $((PORT_BASE + 11))
 pick MEDIA_WS $((PORT_BASE + 2))
 pick MEDIA_GRPC $((PORT_BASE + 22))
 pick CF_METRICS $((PORT_BASE + 40))
+if [ "${MONITORING:-}" = 1 ]; then
+  command -v docker >/dev/null || { echo "MONITORING=1: нужен Docker (в WSL — Docker Desktop с интеграцией WSL или docker в WSL)"; exit 1; }
+  pick GRAFANA_PORT $((PORT_BASE + 50))
+  pick PROMETHEUS_PORT $((PORT_BASE + 51))
+  export GRAFANA_PORT PROMETHEUS_PORT
+fi
 export HTTP="127.0.0.1:$WEB_PORT" SIGNAL_HTTP SIGNAL_ADMIN MEDIA_WS MEDIA_GRPC RTP
 
 pids=()
+TARGETS=monitoring/prometheus/targets
 cleanup() {
   # только свои процессы — чужие cloudflared и сервисы не трогаем
   kill "${pids[@]}" 2>/dev/null || true
   wait 2>/dev/null || true
+  rm -f "$TARGETS"/{signal,media,cloudflared}-cluster-tunnel.json
+  if [ "${MONITORING:-}" = 1 ]; then docker compose -f monitoring/docker-compose.yml down >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT INT TERM
 
@@ -112,9 +122,28 @@ for _ in $(seq 60); do
 done
 [ -n "$url" ] || { echo "адрес туннеля не появился за 60 с, журнал: $STATE/cloudflared.out"; exit 1; }
 
+# Цели для Prometheus: порты подобраны здесь, в prometheus.yml их нет. Файл подхватывается
+# сам (file_sd) — и общим стеком мониторинга, если он уже запущен.
+mkdir -p "$TARGETS"
+for t in "signal:$SIGNAL_ADMIN" "media:$MEDIA_WS" "cloudflared:$CF_METRICS"; do
+  printf '[{"targets": ["127.0.0.1:%s"], "labels": {"source": "cluster-tunnel"}}]\n' "${t#*:}" >"$TARGETS/${t%%:*}-cluster-tunnel.json"
+done
+grafana=""
+if [ "${MONITORING:-}" = 1 ]; then
+  echo "Мониторинг: Prometheus $PROMETHEUS_PORT, Grafana $GRAFANA_PORT…"
+  docker compose -f monitoring/docker-compose.yml up -d >"$STATE/monitoring.log" 2>&1 ||
+    { echo "мониторинг не поднялся, журнал: $STATE/monitoring.log"; tail -5 "$STATE/monitoring.log"; }
+  for _ in $(seq 60); do curl -fsS "http://127.0.0.1:$GRAFANA_PORT/api/health" >/dev/null 2>&1 && { grafana="http://localhost:$GRAFANA_PORT"; break; }; sleep 2; done
+fi
+
 echo
 echo "Контакт доступен: $url"
 echo "  (два разных браузера или обычное окно + инкогнито — иначе станция видит одного человека)"
 echo "  метрики туннеля: http://127.0.0.1:$CF_METRICS/metrics, журналы: $STATE/"
+if [ -n "$grafana" ]; then
+  echo "  мониторинг: $grafana (дашборды «Контакт: станция» и «Kontakt Mesh»)"
+elif [ "${MONITORING:-}" != 1 ]; then
+  echo "  мониторинг: MONITORING=1 ./scripts/cluster-tunnel.sh — или уже запущенный стек monitoring/ увидит эту станцию сам"
+fi
 echo "  Ctrl+C — остановить кластер и этот туннель (другие туннели не затрагиваются)"
 wait -n

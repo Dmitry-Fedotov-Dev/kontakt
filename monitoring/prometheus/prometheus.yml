@@ -1,26 +1,34 @@
-# Адреса — как в scripts/run.sh: signal (админ-порт) и media.
-# Незапущенные цели показываются как down — между прогонами это нормально.
+# Адреса по умолчанию — как в scripts/run.sh: signal (админ-порт) и media. Если порты
+# подобраны на месте (scripts/cluster-tunnel.sh), скрипт пишет их в targets/*.json, и
+# Prometheus подхватывает файл сам, без перезапуска. Незапущенные цели — down, это нормально.
 global:
   scrape_interval: 5s
 
 scrape_configs:
-  - job_name: prometheus
-    static_configs:
-      - targets: ["127.0.0.1:9092"]
-
   - job_name: signal
     static_configs:
       - targets: ["127.0.0.1:8091"]
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/signal*.json]
 
   - job_name: media
     static_configs:
       - targets: ["127.0.0.1:8082"]
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/media*.json]
 
   - job_name: mesh
     # узлы kontakt-node: админка Master'а и Worker'ов (как в docs/MESH.md «посмотреть
     # руками»); на своей установке впишите свои адреса админок
     static_configs:
       - targets: ["127.0.0.1:7401", "127.0.0.1:7421", "127.0.0.1:7422", "127.0.0.1:7423", "127.0.0.1:7424"]
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/mesh*.json]
+
+  - job_name: cloudflared
+    # метрики своего туннеля (§19): сессии и соединения, а не «Мбит/с туннеля»
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/cloudflared*.json]
 
   - job_name: host
     static_configs:
