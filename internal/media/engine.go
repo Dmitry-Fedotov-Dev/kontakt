@@ -20,6 +20,7 @@ import (
 
 	"kontakt/internal/dsp"
 	"kontakt/internal/mediaapi"
+	"kontakt/internal/metrics"
 	"kontakt/internal/sip"
 )
 
@@ -34,14 +35,20 @@ type Engine struct {
 	byToken map[string]*endpoint
 	rtpNext int
 
-	pktIn, pktOut atomic.Uint64
-	stop          chan struct{}
-	wake          chan struct{} // будит тикер служебных звуков, когда появилась первая точка
+	pktIn, pktOut     atomic.Uint64
+	bytesIn, bytesOut atomic.Uint64 // RTP по факту: из них считается занятая полоса, без констант
+
+	Metrics   *metrics.Registry
+	mCreated  *metrics.CounterVec
+	mRejected *metrics.CounterVec
+	stop      chan struct{}
+	wake      chan struct{} // будит тикер служебных звуков, когда появилась первая точка
 }
 
 func NewEngine(advIP string, rtpMin, rtpMax int) *Engine {
 	e := &Engine{advIP: advIP, rtpMin: rtpMin, rtpMax: rtpMax, rtpNext: rtpMin,
 		eps: map[string]*endpoint{}, byToken: map[string]*endpoint{}, stop: make(chan struct{}), wake: make(chan struct{}, 1)}
+	e.initMetrics()
 	go e.toneLoop()
 	return e
 }
@@ -99,6 +106,7 @@ func (e *Engine) CreateEndpoint(_ context.Context, r *mediaapi.CreateEndpointReq
 	switch r.Transport {
 	case "udp":
 		if err := e.openUDP(ep); err != nil {
+			e.mRejected.Inc("rtp_ports")
 			return nil, status.Error(codes.ResourceExhausted, err.Error())
 		}
 		if r.RemoteIP != "" && r.RemoteIP != "0.0.0.0" && r.RemotePort > 0 {
@@ -114,6 +122,7 @@ func (e *Engine) CreateEndpoint(_ context.Context, r *mediaapi.CreateEndpointReq
 		return nil, status.Error(codes.InvalidArgument, "transport: udp | ws")
 	}
 
+	e.mCreated.Inc(r.Transport)
 	e.mu.Lock()
 	e.eps[ep.id] = ep
 	if ep.token != "" {
@@ -371,6 +380,7 @@ func (e *Engine) ServeWS(w http.ResponseWriter, r *http.Request) {
 // Вызывается только из горутины чтения этой точки.
 func (ep *endpoint) onRTP(pkt []byte) {
 	ep.e.pktIn.Add(1)
+	ep.e.bytesIn.Add(uint64(len(pkt)))
 	payload, pt, ok := ParseRTP(pkt)
 	if !ok || (pt != 0 && pt != 8) || len(payload) == 0 || len(payload) > len(ep.pcm) {
 		return
@@ -409,8 +419,10 @@ func (ep *endpoint) send(pcm []int16) {
 
 	if ep.udp != nil {
 		if dst := ep.udpRemote.Load(); dst != nil {
-			ep.udp.WriteToUDP(pkt, dst)
-			ep.e.pktOut.Add(1)
+			if _, err := ep.udp.WriteToUDP(pkt, dst); err == nil {
+				ep.e.pktOut.Add(1)
+				ep.e.bytesOut.Add(uint64(len(pkt)))
+			}
 		}
 		return
 	}
@@ -419,6 +431,7 @@ func (ep *endpoint) send(pcm []int16) {
 		ep.ws.SetWriteDeadline(time.Now().Add(2 * time.Second))
 		if ep.ws.WriteMessage(websocket.BinaryMessage, pkt) == nil {
 			ep.e.pktOut.Add(1)
+			ep.e.bytesOut.Add(uint64(len(pkt)))
 		}
 	}
 	ep.wsMu.Unlock()
@@ -443,4 +456,51 @@ func ParseRTP(p []byte) (payload []byte, pt byte, ok bool) {
 		return nil, 0, false
 	}
 	return p[off:end], p[1] & 0x7F, true
+}
+
+// ---------- метрики ----------
+
+func (e *Engine) initMetrics() {
+	r := metrics.NewRegistry()
+	e.Metrics = r
+	e.mCreated = r.CounterVec("kontakt_media_endpoints_created_total", "Созданные медиа-точки по транспорту.", "transport", "udp", "ws")
+	e.mRejected = r.CounterVec("kontakt_media_rejected_total", "Отказы в новой точке: rtp_ports — кончились порты.", "reason", "rtp_ports")
+	r.GaugeVec("kontakt_media_endpoints", "Медиа-точки сейчас по транспорту (каналы).", "transport", func() map[string]float64 {
+		out := map[string]float64{"udp": 0, "ws": 0}
+		e.each(func(ep *endpoint) { out[ep.transport]++ })
+		return out
+	})
+	r.Gauge("kontakt_media_bridges", "Мосты сейчас (разговоры).", func() float64 {
+		n := 0
+		e.each(func(ep *endpoint) {
+			if ep.peer.Load() != nil {
+				n++
+			}
+		})
+		return float64(n / 2)
+	})
+	r.Gauge("kontakt_media_tone_endpoints", "Точки без собеседника: слышат гудки или шум (абоненты в очереди).", func() float64 {
+		n := 0
+		e.each(func(ep *endpoint) {
+			if ep.peer.Load() == nil {
+				n++
+			}
+		})
+		return float64(n)
+	})
+	r.CounterFunc("kontakt_media_packets_in_total", "RTP-пакетов принято от устройств.", func() float64 { return float64(e.pktIn.Load()) })
+	r.CounterFunc("kontakt_media_packets_out_total", "RTP-пакетов отправлено устройствам.", func() float64 { return float64(e.pktOut.Load()) })
+	r.CounterFunc("kontakt_media_bytes_in_total", "Байт RTP принято (полоса по факту: rate()).", func() float64 { return float64(e.bytesIn.Load()) })
+	r.CounterFunc("kontakt_media_bytes_out_total", "Байт RTP отправлено (полоса по факту: rate()).", func() float64 { return float64(e.bytesOut.Load()) })
+}
+
+// each обходит точки под замком; f не должна брать e.mu.
+func (e *Engine) each(f func(*endpoint)) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, ep := range e.eps {
+		if !ep.closed.Load() {
+			f(ep)
+		}
+	}
 }

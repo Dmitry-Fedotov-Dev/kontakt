@@ -177,6 +177,7 @@ func (s *Server) AdminHandler(mediaStats func() (any, error)) http.Handler {
 		}
 		fmt.Fprintln(w, msg)
 	})
+	mux.Handle("/metrics", s.m.reg.Handler())
 	mux.HandleFunc("/admin/config", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.Cfg.Get()) })
 	mux.HandleFunc("/admin/stats", func(w http.ResponseWriter, r *http.Request) {
 		banned, yellow := s.Mod.Count()

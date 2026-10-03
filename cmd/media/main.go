@@ -43,6 +43,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/media", eng.ServeWS)
+	mux.Handle("/metrics", eng.Metrics.Handler()) // адрес локальный: в туннель отдаётся только /media через web
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	go func() { log.Fatal(http.ListenAndServe(*wsAddr, mux)) }()
 

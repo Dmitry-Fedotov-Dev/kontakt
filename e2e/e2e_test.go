@@ -582,3 +582,51 @@ func TestWebSetsEternalCookie(t *testing.T) {
 		t.Fatalf("кука: %+v", c)
 	}
 }
+
+func scrapeMetrics(t *testing.T, h http.Handler) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
+	return rec.Body.String()
+}
+
+// Метрики отражают настоящий звонок: два снятия трубки, одна пара, мост и полоса по факту.
+func TestMetricsReflectCall(t *testing.T) {
+	st := newStack(t, nil)
+	a := newPhone(t, st, "")
+	b := newPhone(t, st, "")
+	a.pickUp("32")
+	b.pickUp("32")
+	a.expectState("talking", "")
+	b.expectState("talking", "")
+	a.talk(25, 700)
+	b.level(25)
+
+	sig := scrapeMetrics(t, st.sig.Metrics().Handler())
+	for _, want := range []string{
+		`kontakt_signal_calls_total{result="accepted"} 2`,
+		`kontakt_signal_calls_total{result="banned"} 0`, // объявлен заранее: rate() видит первый отказ
+		"kontakt_pairs_total 1",
+		`kontakt_signal_legs{state="talking"} 2`,
+		"kontakt_signal_queue_wait_seconds_count 2",
+	} {
+		if !strings.Contains(sig, want) {
+			t.Fatalf("signal: нет %q:\n%s", want, sig)
+		}
+	}
+	med := scrapeMetrics(t, st.eng.Metrics.Handler())
+	for _, want := range []string{"kontakt_media_bridges 1", `kontakt_media_endpoints{transport="ws"} 2`, "# TYPE kontakt_media_bytes_in_total counter"} {
+		if !strings.Contains(med, want) {
+			t.Fatalf("media: нет %q:\n%s", want, med)
+		}
+	}
+	if strings.Contains(med, "kontakt_media_bytes_out_total 0\n") {
+		t.Fatalf("media: полоса не посчитана, хотя B слышал A:\n%s", med)
+	}
+
+	b.inDialog("BYE", "")
+	a.expectState("searching", signal.ReasonPeerLeft)
+	if sig := scrapeMetrics(t, st.sig.Metrics().Handler()); !strings.Contains(sig, `kontakt_signal_hangups_total{reason="user"} 1`) {
+		t.Fatalf("signal: отбой не посчитан:\n%s", sig)
+	}
+}

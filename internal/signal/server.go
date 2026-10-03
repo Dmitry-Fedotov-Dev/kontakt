@@ -105,11 +105,14 @@ type Server struct {
 	reports  map[string][]time.Time
 
 	totalCalls atomic.Int64
+	m          *stationMetrics
 }
 
 func New(cfg *config.Live, mod *moderation.Store, media Media) *Server {
-	return &Server{Cfg: cfg, Mod: mod, Media: media, legs: map[string]*Leg{},
+	s := &Server{Cfg: cfg, Mod: mod, Media: media, legs: map[string]*Leg{},
 		lastPeer: map[string]*pairRec{}, blocked: map[[2]string]bool{}, reports: map[string][]time.Time{}}
+	s.initMetrics()
+	return s
 }
 
 // ---------- входящие SIP-запросы ----------
@@ -179,6 +182,7 @@ func (s *Server) Handle(m *sip.Msg, tr Transport) {
 }
 
 func (s *Server) reject(inv *sip.Msg, tr Transport, code int, reason, text string) {
+	s.m.calls.Inc(text)
 	r := inv.Response(code, reason, sip.RandHex(6))
 	r.Add("Reason", fmt.Sprintf(`SIP;cause=%d;text="%s"`, code, text))
 	if code == 503 {
@@ -250,6 +254,7 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 		go leg.retransmit200(r)
 	}
 
+	s.m.calls.Inc("accepted")
 	log.Printf("☎  %s снял трубку (линия %s)", tr.Name(), leg.line)
 	s.Media.SetTone(ep.ID, "ring", 0, "")
 	s.enqueue(leg, "")
@@ -398,11 +403,16 @@ func (s *Server) connect(a, b *Leg) {
 		return
 	}
 	a.mu.Lock()
+	aWait := time.Since(a.queuedAt)
 	a.state, a.inQueue, a.peer, a.lastPeerID = legTalking, false, b, b.identity
 	a.mu.Unlock()
 	b.mu.Lock()
+	bWait := time.Since(b.queuedAt)
 	b.state, b.inQueue, b.peer, b.lastPeerID = legTalking, false, a, a.identity
 	b.mu.Unlock()
+	s.observeWait(aWait)
+	s.observeWait(bWait)
+	s.m.pairs.Inc()
 
 	s.mu.Lock()
 	s.lastPeer[a.identity] = &pairRec{peerID: b.identity, peerLeg: b}
@@ -473,6 +483,11 @@ func (s *Server) End(l *Leg, byeReason string) {
 		l.sendRequest("BYE", "", "", byeReason)
 	}
 	s.Media.Delete(l.ep.ID)
+	if byeReason == "" {
+		s.m.hangups.Inc("user")
+	} else {
+		s.m.hangups.Inc(byeReason)
+	}
 	log.Printf("☎  %s положил трубку", l.tr.Name())
 
 	if peer != nil {
