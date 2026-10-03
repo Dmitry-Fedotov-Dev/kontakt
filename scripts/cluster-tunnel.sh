@@ -19,6 +19,15 @@ PORT_BASE="${PORT_BASE:-27580}"
 STATE=data/cluster-tunnel
 mkdir -p "$STATE"
 
+command -v go >/dev/null || {
+  # run.sh собирает сервисы из исходников: без Go кластер не поднимется
+  echo "Go не найден (нужен 1.24+). Установка с go.dev — в apt часто слишком старая версия:"
+  echo "  curl -LO https://go.dev/dl/go1.24.7.linux-amd64.tar.gz"
+  echo "  sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.24.7.linux-amd64.tar.gz"
+  echo "  export PATH=\$PATH:/usr/local/go/bin"
+  exit 1
+}
+
 command -v cloudflared >/dev/null || {
   echo "cloudflared не найден."
   if grep -qi microsoft /proc/version 2>/dev/null; then
