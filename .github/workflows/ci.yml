@@ -59,7 +59,7 @@ jobs:
           img=prom/prometheus:v3.5.0
           docker run --rm -v "$PWD/monitoring/prometheus:/etc/prometheus:ro" --entrypoint promtool $img \
             check config /etc/prometheus/prometheus.yml
-          docker run --rm -v "$PWD/monitoring/prometheus/rules:/rules:ro" -w /rules --entrypoint promtool $img \
+          docker run --rm -v "$PWD/monitoring/prometheus:/p:ro" -w /p/tests --entrypoint promtool $img \
             test rules radio_test.yml
           python3 monitoring/grafana/gen_radio_dashboard.py /tmp/kontakt-radio.json
           diff -q /tmp/kontakt-radio.json monitoring/grafana/dashboards/kontakt-radio.json \

@@ -1,8 +1,8 @@
 # Проверка тревог радио на синтетических рядах:
-#   promtool test rules monitoring/prometheus/rules/radio_test.yml
+#   promtool test rules monitoring/prometheus/tests/radio_test.yml
 # (в CI — тем же образом Prometheus, что и в docker-compose)
 rule_files:
-  - radio.yml
+  - ../rules/radio.yml
 evaluation_interval: 15s
 
 tests:
