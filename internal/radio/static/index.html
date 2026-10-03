@@ -690,11 +690,15 @@ function renderHost() {
   $("onair").classList.toggle("live", st.onAir);
   $("onair").setAttribute("aria-pressed", String(st.onAir));
   if (performance.now() < hintHold) return;
+  // Тишина в эфире не выглядит как ошибка — поэтому о ней говорим прямо.
   if (st.onAir) {
     const me = st.stations.find(s => s.f === st.hostFreq);
-    hostHint("в эфире" + (me ? " · слушают: " + me.l : "") + (nowTitle() ? " · " + nowTitle() : ""));
+    if (vol.air === 0) hostHint("AIR на нуле — в эфире тишина, подними фейдер AIR", true);
+    else if (!nowTitle()) hostHint("в эфире тишина — нажми PLAY или микрофон" + (me ? " · слушают: " + me.l : ""), true);
+    else hostHint("в эфире" + (me ? " · слушают: " + me.l : "") + " · " + nowTitle());
   } else if (taken(st.hostFreq)) hostHint("эта волна занята — стрелками на соседнюю", true);
-  else hostHint("волна свободна — нажми ON AIR");
+  else if (vol.air === 0) hostHint("AIR на нуле — подними фейдер, иначе в эфире будет тишина", true);
+  else hostHint("волна свободна — нажми на табличку ON AIR");
 }
 function stepFreq(d) {
   if (st.onAir) return;
@@ -762,7 +766,7 @@ function fader(id, key) {
     val.textContent = Math.round(v * 100);
     el.setAttribute("aria-valuenow", String(Math.round(v * 100)));
   };
-  const set = v => { vol[key] = Math.max(0, Math.min(1, v)); show(); applyGains(); };
+  const set = v => { vol[key] = Math.round(Math.max(0, Math.min(1, v)) * 100) / 100; show(); applyGains(); renderHost(); };
   const fromY = e => { const r = track.getBoundingClientRect(); set(1 - (e.clientY - r.top) / r.height); };
   let drag = false;
   el.addEventListener("pointerdown", e => { drag = true; el.setPointerCapture(e.pointerId); fromY(e); });
