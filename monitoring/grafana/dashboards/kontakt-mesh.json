@@ -471,7 +471,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "kontakt_mesh_graph_node{observer=\"$observer\"}",
+     "expr": "kontakt_mesh_graph_node{observer=\"$observer\"} or on() label_replace(label_replace(label_replace(vector(0), \"id\", \"no-mesh\", \"\", \"\"), \"title\", \"mesh не запущен\", \"\", \"\"), \"subtitle\", \"./scripts/mesh-demo.sh\", \"\", \"\")",
      "legendFormat": "__auto",
      "format": "table",
      "instant": true,
@@ -483,7 +483,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "kontakt_mesh_graph_edge{observer=\"$observer\"}",
+     "expr": "kontakt_mesh_graph_edge{observer=\"$observer\"} or on() max by (id, source, target) (label_replace(label_replace(label_replace(topk(1, kontakt_mesh_graph_node{observer=\"$observer\"} or on() label_replace(label_replace(label_replace(vector(0), \"id\", \"no-mesh\", \"\", \"\"), \"title\", \"mesh не запущен\", \"\", \"\"), \"subtitle\", \"./scripts/mesh-demo.sh\", \"\", \"\")), \"source\", \"$1\", \"id\", \"(.*)\"), \"target\", \"$1\", \"id\", \"(.*)\"), \"id\", \"idle\", \"\", \"\"))",
      "legendFormat": "__auto",
      "format": "table",
      "instant": true,

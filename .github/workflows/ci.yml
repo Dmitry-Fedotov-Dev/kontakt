@@ -61,9 +61,11 @@ jobs:
             check config /etc/prometheus/prometheus.yml
           docker run --rm -v "$PWD/monitoring/prometheus:/p:ro" -w /p/tests --entrypoint promtool $img \
             test rules radio_test.yml
-          python3 monitoring/grafana/gen_radio_dashboard.py /tmp/kontakt-radio.json
-          diff -q /tmp/kontakt-radio.json monitoring/grafana/dashboards/kontakt-radio.json \
-            || { echo "::error::kontakt-radio.json не совпадает с gen_radio_dashboard.py — перегенерируйте"; exit 1; }
+          for g in gen_dashboard:kontakt gen_mesh_dashboard:kontakt-mesh gen_radio_dashboard:kontakt-radio; do
+            python3 "monitoring/grafana/${g%%:*}.py" "/tmp/${g##*:}.json" >/dev/null
+            diff -q "/tmp/${g##*:}.json" "monitoring/grafana/dashboards/${g##*:}.json" \
+              || { echo "::error::${g##*:}.json не совпадает с ${g%%:*}.py — перегенерируйте"; exit 1; }
+          done
       - uses: actions/upload-artifact@v7
         with:
           name: kontakt-linux-amd64

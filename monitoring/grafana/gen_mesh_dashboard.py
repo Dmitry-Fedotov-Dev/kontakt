@@ -66,6 +66,19 @@ stat("Failover за час", "Сколько раз основной маршр�
      'sum(increase(kontakt_route_failovers_total[1h])) or vector(0)', 20, steps=WARN)
 y[0] += 4
 
+# Пустой ответ Node Graph не переносит (Grafana 11, nodeGraph/utils.ts): пустой кадр рёбер
+# без поля source он принимает за кадр узлов и падает «id field is required for nodes», а
+# ребро к несуществующему узлу роняет раскладку. Поэтому:
+#   - узлов нет (mesh не запущен) — один узел-подсказка «mesh не запущен»;
+#   - рёбер нет (mesh не запущен или узел один) — петля на один из СУЩЕСТВУЮЩИХ узлов: её не видно,
+#     но кадр рёбер есть. `or on()` добавляет заглушку только при пустой левой части.
+NO_MESH = ('label_replace(label_replace(label_replace(vector(0), "id", "no-mesh", "", ""), '
+           '"title", "mesh не запущен", "", ""), "subtitle", "./scripts/mesh-demo.sh", "", "")')
+NODES_Q = f'kontakt_mesh_graph_node{{{O}}} or on() {NO_MESH}'
+EDGES_Q = (f'kontakt_mesh_graph_edge{{{O}}} or on() max by (id, source, target) ('
+           f'label_replace(label_replace(label_replace(topk(1, kontakt_mesh_graph_node{{{O}}} or on() {NO_MESH}), '
+           '"source", "$1", "id", "(.*)"), "target", "$1", "id", "(.*)"), "id", "idle", "", ""))')
+
 row("Граф системы")
 panels.append({
     "type": "nodeGraph", "title": "Kontakt Mesh — граф системы", "id": nid(), "datasource": DS,
@@ -75,8 +88,7 @@ panels.append({
                    "серое пунктиром — не подтверждено второй стороной или ещё не измерено, синее пунктиром — control "
                    "plane к Master'у (голос по нему не ходит), красное пунктиром — heartbeat пропал (узел OFFLINE). На узле — активные звонки, на ребре (при наведении) — RTT. Стрелки направления не означают: ребро общее для обоих концов.",
     "gridPos": {"x": 0, "y": y[0], "w": 24, "h": 26},
-    "targets": [tgt(f'kontakt_mesh_graph_node{{{O}}}', ref="nodes", table=True),
-                tgt(f'kontakt_mesh_graph_edge{{{O}}}', ref="edges", table=True)],
+    "targets": [tgt(NODES_Q, ref="nodes", table=True), tgt(EDGES_Q, ref="edges", table=True)],
     # Node Graph ищет поле по НАСТОЯЩЕМУ имени mainstat, а переименование в Grafana
     # меняет только отображаемое имя. Поэтому поле создаётся заново (calculateField с
     # alias), а исходный столбец значения («Value #nodes» / «Value #edges») убирается.
