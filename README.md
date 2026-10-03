@@ -8,7 +8,7 @@
 - Протокол — из браузера по WebSocket (RFC 7118). Можно подключаться с любого устройства через ваш браузер.
 - Три сервиса на Go: **web**, **signal**, **media**. Media управляется по gRPC.
 - Голос нигде не хранится. У каждого есть право на вечный бан собеседника по куке (в дальнейшем будет бан по железу).
-- Сто каналов (50 разговоров) — это 0,22 ядра и 43 МБ ОЗУ, подробности в [LOAD_REPORT.md](LOAD_REPORT.md). Самое узкое место бесплатного запуска - канал claudflare (~25 мбит/c). 1 канал стоит сети примерно 100мбит/с. capacity сервиса по каналу claudflare - до 125 одновременных звонков и 250 активных абонентов.
+- Сто каналов (50 разговоров) — это 0,22 ядра и 43 МБ ОЗУ, подробности в [LOAD_REPORT.md](LOAD_REPORT.md). Канал стоит сети около 69 кбит/с в каждую сторону (G.711 + RTP, замер по `kontakt_media_bytes_*_total`; с заголовками IP/UDP — около 80). Ёмкость сети **не константа**: у Cloudflare Tunnel нет официального потолка в Мбит/с, она зависит от трафика, сессий и машины, поэтому её меряют нагрузкой (`k6/load.js`) и метриками, а не делят «25 Мбит/с на канал». Quick Tunnel (`*.trycloudflare.com`) — только для разработки и демонстраций: без гарантии доступности, до 200 одновременных HTTP-запросов, временное имя.
 
 ## Запуск за минуту
 
@@ -55,3 +55,32 @@ Your quick Tunnel has been created! Visit it at (it may take some time to be rea
 
 ```
 
+
+## Тесты звонков (xk6-sip)
+
+Звонковые тесты — функциональные и нагрузочные — делает [xk6-sip](https://github.com/Dmitry-Fedotov-Dev/xk6-sip): абоненты-софтфоны по SIP/UDP, как Linphone или MicroSIP, и проверка звука `compareAudio()`. У каждого абонента своя фраза, поэтому видно, **кого** именно он слышит.
+
+```bash
+xk6 build v2.3.0 --with github.com/Dmitry-Fedotov-Dev/xk6-sip@v0.4.0 --output bin/k6
+IP=127.0.0.1 SIP_UDP=:5060 ./scripts/run.sh
+bin/k6 run k6/functional/pair.js          # пара: слышат друг друга, не слышат себя
+bin/k6 run k6/functional/next.js          # собеседник ушёл — следующий в том же звонке
+bin/k6 run k6/functional/leave-queue.js   # ушедший из очереди не соединяется с новыми
+bin/k6 run -e VUS=40 -e DURATION=2m k6/load.js
+```
+
+Линия выбирается именем в адресе (`sip:64@…`); станция окрашивает голос и на 64, поэтому порог качества — по замеру: 64 → 0,87–0,92, 32 → 0,78–0,82, 8 → ~0,48.
+
+## Мониторинг
+
+`/metrics` есть у signal (`127.0.0.1:8091`) и media (`127.0.0.1:8082`). Prometheus и Grafana с готовым дашбордом:
+
+```bash
+docker compose -f monitoring/docker-compose.yml up -d   # http://localhost:3002, + --profile linux-host для машины
+K6_PROMETHEUS_RW_SERVER_URL=http://127.0.0.1:9092/api/v1/write K6_FEATURES=native-histograms \
+  bin/k6 run -o experimental-prometheus-rw --tag testid=run-1 k6/load.js   # сторона абонентов на том же дашборде
+```
+
+Сеть стека хостовая (метрики слушают только `127.0.0.1`); в Docker Desktop включите host networking или запускайте из WSL. Дашборд правится в `monitoring/grafana/gen_dashboard.py`, PNG за прогон — `monitoring/report.sh`.
+
+CI (`.github/workflows/ci.yml`) устроен как у xk6-sip: тесты, сборка и проверка JS страницы, функциональные сценарии с JUnit и WAV проваленных проверок звука, нагрузка с PNG дашборда, govulncheck и отчёт gosec.

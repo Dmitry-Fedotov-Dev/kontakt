@@ -1,0 +1,202 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Устроено как CI xk6-sip: unit и e2e, сборка, функциональные звонковые
+# сценарии и нагрузка с мониторингом. Звонки делает ТОЛЬКО xk6-sip — те же
+# SIP-софтфоны по UDP, что у людей (Linphone, MicroSIP), с проверкой звука.
+
+env:
+  XK6_SIP_VERSION: v0.4.0
+  K6_VERSION: v2.3.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+      - name: vet
+        run: go vet ./...
+      - name: test
+        # дважды, как требует CLAUDE.md: асинхронные e2e должны быть устойчивы
+        run: go test -race -count=2 ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: build
+        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/loadgen
+      - name: static JS
+        # статика вшита в web: синтаксическая ошибка дошла бы до браузера молча
+        run: python3 .github/scripts/check_js.py internal/webapp/static
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kontakt-linux-amd64
+          path: bin/
+
+  k6:
+    # k6 с расширением xk6-sip — один раз для функциональных сценариев и нагрузки
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Dmitry-Fedotov-Dev/xk6-sip
+          ref: ${{ env.XK6_SIP_VERSION }}
+          path: xk6-sip
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: xk6-sip/go.mod
+      - name: xk6 build
+        run: |
+          go install go.k6.io/xk6@latest
+          mkdir -p bin
+          xk6 build "$K6_VERSION" --with github.com/Dmitry-Fedotov-Dev/xk6-sip=./xk6-sip --output bin/k6
+          ./bin/k6 version
+      - uses: actions/upload-artifact@v7
+        with:
+          name: k6-xk6-sip
+          path: bin/k6
+
+  functional:
+    # Звонковые сценарии из k6/functional против живой станции (media + signal +
+    # web): каждый шаг проверяется, JUnit-отчёты и WAV проваленных проверок звука
+    # сохраняются в артефакты.
+    needs: [build, k6]
+    runs-on: ubuntu-latest
+    env:
+      SCENARIOS: pair next leave-queue
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v7
+        with:
+          name: k6-xk6-sip
+          path: bin
+      - name: start the station
+        run: |
+          chmod +x bin/k6
+          mkdir -p reports
+          IP=127.0.0.1 SIP_UDP=:5060 ./scripts/run.sh > reports/station.log 2>&1 &
+          timeout 120 bash -c 'until curl -sf http://127.0.0.1:8091/admin/stats >/dev/null; do sleep 1; done'
+      - name: run scenarios
+        run: |
+          cd k6/functional
+          failed=0
+          for s in $SCENARIOS; do
+            echo "::group::$s"
+            if ! ../../bin/k6 run -q -e JUNIT="../../reports/$s.xml" -e RECORD_DIR=../../reports/recordings "$s.js"; then
+              echo "::error title=functional::$s failed"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
+      - name: summary
+        if: always()
+        run: |
+          python3 .github/scripts/summary.py functional reports $SCENARIOS
+          python3 .github/scripts/summary.py functional --all-steps reports $SCENARIOS > reports/summary.md
+          cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: keep reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: functional-reports
+          path: reports/
+          if-no-files-found: ignore
+
+  load:
+    # Короткая нагрузка через xk6-sip с Prometheus и Grafana: пороги k6 решают
+    # исход, а весь дашборд за окно прогона сохраняется PNG рядом со сводкой k6.
+    needs: [build, k6]
+    runs-on: ubuntu-latest
+    env:
+      TESTID: ci-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v7
+        with:
+          name: k6-xk6-sip
+          path: bin
+      - name: start monitoring and the station
+        run: |
+          chmod +x bin/k6
+          mkdir -p reports
+          docker compose -f monitoring/docker-compose.yml --profile linux-host up -d
+          IP=127.0.0.1 SIP_UDP=:5060 ./scripts/run.sh > reports/station.log 2>&1 &
+          timeout 120 bash -c 'until curl -sf http://127.0.0.1:8091/admin/stats >/dev/null; do sleep 1; done'
+          timeout 90 bash -c 'until curl -sf http://127.0.0.1:3002/api/health >/dev/null; do sleep 2; done'
+      - name: load test
+        env:
+          K6_PROMETHEUS_RW_SERVER_URL: http://127.0.0.1:9092/api/v1/write
+          K6_FEATURES: native-histograms
+        run: |
+          echo "START=$(date +%s)" >> "$GITHUB_ENV"
+          ./bin/k6 run -q -o experimental-prometheus-rw --tag testid="$TESTID" \
+            -e VUS=40 -e DURATION=2m -e HOLD=6 -e SAMPLE=2 \
+            --summary-export reports/summary.json k6/load.js | tee reports/k6.txt
+      - name: dashboard report
+        if: always()
+        run: |
+          sleep 15 # последний remote write и сбор
+          bash monitoring/report.sh "$TESTID" $((START - 30)) $(($(date +%s) - 10)) reports/dashboard.png
+      - name: summary
+        if: always()
+        run: |
+          if [ -f reports/summary.json ]; then
+            python3 .github/scripts/summary.py load reports/summary.json \
+              "40 абонентов 2 минуты, разговор 6 с, звук сравнивается у каждого второго." > reports/summary.md
+            cat reports/summary.md
+            cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: keep reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: load-report
+          path: reports/
+          if-no-files-found: ignore
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable # govulncheck проверяет и stdlib тулчейна
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+      - name: gosec
+        # Отчёт, а не барьер: почти все замечания — преобразования в DSP и
+        # math/rand для SSRC и шума. Настоящие (G112/G114: HTTP без таймаутов)
+        # — это задача «защита от флуда»; когда её закроют, gosec стоит
+        # сделать блокирующим с исключениями.
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -quiet -no-fail -fmt json -out gosec.json ./...
+          python3 .github/scripts/summary.py gosec gosec.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gosec-report
+          path: gosec.json
+          if-no-files-found: ignore

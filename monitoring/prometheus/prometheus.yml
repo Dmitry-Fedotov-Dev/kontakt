@@ -1,0 +1,21 @@
+# Адреса — как в scripts/run.sh: signal (админ-порт) и media.
+# Незапущенные цели показываются как down — между прогонами это нормально.
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9092"]
+
+  - job_name: signal
+    static_configs:
+      - targets: ["127.0.0.1:8091"]
+
+  - job_name: media
+    static_configs:
+      - targets: ["127.0.0.1:8082"]
+
+  - job_name: host
+    static_configs:
+      - targets: ["127.0.0.1:9101"] # профиль linux-host
