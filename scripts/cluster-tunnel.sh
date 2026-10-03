@@ -76,7 +76,14 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-./scripts/run.sh >"$STATE/cluster.log" 2>&1 &
+# Сборка — отдельным шагом и на экран: первая (модули, диск /mnt/… в WSL) идёт минуты, и
+# без вывода скрипт выглядел зависшим, а ожидание старта съедало время сборки.
+echo "Сборка (первый раз — до нескольких минут)…"
+mkdir -p bin
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media
+echo "Сборка готова, запуск…"
+
+./scripts/run.sh >"$STATE/cluster.log" 2>&1 & # run.sh соберёт ещё раз — из кеша, за секунды
 pids+=($!)
 echo "Кластер: web $WEB_PORT, signal $SIGNAL_HTTP (админка $SIGNAL_ADMIN), media $MEDIA_WS (gRPC $MEDIA_GRPC), RTP $RTP"
 for _ in $(seq 120); do
