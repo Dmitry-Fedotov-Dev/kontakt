@@ -71,6 +71,7 @@ type Hub struct {
 	rejected *metrics.CounterVec
 	reg      *metrics.Registry
 	upgrader websocket.Upgrader
+	og       ogCache
 }
 
 type station struct {
@@ -133,6 +134,9 @@ func (h *Hub) Handler() http.Handler {
 	})
 	mux.Handle("/metrics", h.reg.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
+	mux.HandleFunc("GET /{$}", h.serveIndex)
+	mux.HandleFunc("GET /w/{freq}", h.serveShare)
+	mux.HandleFunc("GET /og/{freq}", h.serveOG)
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Referrer-Policy", "no-referrer")

@@ -7,6 +7,7 @@
 <meta name="description" content="Крути ручку — между станциями шорох. Или займи свою волну: микрофон, музыка, G.711 64 кбит/с.">
 <meta name="theme-color" content="#2B1B3D">
 <link rel="icon" href="data:,">
+<!--OG-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet">
@@ -97,6 +98,13 @@ button, input { font: inherit; color: inherit; }
   display: block; width: min(260px, 100%); margin: 12px auto 0; padding: 5px 8px; border: 0; text-align: center;
   background: var(--lcd); color: var(--amber); box-shadow: 0 0 0 3px var(--ink);
 }
+.share { display: block; margin: 14px auto 0; }
+.share[hidden] { display: none !important; }
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10;
+  padding: 7px 14px 8px; background: var(--amber); color: var(--ink); font-weight: 600; font-size: 13px;
+  box-shadow: 0 0 0 3px var(--ink), 4px 4px 0 3px rgba(0,0,0,.35); max-width: calc(100% - 32px); text-align: center;
+}
 .hint { text-align: center; font-size: 12px; color: #C9B6E4; margin-top: 8px; min-height: 1.3em; }
 .hint.warn { color: #FF9A8A; }
 
@@ -171,6 +179,7 @@ button, input { font: inherit; color: inherit; }
               aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
     <div class="sticker" id="sticker" aria-live="polite"><b id="st1">крутни ручку</b><span id="st2">&nbsp;</span></div>
+    <button class="btn share" id="shareRx" hidden>SHARE ↗</button>
   </section>
 
   <!-- Ведущий: табличка эфира, микрофон, три громкости, очередь -->
@@ -183,6 +192,7 @@ button, input { font: inherit; color: inherit; }
       </div>
       <input class="name" id="name" maxlength="24" placeholder="название станции" autocomplete="off" aria-label="Название станции">
       <div class="hint" id="hostHint">&nbsp;</div>
+      <button class="btn share" id="shareTx" hidden>SHARE ↗</button>
     </div>
 
     <div class="box desk">
@@ -478,7 +488,7 @@ const FONT = {
   "4": "101101111001001", "5": "111100111001111", "6": "111100111101111", "7": "111001010010010",
   "8": "111101111101111", "9": "111101111001111", ".": "000000000000010", " ": "000000000000000",
   "-": "000000111000000", A: "010101111101101", C: "011100100100011", D: "110101101101110",
-  E: "111100110100111", F: "111100110100100", G: "011100101101011", I: "111010010010111", L: "100100100100111",
+  E: "111100110100111", F: "111100110100100", G: "011100101101011", H: "101101111101101", I: "111010010010111", L: "100100100100111",
   M: "101111111101101", N: "110101101101101", O: "010101101101010", P: "110101110100100",
   R: "110101110101101", S: "011100010001110", T: "111010010010010", U: "101101101101111",
   W: "101101111111101", Z: "111001010100111",
@@ -564,7 +574,10 @@ function drawRadio() {
   disc(rg, 34, 54, cone + 1, P.ink); disc(rg, 34, 54, cone, P.cone); disc(rg, 34, 54, 1, P.cream2);
   // шкала
   if (!st.power) {
-    if ((tick >> 5) & 1) text(rg, "TURN ME", 76, 34, P.amberDim);
+    if (shared) { // открыли по ссылке: частота уже на шкале, ждёт касания
+      text(rg, st.dial.toFixed(1).padStart(5, " "), 65, 30, P.amberDim, 2);
+      if ((tick >> 5) & 1) text(rg, "TOUCH", 65, 41, P.amber);
+    } else if ((tick >> 5) & 1) text(rg, "TURN ME", 76, 34, P.amberDim);
   } else {
     text(rg, st.dial.toFixed(1).padStart(5, " "), 65, 30, P.amber, 2);
     const bars = Math.round(st.strength * 5);
@@ -669,7 +682,10 @@ function setSticker(a, b, glitch) {
 }
 function drawSticker() {
   if (performance.now() < errUntil) return setSticker("нет звука", errText);
-  if (!st.power) return setSticker("крутни ручку", "");
+  if (!st.power) {
+    if (shared) return setSticker(shared.name || fmt(shared.f) + " FM", (shared.track ? "♪ играло: " + shared.track + " · " : "") + "коснись, чтобы слушать");
+    return setSticker("крутни ручку", "");
+  }
   const { s, d } = nearest(st.dial);
   if (s && d < CATCH) setSticker(s.n, s.t || "", st.strength < 0.7);
   else setSticker("· · · шшшш · · ·", "");
@@ -1038,6 +1054,59 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
+// ---------- поделиться волной ----------
+// Ссылка /w/101.7?n=станция&t=трек: трек — тот, что играл в момент нажатия. Карточку с картинкой
+// для Telegram и других мессенджеров сервер собирает по этой же ссылке.
+function shareURL(f, name, track) {
+  const q = new URLSearchParams();
+  if (name) q.set("n", name);
+  if (track) q.set("t", track);
+  const qs = q.toString();
+  return location.origin + "/w/" + fmt(f) + (qs ? "?" + qs : "");
+}
+let toastT = null;
+function toast(msg) {
+  let el = document.querySelector(".toast");
+  if (!el) { el = document.createElement("div"); el.className = "toast"; el.setAttribute("role", "status"); document.body.append(el); }
+  el.textContent = msg;
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.remove(), 2500);
+}
+async function share(f, name, track) {
+  const url = shareURL(f, name, track);
+  const title = (name || fmt(f) + " FM") + " · Открытое радио";
+  const text = track ? "♪ " + track : "Слушай " + fmt(f) + " FM";
+  if (navigator.share) { // телефон: системное меню — Telegram, WhatsApp…
+    try { await navigator.share({ title, text, url }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; /* иначе — копируем ссылку ниже */ }
+  }
+  try { await navigator.clipboard.writeText(url); toast("ссылка скопирована"); }
+  catch (_) { window.prompt("Скопируй ссылку:", url); } // буфер обмена недоступен (http, старый браузер)
+}
+$("shareRx").onclick = () => {
+  const { s, d } = nearest(st.dial);
+  if (s && d < CATCH) share(s.f, s.n, s.t || "");
+};
+$("shareTx").onclick = () => share(st.hostFreq, $("name").value.trim(), nowTitle());
+setInterval(() => {
+  const { s, d } = nearest(st.dial);
+  $("shareRx").hidden = !(st.power && s && d < CATCH);
+  $("shareTx").hidden = !st.onAir;
+}, 300);
+
+// Открыли по ссылке на волну: стрелка сразу стоит на ней, звук — после первого касания.
+let shared = null;
+{
+  const m = location.pathname.match(/^\/w\/(\d{2,3}(?:\.\d)?)$/);
+  const f = m ? Math.round(parseFloat(m[1]) * 10) : 0;
+  if (f >= 875 && f <= 1080) {
+    const q = new URLSearchParams(location.search);
+    shared = { f, name: (q.get("n") || "").slice(0, 24), track: (q.get("t") || "").slice(0, 64) };
+    st.dial = f / 10;
+    R.setAttribute("aria-valuenow", st.dial.toFixed(1));
+  }
+}
+$("sticker").addEventListener("pointerdown", () => powerOn());
 st.knobAngle = (st.dial - MIN) / TURN_MHZ * 2 * Math.PI;
 setInterval(() => { if (st.mode === "tx") renderHost(); }, 1000);
 renderQueue();
