@@ -78,6 +78,7 @@ Your quick Tunnel has been created! Visit it at (it may take some time to be rea
 ```bash
 ./scripts/radio.sh            # http://localhost:27620 (или следующий свободный порт)
 TUNNEL=1 ./scripts/radio.sh   # плюс временный адрес https://….trycloudflare.com
+bash scripts/radio.sh update  # из другого окна: git pull + перезапуск радио, адрес туннеля прежний
 ```
 
 Поделиться волной — кнопка SHARE (у слушателя, когда пойман сигнал, и у ведущего в эфире):

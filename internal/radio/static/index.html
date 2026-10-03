@@ -728,6 +728,7 @@ function renderHost() {
   $("onair").setAttribute("aria-pressed", String(st.onAir));
   if (performance.now() < hintHold) return;
   if (connecting) return hostHint("подключаюсь к эфиру…");
+  if (reconnecting) return hostHint("связь с сервером прервалась — возвращаюсь в эфир…", true);
   if (ctx && ctx.state !== "running" && (st.onAir || current)) return hostHint("браузер приостановил звук — коснись экрана", true);
   if (st.onAir && performance.now() - lastTxAt > 3000) return hostHint("звук в эфир не идёт — коснись экрана; не помогло — обнови страницу", true);
   // Тишина в эфире не выглядит как ошибка — поэтому о ней говорим прямо.
@@ -877,23 +878,50 @@ $("micBtn").onclick = async () => {
   sendTitle(); renderHost();
 };
 
+// wantAir — ведущий хочет быть в эфире. Пока это так, оборванное соединение восстанавливается
+// само: сервер перезапускают при обновлении, и эфир не должен из-за этого кончаться.
+let wantAir = false, reconnecting = false, retries = 0;
 $("onair").onclick = async () => {
-  if (hws) { hws.close(); return; }
+  if (wantAir) { // OFF AIR
+    wantAir = false; reconnecting = false;
+    if (hws) hws.close(); else { st.onAir = false; $("name").disabled = false; renderHost(); }
+    return;
+  }
   if (connecting) return;
   if (taken(st.hostFreq)) { shake($("onair")); hintHold = performance.now() + 2500; hostHint("волну " + fmt(st.hostFreq) + " уже заняли — стрелками на соседнюю", true); return; }
   connecting = true; hintHold = 0; renderHost(); // табличка отвечает сразу, а не после запуска звука
   try { await ensureTx(); } catch (_) { connecting = false; return; } // причина уже на экране
   connecting = false;
+  wantAir = true; retries = 0;
+  connectHost();
+};
+function connectHost() {
   lastTxAt = performance.now();
   let opened = false;
-  hws = new WebSocket(wsURL("/ws/host?f=" + st.hostFreq + "&name=" + encodeURIComponent($("name").value.trim())));
-  hws.onopen = () => { opened = true; st.onAir = true; $("name").disabled = true; sendTitle(); renderHost(); };
-  hws.onclose = e => {
-    hws = null; st.onAir = false; $("name").disabled = false;
-    if (!opened) { shake($("onair")); showError("сервер не пустил в эфир (код " + e.code + "): волну заняли раньше, эфир переполнен или нет связи"); }
+  const ws = new WebSocket(wsURL("/ws/host?f=" + st.hostFreq + "&name=" + encodeURIComponent($("name").value.trim())));
+  hws = ws;
+  ws.onopen = () => {
+    opened = true; retries = 0; reconnecting = false; st.onAir = true; $("name").disabled = true;
+    sendTitle(); renderHost();
+  };
+  ws.onclose = e => {
+    if (hws === ws) hws = null;
+    if (wantAir && (opened || reconnecting) && retries < 30) { // связь была и оборвалась — возвращаемся
+      reconnecting = true; retries++;
+      renderHost();
+      setTimeout(() => { if (wantAir && !hws) connectHost(); }, Math.min(500 * retries, 5000));
+      return;
+    }
+    const wasReconnecting = reconnecting;
+    wantAir = false; reconnecting = false; st.onAir = false; $("name").disabled = false;
+    if (!opened) {
+      shake($("onair"));
+      showError(wasReconnecting ? "не удалось вернуться в эфир — нажми ON AIR ещё раз"
+        : "сервер не пустил в эфир (код " + e.code + "): волну заняли раньше, эфир переполнен или нет связи");
+    }
     renderHost();
   };
-};
+}
 function shake(el) { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); }
 
 // ---------- очередь ----------
