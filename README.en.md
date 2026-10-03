@@ -72,3 +72,19 @@ Once both scripts are running, look for the public URL generated in the terminal
 ```text
 Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):
 ```
+
+## Open Radio (prototype)
+
+A separate program on the same base: anyone can take a free frequency (87.5–108.0) and
+broadcast, anyone can turn the dial and listen. The host queues mp3 files and switches the
+microphone on (music ducks under the voice); between stations the listener hears static,
+beat whistles and crackle.
+
+```bash
+./scripts/radio.sh            # http://localhost:27620 (or the next free port)
+TUNNEL=1 ./scripts/radio.sh   # plus a temporary https://….trycloudflare.com address
+```
+
+The host's browser encodes G.711 μ-law (8 kHz, 64 kbit/s); the server only relays ready
+160-byte frames to listeners of that frequency — no decoding or mixing. mp3 files are never
+uploaded. Limits: `-max-stations`, `-max-listeners`; host stream capped at 64 kbit/s.
