@@ -1,0 +1,6 @@
+# Скрипты запускаются в Linux/WSL: CRLF ломает shebang ("bash\r: No such file").
+# Git для Windows с core.autocrlf=true иначе превращает LF в CRLF при checkout.
+* text=auto eol=lf
+*.wav binary
+*.png binary
+*.ipk binary
