@@ -10,8 +10,8 @@ on:
 # SIP-софтфоны по UDP, что у людей (Linphone, MicroSIP), с проверкой звука.
 
 env:
-  XK6_SIP_VERSION: v0.4.0
-  K6_VERSION: v2.3.0
+  SIP_EXT_VERSION: v0.4.0
+  K6_RELEASE: v2.3.0 # не K6_VERSION: эту переменную xk6 читает как свой флаг --k6-version
 
 jobs:
   test:
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: Dmitry-Fedotov-Dev/xk6-sip
-          ref: ${{ env.XK6_SIP_VERSION }}
+          ref: ${{ env.SIP_EXT_VERSION }}
           path: xk6-sip
       - uses: actions/setup-go@v7
         with:
@@ -62,7 +62,7 @@ jobs:
         run: |
           go install go.k6.io/xk6@latest
           mkdir -p bin
-          xk6 build "$K6_VERSION" --with github.com/Dmitry-Fedotov-Dev/xk6-sip=./xk6-sip --output bin/k6
+          xk6 build "$K6_RELEASE" --with github.com/Dmitry-Fedotov-Dev/xk6-sip=./xk6-sip --output bin/k6
           ./bin/k6 version
       - uses: actions/upload-artifact@v7
         with:
