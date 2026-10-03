@@ -11,6 +11,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 HTTP="${HTTP:-:8080}"
+# Внутренние порты (все — только на 127.0.0.1); переопределяются, если заняты
+SIGNAL_HTTP="${SIGNAL_HTTP:-8081}"
+SIGNAL_ADMIN="${SIGNAL_ADMIN:-8091}"
+MEDIA_GRPC="${MEDIA_GRPC:-7002}"
+MEDIA_WS="${MEDIA_WS:-8082}"
 HTTPS="${HTTPS:-}"
 SIP_UDP="${SIP_UDP:-}"
 IP="${IP:-}"
@@ -26,18 +31,18 @@ pids=()
 cleanup() { kill "${pids[@]}" 2>/dev/null || true; wait 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
-./bin/media  -grpc 127.0.0.1:7002 -ws 127.0.0.1:8082 -rtp "$RTP" ${IP:+-ip "$IP"} &
+./bin/media  -grpc "127.0.0.1:$MEDIA_GRPC" -ws "127.0.0.1:$MEDIA_WS" -rtp "$RTP" ${IP:+-ip "$IP"} &
 pids+=($!)
 sleep 0.3
-./bin/signal -http 127.0.0.1:8081 -admin 127.0.0.1:8091 -media 127.0.0.1:7002 \
+./bin/signal -http "127.0.0.1:$SIGNAL_HTTP" -admin "127.0.0.1:$SIGNAL_ADMIN" -media "127.0.0.1:$MEDIA_GRPC" \
              -config "$CONFIG" -bans "$BANS" ${SIP_UDP:+-sip "$SIP_UDP"} ${IP:+-ip "$IP"} &
 pids+=($!)
-./bin/web    -http "$HTTP" -signal http://127.0.0.1:8081 -media http://127.0.0.1:8082 ${HTTPS:+-https "$HTTPS"} &
+./bin/web    -http "$HTTP" -signal "http://127.0.0.1:$SIGNAL_HTTP" -media "http://127.0.0.1:$MEDIA_WS" ${HTTPS:+-https "$HTTPS"} &
 pids+=($!)
 
 echo
 echo "Контакт запущен: http://localhost:${HTTP##*:}"
 echo "  конфиг:  $CONFIG (правьте на лету — применится через apply_delay_ms)"
-echo "  админка: curl -s localhost:8091/admin/stats | jq"
+echo "  админка: curl -s localhost:$SIGNAL_ADMIN/admin/stats | jq"
 echo
 wait -n
