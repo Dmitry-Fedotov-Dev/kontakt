@@ -107,7 +107,7 @@ if [ -n "${MONITORING:-}" ]; then
   [ "$PROMETHEUS_PORT" != "$GRAFANA_PORT" ] || PROMETHEUS_PORT=$(pick $((GRAFANA_PORT + 1)))
   echo "  Мониторинг: Prometheus $PROMETHEUS_PORT, Grafana $GRAFANA_PORT…"
   monitoring/stack.sh up
-  if monitoring/stack.sh sees "127.0.0.1:$port"; then echo "  Prometheus видит радио"; else echo "  Prometheus НЕ видит радио — графики будут пустыми"; fi
+  if monitoring/stack.sh sees "127.0.0.1:$port"; then echo "  Prometheus видит радио"; else echo "  Prometheus НЕ видит радио — графики будут пустыми (с Docker Desktop попробуйте MONITORING=local)"; fi
   echo "  Дашборд: http://localhost:$GRAFANA_PORT/d/kontakt-radio"
 fi
 echo "  Обновить, не меняя адрес: в другом окне  bash scripts/radio.sh update"

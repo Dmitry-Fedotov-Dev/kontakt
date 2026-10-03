@@ -5,7 +5,8 @@ datasources:
     uid: prometheus
     type: prometheus
     access: proxy
-    url: http://127.0.0.1:${PROMETHEUS_PORT}
+    # 127.0.0.1 в сети хоста (docker-compose.yml, local.sh); prometheus — в сети Docker (Docker Desktop)
+    url: http://${PROMETHEUS_HOST}:${PROMETHEUS_PORT}
     isDefault: true
     jsonData:
       timeInterval: 5s

@@ -155,7 +155,7 @@ if [ -n "${MONITORING:-}" ]; then
   if monitoring/stack.sh sees "127.0.0.1:$SIGNAL_ADMIN"; then
     printf '%s Prometheus видит станцию (signal 127.0.0.1:%s — up)\n' "$(date +%T)" "$SIGNAL_ADMIN" | tee -a "$STATE/monitoring.log"
   else
-    printf '%s Prometheus НЕ видит станцию на 127.0.0.1:%s — графики будут пустыми; журналы: data/monitoring-local/ или docker compose logs\n' "$(date +%T)" "$SIGNAL_ADMIN" | tee -a "$STATE/monitoring.log"
+    printf '%s Prometheus НЕ видит станцию на 127.0.0.1:%s — графики будут пустыми.\n  Docker Desktop не достал до WSL через host.docker.internal? Перезапустите с MONITORING=local (без Docker)\n' "$(date +%T)" "$SIGNAL_ADMIN" | tee -a "$STATE/monitoring.log"
   fi
   echo "Мониторинг: http://localhost:$GRAFANA_PORT (Dashboards → Kontakt: «Контакт: станция», «Kontakt Mesh», «Открытое радио»)"
 else

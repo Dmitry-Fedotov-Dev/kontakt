@@ -1,0 +1,57 @@
+# Prometheus + Grafana для Docker Desktop (Windows, macOS).
+#
+#   monitoring/stack.sh up      # выбирает этот файл сам, когда видит Docker Desktop
+#
+# Почему не docker-compose.yml: тот живёт в сети хоста, а у Docker Desktop «хост» — его
+# собственная виртуальная машина. Grafana слушала бы порт, до которого не достаёт браузер,
+# а Prometheus не видел бы станцию в WSL. Здесь — обычная сеть Docker:
+#   - порты публикуются на 127.0.0.1 вашей машины — Grafana открывается в браузере;
+#   - станция в WSL слушает 127.0.0.1, а WSL пробрасывает такие порты в localhost Windows;
+#     контейнер приходит туда через host.docker.internal. Адреса 127.0.0.1 из конфига и файлов
+#     целей Prometheus переписывает на host.docker.internal (stack.sh собирает конфиг
+#     data/prometheus.desktop.yml из того же prometheus.yml).
+# Конфиги, правила, тревоги и дашборды — те же, что в docker-compose.yml.
+name: kontakt-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-remote-write-receiver
+      - --enable-feature=native-histograms
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9092}:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../data/prometheus.desktop.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    depends_on:
+      - prometheus
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3002}:3000"
+    environment:
+      PROMETHEUS_HOST: prometheus # источник данных — по сети Docker
+      PROMETHEUS_PORT: "9090"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/kontakt.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  prometheus-data:
+  grafana-data:

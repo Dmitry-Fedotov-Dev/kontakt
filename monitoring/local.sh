@@ -111,6 +111,7 @@ else
 fi
 
 export PROMETHEUS_PORT=$(cat "$RUN/prometheus.port") # источник данных Grafana — на тот Prometheus, что запущен
+export PROMETHEUS_HOST=127.0.0.1
 if alive grafana; then
   echo "  Grafana уже запущена ($(cat "$RUN/grafana.port"))"
 else

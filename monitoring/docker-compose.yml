@@ -10,9 +10,9 @@
 #
 # Сеть — хостовая: signal и media отдают /metrics только на 127.0.0.1
 # (админ-порты наружу не открываются), и из моста Docker их не видно. Поэтому
-# Prometheus и Grafana слушают тоже 127.0.0.1 хоста. Работает на Linux; в Docker
-# Desktop (Windows, macOS) включите Settings → Resources → Network → host networking
-# или запускайте из WSL.
+# Prometheus и Grafana слушают тоже 127.0.0.1 хоста. Это для Linux (и VPS).
+# Docker Desktop (Windows, macOS) — docker-compose.desktop.yml: у него «хост» — своя
+# виртуальная машина. monitoring/stack.sh выбирает файл сам.
 #
 # Имя проекта и порты выбраны так, чтобы стек жил рядом со стеками xk6-sip
 # (9091/3001) и SAR Review (9090/3000): проекты compose различаются по имени, и
@@ -59,7 +59,8 @@ services:
     environment:
       GF_SERVER_HTTP_ADDR: 127.0.0.1
       GF_SERVER_HTTP_PORT: "${GRAFANA_PORT:-3002}"
-      PROMETHEUS_PORT: "${PROMETHEUS_PORT:-9092}" # для источника данных (provisioning)
+      PROMETHEUS_HOST: 127.0.0.1                 # для источника данных (provisioning)
+      PROMETHEUS_PORT: "${PROMETHEUS_PORT:-9092}"
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
