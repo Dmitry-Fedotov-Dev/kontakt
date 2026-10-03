@@ -3,6 +3,7 @@ package radio
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -149,12 +150,87 @@ func TestHostRateLimited(t *testing.T) {
 		host.WriteMessage(websocket.BinaryMessage, frame(1))
 	}
 	deadline := time.Now().Add(3 * time.Second)
-	for h.framesIn.Value()+h.dropped.Value() < 200 && time.Now().Before(deadline) {
+	for h.framesIn.Value()+h.dropped.Value("host_rate") < 200 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	in := h.framesIn.Value()
 	if in > burstBytes/FrameBytes+10 || in < burstBytes/FrameBytes {
 		t.Fatalf("принято %d кадров, ждали около %d", in, burstBytes/FrameBytes)
+	}
+	if d := h.dropped.Value("host_rate"); d+in != 200 {
+		t.Fatalf("отброшено сверх 64 кбит/с: %d, принято %d — в сумме должно быть 200", d, in)
+	}
+}
+
+// Метрики радио: что видит Prometheus после эфира, слушателя, отказа и ссылки на волну.
+func TestRadioMetrics(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	l, _, _ := dial(t, srv, "/ws/listen")
+	defer l.Close()
+	l.WriteMessage(websocket.TextMessage, []byte(`{"tune":1017}`))
+	host, _, _ := dial(t, srv, "/ws/host?f=101.7")
+	dial(t, srv, "/ws/host?f=101.7") // занято
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 && s[0].Listeners == 1 })
+	for i := 0; i < 5; i++ {
+		host.WriteMessage(websocket.BinaryMessage, frame(9))
+	}
+	readAudio(t, l)
+	http.Get(srv.URL + "/w/101.7?t=x")
+	http.Get(srv.URL + "/og/1017.png?t=x")
+	http.Get(srv.URL + "/og/1017.png?t=x") // второй раз — из кеша
+	for i := 0; h.framesOut.Value() < 5 && i < 100; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	r, _ := http.Get(srv.URL + "/metrics")
+	b, _ := io.ReadAll(r.Body)
+	m := string(b)
+	for _, want := range []string{
+		"kontakt_radio_stations 1",
+		"kontakt_radio_listeners 1",
+		"kontakt_radio_listeners_tuned 1",
+		`kontakt_radio_station_listeners{freq="101.7"} 1`,
+		"kontakt_radio_frames_in_total 5",
+		"kontakt_radio_frames_out_total 5",
+		"kontakt_radio_bytes_in_total 800",
+		`kontakt_radio_rejected_total{reason="busy"} 1`,
+		`kontakt_radio_frames_dropped_total{reason="slow_listener"} 0`,
+		"kontakt_radio_host_sessions_total 1",
+		`kontakt_radio_share_views_total{kind="page"} 1`,
+		`kontakt_radio_share_views_total{kind="image"} 2`,
+		"kontakt_radio_og_renders_total 1",
+	} {
+		if !strings.Contains(m, want+"\n") {
+			t.Errorf("нет %q", want)
+		}
+	}
+	host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 0 })
+	for i := 0; h.onAir.Count() == 0 && i < 100; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if h.onAir.Count() != 1 {
+		t.Fatal("длительность эфира не записана после ухода станции")
+	}
+}
+
+// -admin: метрики уходят со страницы радио (и из туннеля) на отдельный адрес.
+func TestPrivateMetrics(t *testing.T) {
+	h := NewHub(Options{PrivateMetrics: true})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	r, _ := http.Get(srv.URL + "/metrics")
+	if r.StatusCode == 200 {
+		b, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(b), "kontakt_radio") {
+			t.Fatal("метрики видны на публичном адресе")
+		}
+	}
+	w := httptest.NewRecorder()
+	h.MetricsHandler().ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(w.Body.String(), "kontakt_radio_stations") {
+		t.Fatal("служебный адрес не отдаёт метрики")
 	}
 }
 

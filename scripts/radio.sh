@@ -6,6 +6,12 @@
 #   PORT=31000 bash scripts/radio.sh  # искать свободный порт, начиная с 31000
 #   bash scripts/radio.sh update      # из ДРУГОГО окна: git pull, сборка и перезапуск радио —
 #                                     # туннель не трогается, адрес остаётся прежним
+#   MONITORING=1 bash scripts/radio.sh  # плюс Prometheus и Grafana (Docker) — дашборд «Открытое радио»
+#
+# Мониторинг: скрипт всегда пишет monitoring/prometheus/targets/radio.json с портом этого
+# запуска, и уже работающий стек monitoring/ видит радио сам. Радио на телефоне (Termux,
+# без Docker) — Prometheus на компьютере забирает метрики через туннель:
+#   monitoring/radio-target.sh https://….trycloudflare.com
 #
 # Адрес trycloudflare живёт, пока жив процесс cloudflared, поэтому при обновлении перезапускается
 # только сервер радио, на том же порту. Слушатели и ведущий переподключаются сами за пару секунд.
@@ -45,10 +51,12 @@ echo "Сборка…"
 build bin/radio
 
 srv="" cf="" started=0
+TARGET=monitoring/prometheus/targets/radio.json
 cleanup() {
   kill $srv $cf 2>/dev/null || true
   wait 2>/dev/null || true
-  rm -f "$STATE/run.pid"
+  rm -f "$STATE/run.pid" "$TARGET"
+  if [ "${MONITORING:-}" = 1 ]; then docker compose -f monitoring/docker-compose.yml down >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT INT TERM
 reload=0
@@ -63,6 +71,8 @@ start_server() {
   echo "сервер радио не ответил за 10 с"
 }
 start_server
+# Цель для Prometheus: файл подхватывается без его перезапуска (file_sd), порт — этого запуска.
+printf '[{"targets":["127.0.0.1:%s"],"labels":{"instance":"radio-local"}}]\n' "$port" >"$TARGET"
 
 if [ "${TUNNEL:-}" = 1 ]; then
   command -v cloudflared >/dev/null || { echo "cloudflared не найден — см. подсказку в scripts/cluster-tunnel.sh"; exit 1; }
@@ -85,6 +95,16 @@ if [ "${TUNNEL:-}" = 1 ]; then
   echo "  Открытое радио в интернете: $url"
 fi
 echo "  Локально: http://localhost:$port   (Ctrl+C — выключить)"
+if [ "${MONITORING:-}" = 1 ]; then
+  command -v docker >/dev/null || { echo "MONITORING=1: нужен Docker (на телефоне его нет — см. monitoring/radio-target.sh)"; exit 1; }
+  pick() { local p=$1; while busy "$p"; do p=$((p + 1)); done; echo "$p"; }
+  export GRAFANA_PORT="${GRAFANA_PORT:-$(pick $((port + 50)))}"
+  export PROMETHEUS_PORT="${PROMETHEUS_PORT:-$(pick $((port + 51)))}"
+  [ "$PROMETHEUS_PORT" != "$GRAFANA_PORT" ] || PROMETHEUS_PORT=$(pick $((GRAFANA_PORT + 1)))
+  echo "  Мониторинг: Prometheus $PROMETHEUS_PORT, Grafana $GRAFANA_PORT (первый раз Docker качает образы — пара минут)…"
+  docker compose -f monitoring/docker-compose.yml up -d 2>&1 | sed "s/^/  /"
+  echo "  Дашборд: http://localhost:$GRAFANA_PORT/d/kontakt-radio"
+fi
 echo "  Обновить, не меняя адрес: в другом окне  bash scripts/radio.sh update"
 
 fast=0

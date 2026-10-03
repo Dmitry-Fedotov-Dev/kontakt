@@ -107,6 +107,17 @@ func (c *CounterVec) Inc(value string) {
 	v.Add(1)
 }
 
+// Value — текущее значение для одного значения метки (0, если событий не было).
+func (c *CounterVec) Value(value string) uint64 {
+	c.mu.Lock()
+	v := c.vals[value]
+	c.mu.Unlock()
+	if v == nil {
+		return 0
+	}
+	return v.Load()
+}
+
 func (c *CounterVec) write(b *strings.Builder) {
 	header(b, c.name, c.help, "counter")
 	c.mu.Lock()
@@ -242,6 +253,13 @@ func (h *Histogram) Observe(v float64) {
 	h.sum += v
 	h.n++
 	h.mu.Unlock()
+}
+
+// Count — сколько значений записано.
+func (h *Histogram) Count() uint64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.n
 }
 
 func (h *Histogram) write(b *strings.Builder) {

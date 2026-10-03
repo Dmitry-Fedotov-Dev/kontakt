@@ -1,0 +1,57 @@
+# Тревоги «Открытого радио». Пороги — от устройства эфира: станция шлёт 50 кадров в секунду
+# (20 мс G.711 μ-law), всё заметно меньше — слушатели слышат обрывы.
+groups:
+  - name: radio
+    rules:
+      - alert: RadioDown
+        expr: up{job="radio"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Радио не отвечает ({{ $labels.instance }})"
+          description: "Prometheus не может забрать /metrics больше минуты: сервер упал, телефон уснул или туннель сменил адрес."
+
+      - alert: RadioStationStalls
+        # Ведущий в эфире, а кадров от него меньше 45 в секунду на станцию. Чаще всего браузер
+        # ведущего ушёл в фон и Android притормозил вкладку.
+        expr: sum(kontakt_radio_stations) > 0 and sum(rate(kontakt_radio_frames_in_total[1m])) < 45 * sum(kontakt_radio_stations)
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Эфир прерывается: от ведущих приходит меньше 45 кадров/с на станцию"
+          description: "Вкладку ведущего нужно держать открытой на экране; проверьте связь телефона ведущего."
+
+      - alert: RadioListenersLosingFrames
+        # Доля кадров, которые не влезли в очередь медленного слушателя (слабая сеть у слушателя
+        # или перегружен канал сервера). Знаменатель — всё, что пытались отдать.
+        expr: |
+          sum(rate(kontakt_radio_frames_dropped_total{reason="slow_listener"}[5m]))
+            / clamp_min(sum(rate(kontakt_radio_frames_out_total[5m])) + sum(rate(kontakt_radio_frames_dropped_total{reason="slow_listener"}[5m])), 1)
+          > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Слушатели теряют больше 5% кадров"
+          description: "Канал сервера не успевает раздавать эфир или у части слушателей слабая сеть."
+
+      - alert: RadioHostOverRate
+        expr: sum(rate(kontakt_radio_frames_dropped_total{reason="host_rate"}[5m])) > 1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Ведущий шлёт больше 64 кбит/с — лишнее отбрасывается"
+          description: "Так ведёт себя изменённая или сломанная страница ведущего: обычная шлёт ровно 50 кадров в секунду."
+
+      - alert: RadioFull
+        expr: sum(increase(kontakt_radio_rejected_total{reason=~"full|listeners_full"}[10m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Радио отказывает: нет места для станций или приёмников"
+          description: "Достигнут -max-stations или -max-listeners. Поднимите лимит, если канал сервера позволяет (64 кбит/с на настроенного слушателя)."
+
+      - alert: RadioRestartLoop
+        expr: changes(kontakt_radio_start_time_seconds[15m]) > 3
+        labels: { severity: warning }
+        annotations:
+          summary: "Радио перезапускалось больше трёх раз за 15 минут"
+          description: "scripts/radio.sh поднимает упавший сервер сам — смотрите его вывод: что-то роняет сервер."

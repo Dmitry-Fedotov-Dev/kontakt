@@ -4,6 +4,10 @@
 global:
   scrape_interval: 5s
 
+# Тревоги видны в Prometheus (Alerts) и в Grafana; рассылки (Alertmanager) нет.
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   - job_name: signal
     static_configs:
@@ -29,6 +33,13 @@ scrape_configs:
     # метрики своего туннеля (§19): сессии и соединения, а не «Мбит/с туннеля»
     file_sd_configs:
       - files: [/etc/prometheus/targets/cloudflared*.json]
+
+  - job_name: radio
+    # «Открытое радио». Цели — только из файлов: порт подбирается на месте.
+    #   на этой машине:      scripts/radio.sh сам пишет targets/radio.json (и убирает при выходе);
+    #   на телефоне за туннелем: monitoring/radio-target.sh https://….trycloudflare.com
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/radio*.json]
 
   - job_name: host
     static_configs:

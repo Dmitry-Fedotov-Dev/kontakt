@@ -1,0 +1,1229 @@
+{
+ "uid": "kontakt-radio",
+ "title": "Открытое радио",
+ "tags": [
+  "kontakt",
+  "radio"
+ ],
+ "description": "Станции, слушатели, поток от ведущих, потери и отказы, ссылки на волну.",
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "10s",
+ "graphTooltip": 1,
+ "editable": true,
+ "time": {
+  "from": "now-3h",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "instance",
+    "label": "Сервер",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "label_values(up{job=\"radio\"}, instance)",
+     "refId": "A"
+    },
+    "refresh": 2,
+    "includeAll": true,
+    "allValue": ".*",
+    "multi": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "sort": 1
+   },
+   {
+    "name": "window",
+    "label": "Окно",
+    "type": "custom",
+    "query": "1m,5m,15m",
+    "current": {
+     "text": "1m",
+     "value": "1m"
+    },
+    "options": [
+     {
+      "text": "1m",
+      "value": "1m",
+      "selected": true
+     },
+     {
+      "text": "5m",
+      "value": "5m",
+      "selected": false
+     },
+     {
+      "text": "15m",
+      "value": "15m",
+      "selected": false
+     }
+    ]
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "builtIn": 1,
+    "datasource": {
+     "type": "grafana",
+     "uid": "-- Grafana --"
+    },
+    "enable": true,
+    "hide": true,
+    "iconColor": "rgba(0, 211, 255, 1)",
+    "name": "Annotations & Alerts",
+    "type": "dashboard"
+   }
+  ]
+ },
+ "panels": [
+  {
+   "type": "row",
+   "title": "Сейчас",
+   "collapsed": false,
+   "id": 1,
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Радио",
+   "description": "Отвечает ли сервер радио: Prometheus забирает /metrics.",
+   "id": 2,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "min(up{job=\"radio\",instance=~\"$instance\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "area",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "В эфире",
+   "description": "Станции, у которых сейчас подключён ведущий.",
+   "id": 3,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 4,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kontakt_radio_stations{instance=~\"$instance\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "orange",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "area",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Приёмники",
+   "description": "Открытые страницы радио: и настроенные на станцию, и слушающие шорох.",
+   "id": 4,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kontakt_radio_listeners{instance=~\"$instance\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "area",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Слушают станции",
+   "description": "Приёмники, ручка которых стоит на станции в эфире — только им идёт звук.",
+   "id": 5,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kontakt_radio_listeners_tuned{instance=~\"$instance\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "area",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Отдаётся эфира",
+   "description": "Звук слушателям по факту: байты × 8. 64 кбит/с на каждого настроенного слушателя.",
+   "id": 6,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(kontakt_radio_bytes_out_total{instance=~\"$instance\"}[$window])) * 8 or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bps",
+     "decimals": 1,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "area",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Потери у слушателей",
+   "description": "Доля кадров, не влезших в очередь медленного слушателя. Больше 5% — слышны обрывы.",
+   "id": 7,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 20,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "(sum(rate(kontakt_radio_frames_dropped_total{reason=\"slow_listener\",instance=~\"$instance\"}[$window])) / clamp_min(sum(rate(kontakt_radio_frames_out_total{instance=~\"$instance\"}[$window])) + sum(rate(kontakt_radio_frames_dropped_total{reason=\"slow_listener\",instance=~\"$instance\"}[$window])), 1)) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "decimals": 1,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 0.01
+       },
+       {
+        "color": "red",
+        "value": 0.05
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "area",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Эфир",
+   "collapsed": false,
+   "id": 8,
+   "gridPos": {
+    "x": 0,
+    "y": 5,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Станции и слушатели",
+   "description": "Сколько станций в эфире, сколько приёмников открыто и сколько из них на станции.",
+   "id": 9,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 6,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kontakt_radio_stations{instance=~\"$instance\"})",
+     "legendFormat": "станций",
+     "range": true,
+     "instant": false
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kontakt_radio_listeners{instance=~\"$instance\"})",
+     "legendFormat": "приёмников",
+     "range": true,
+     "instant": false
+    },
+    {
+     "refId": "C",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kontakt_radio_listeners_tuned{instance=~\"$instance\"})",
+     "legendFormat": "на станции",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Слушатели по волнам",
+   "description": "По частоте, без названий: названия задают люди, в метриках им не место.",
+   "id": 10,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 6,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (freq) (kontakt_radio_station_listeners{instance=~\"$instance\"})",
+     "legendFormat": "{{freq}} FM",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Поток от ведущих, кадров/с",
+   "description": "Нормально — 50 кадров в секунду на станцию (20 мс G.711). Провал — у ведущего вкладка ушла в фон или плохая связь: слушатели слышат обрывы.",
+   "id": 11,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 14,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(kontakt_radio_frames_in_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "пришло",
+     "range": true,
+     "instant": false
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(kontakt_radio_stations{instance=~\"$instance\"}) * 50",
+     "legendFormat": "норма (50 × станций)",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Полоса",
+   "description": "Сколько звука сервер принимает от ведущих и раздаёт слушателям.",
+   "id": 12,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 14,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(kontakt_radio_bytes_in_total{instance=~\"$instance\"}[$window])) * 8",
+     "legendFormat": "от ведущих",
+     "range": true,
+     "instant": false
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(kontakt_radio_bytes_out_total{instance=~\"$instance\"}[$window])) * 8",
+     "legendFormat": "слушателям",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bps",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Качество и отказы",
+   "collapsed": false,
+   "id": 13,
+   "gridPos": {
+    "x": 0,
+    "y": 22,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Потерянные кадры",
+   "description": "slow_listener — слушатель не успевает принимать (его сеть или канал сервера); host_rate — ведущий шлёт больше 64 кбит/с, лишнее отброшено.",
+   "id": 14,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 23,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (reason) (rate(kontakt_radio_frames_dropped_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "{{reason}}",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Отказы",
+   "description": "busy — волна занята; bad_freq — вне 87.5–108.0; full / listeners_full — достигнут лимит станций / приёмников.",
+   "id": 15,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 23,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (reason) (increase(kontakt_radio_rejected_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "{{reason}}",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Перезапуски",
+   "description": "Время запуска сервера: ступенька — обновление (radio.sh update) или подъём после падения.",
+   "id": 16,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 23,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max(kontakt_radio_start_time_seconds{instance=~\"$instance\"}) * 1000",
+     "legendFormat": "запущен",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "dateTimeAsIso",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Люди и ссылки",
+   "collapsed": false,
+   "id": 17,
+   "gridPos": {
+    "x": 0,
+    "y": 31,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Подключения",
+   "description": "Выходы станций в эфир, подключения приёмников, перенастройки ручки — за окно.",
+   "id": 18,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 32,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(kontakt_radio_host_sessions_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "станций вышло в эфир",
+     "range": true,
+     "instant": false
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(kontakt_radio_listener_sessions_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "приёмников подключилось",
+     "range": true,
+     "instant": false
+    },
+    {
+     "refId": "C",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(kontakt_radio_tunes_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "перенастроек ручки",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Ссылки на волну",
+   "description": "page — открыли ссылку (люди и мессенджеры, которые строят карточку); image — запросили картинку превью; нарисовано — промахи кеша.",
+   "id": 19,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 32,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (kind) (increase(kontakt_radio_share_views_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "{{kind}}",
+     "range": true,
+     "instant": false
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(kontakt_radio_og_renders_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "нарисовано",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Сколько длится эфир",
+   "description": "Медиана и 90-й процентиль времени в эфире у станций, закончивших вещание за последний час.",
+   "id": 20,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 32,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "histogram_quantile(0.5, sum by (le) (increase(kontakt_radio_on_air_seconds_bucket{instance=~\"$instance\"}[1h])))",
+     "legendFormat": "p50",
+     "range": true,
+     "instant": false
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "histogram_quantile(0.9, sum by (le) (increase(kontakt_radio_on_air_seconds_bucket{instance=~\"$instance\"}[1h])))",
+     "legendFormat": "p90",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "alertlist",
+   "title": "Тревоги радио",
+   "id": 21,
+   "description": "Правила — monitoring/prometheus/rules/radio.yml.",
+   "gridPos": {
+    "x": 0,
+    "y": 40,
+    "w": 24,
+    "h": 6
+   },
+   "options": {
+    "alertListOptions": {},
+    "showOptions": "current",
+    "maxItems": 20,
+    "sortOrder": 1,
+    "dashboardAlerts": false,
+    "alertName": "Radio",
+    "alertInstanceLabelFilter": "",
+    "stateFilter": {
+     "firing": true,
+     "pending": true,
+     "noData": false,
+     "normal": false,
+     "error": true
+    },
+    "viewMode": "list",
+    "groupMode": "default",
+    "datasource": "prometheus"
+   }
+  }
+ ]
+}

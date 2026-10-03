@@ -35,6 +35,7 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       # цели, которые пишут скрипты запуска (порты подобраны на месте): scripts/cluster-tunnel.sh
       - ./prometheus/targets:/etc/prometheus/targets:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
 
   # Машина под нагрузкой (CPU, память, сеть) на Linux:

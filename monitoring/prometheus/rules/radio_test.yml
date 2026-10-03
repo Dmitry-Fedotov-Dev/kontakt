@@ -1,0 +1,105 @@
+# Проверка тревог радио на синтетических рядах:
+#   promtool test rules monitoring/prometheus/rules/radio_test.yml
+# (в CI — тем же образом Prometheus, что и в docker-compose)
+rule_files:
+  - radio.yml
+evaluation_interval: 15s
+
+tests:
+  - name: радио упало
+    interval: 15s
+    input_series:
+      - series: 'up{job="radio",instance="radio-local"}'
+        values: '1 1 0x8'
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: RadioDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: RadioDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: radio, instance: radio-local }
+            exp_annotations:
+              summary: "Радио не отвечает (radio-local)"
+              description: "Prometheus не может забрать /metrics больше минуты: сервер упал, телефон уснул или туннель сменил адрес."
+
+  - name: эфир прерывается — ведущий шлёт 20 кадров/с вместо 50
+    interval: 15s
+    input_series:
+      - series: 'kontakt_radio_stations'
+        values: '1x40'
+      - series: 'kontakt_radio_frames_in_total'
+        values: '0+300x40'   # 300 за 15 с = 20 кадров/с
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RadioStationStalls
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Эфир прерывается: от ведущих приходит меньше 45 кадров/с на станцию"
+              description: "Вкладку ведущего нужно держать открытой на экране; проверьте связь телефона ведущего."
+
+  - name: нормальный эфир — тревог нет
+    interval: 15s
+    input_series:
+      - series: 'kontakt_radio_stations'
+        values: '2x40'
+      - series: 'kontakt_radio_frames_in_total'
+        values: '0+1500x40'  # 100 кадров/с на две станции
+      - series: 'kontakt_radio_frames_out_total'
+        values: '0+15000x40'
+      - series: 'kontakt_radio_frames_dropped_total{reason="slow_listener"}'
+        values: '0+15x40'    # 0,1% — норма
+      - series: 'kontakt_radio_frames_dropped_total{reason="host_rate"}'
+        values: '0x40'
+      - series: 'kontakt_radio_start_time_seconds'
+        values: '1000x40'
+    alert_rule_test:
+      - { eval_time: 8m, alertname: RadioStationStalls, exp_alerts: [] }
+      - { eval_time: 8m, alertname: RadioListenersLosingFrames, exp_alerts: [] }
+      - { eval_time: 8m, alertname: RadioHostOverRate, exp_alerts: [] }
+      - { eval_time: 8m, alertname: RadioRestartLoop, exp_alerts: [] }
+
+  - name: слушатели теряют 10% кадров
+    interval: 15s
+    input_series:
+      - series: 'kontakt_radio_frames_out_total'
+        values: '0+900x60'
+      - series: 'kontakt_radio_frames_dropped_total{reason="slow_listener"}'
+        values: '0+100x60'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: RadioListenersLosingFrames
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Слушатели теряют больше 5% кадров"
+              description: "Канал сервера не успевает раздавать эфир или у части слушателей слабая сеть."
+
+  - name: упирается в лимит приёмников
+    interval: 1m
+    input_series:
+      - series: 'kontakt_radio_rejected_total{reason="listeners_full"}'
+        values: '0 0 3 3 3'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: RadioFull
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Радио отказывает: нет места для станций или приёмников"
+              description: "Достигнут -max-stations или -max-listeners. Поднимите лимит, если канал сервера позволяет (64 кбит/с на настроенного слушателя)."
+
+  - name: сервер перезапускается по кругу
+    interval: 1m
+    input_series:
+      - series: 'kontakt_radio_start_time_seconds'
+        values: '100 160 220 280 340 400'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RadioRestartLoop
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Радио перезапускалось больше трёх раз за 15 минут"
+              description: "scripts/radio.sh поднимает упавший сервер сам — смотрите его вывод: что-то роняет сервер."

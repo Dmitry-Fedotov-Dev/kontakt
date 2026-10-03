@@ -56,7 +56,13 @@ var staticFS embed.FS
 type Options struct {
 	MaxStations  int
 	MaxListeners int
+	// PrivateMetrics убирает /metrics со страницы радио: тогда метрики отдаёт только
+	// MetricsHandler на отдельном адресе (флаг -admin).
+	PrivateMetrics bool
 }
+
+// MetricsHandler — /metrics для отдельного служебного адреса.
+func (h *Hub) MetricsHandler() http.Handler { return h.reg.Handler() }
 
 type Hub struct {
 	opt     Options
@@ -65,13 +71,21 @@ type Hub struct {
 	ls      map[*listener]struct{}
 	version atomic.Uint64
 
-	framesIn *metrics.Counter
-	bytesOut *metrics.Counter
-	dropped  *metrics.Counter
-	rejected *metrics.CounterVec
-	reg      *metrics.Registry
-	upgrader websocket.Upgrader
-	og       ogCache
+	framesIn  *metrics.Counter
+	framesOut *metrics.Counter
+	bytesIn   *metrics.Counter
+	bytesOut  *metrics.Counter
+	dropped   *metrics.CounterVec
+	rejected  *metrics.CounterVec
+	hosts     *metrics.Counter
+	sessions  *metrics.Counter
+	tunes     *metrics.Counter
+	shares    *metrics.CounterVec
+	ogRenders *metrics.Counter
+	onAir     *metrics.Histogram
+	reg       *metrics.Registry
+	upgrader  websocket.Upgrader
+	og        ogCache
 }
 
 type station struct {
@@ -104,11 +118,48 @@ func NewHub(opt Options) *Hub {
 	}
 	h := &Hub{opt: opt, st: map[int]*station{}, ls: map[*listener]struct{}{}, reg: metrics.NewRegistry()}
 	h.upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
-	h.framesIn = h.reg.Counter("kontakt_radio_frames_in_total", "Кадры μ-law, принятые от ведущих")
-	h.bytesOut = h.reg.Counter("kontakt_radio_bytes_out_total", "Байты эфира, отданные слушателям")
-	h.dropped = h.reg.Counter("kontakt_radio_frames_dropped_total", "Кадры, не доставленные медленным слушателям или сверх 64 кбит/с")
-	h.rejected = h.reg.CounterVec("kontakt_radio_rejected_total", "Отказы в подключении", "reason",
-		"busy", "bad_freq", "full")
+	// Метрики — только счётчики и частоты: ни адресов, ни названий станций и треков (их
+	// задают люди, и в метках они раздули бы число рядов без предела).
+	h.framesIn = h.reg.Counter("kontakt_radio_frames_in_total", "Кадры μ-law (20 мс), принятые от ведущих")
+	h.framesOut = h.reg.Counter("kontakt_radio_frames_out_total", "Кадры, поставленные в отправку слушателям")
+	h.bytesIn = h.reg.Counter("kontakt_radio_bytes_in_total", "Байты эфира от ведущих")
+	h.bytesOut = h.reg.Counter("kontakt_radio_bytes_out_total", "Байты эфира, поставленные в отправку слушателям")
+	h.dropped = h.reg.CounterVec("kontakt_radio_frames_dropped_total",
+		"Потерянные кадры: slow_listener — слушатель не успевает принимать, host_rate — ведущий шлёт больше 64 кбит/с",
+		"reason", "slow_listener", "host_rate")
+	h.rejected = h.reg.CounterVec("kontakt_radio_rejected_total",
+		"Отказы: busy — волна занята, bad_freq — вне диапазона, full — нет места для станции, listeners_full — для приёмника",
+		"reason", "busy", "bad_freq", "full", "listeners_full")
+	h.hosts = h.reg.Counter("kontakt_radio_host_sessions_total", "Выходы станций в эфир")
+	h.sessions = h.reg.Counter("kontakt_radio_listener_sessions_total", "Подключения приёмников")
+	h.tunes = h.reg.Counter("kontakt_radio_tunes_total", "Перенастройки приёмников (ручка поймала или потеряла станцию)")
+	h.shares = h.reg.CounterVec("kontakt_radio_share_views_total",
+		"Открытия ссылок на волну: page — страница (люди и мессенджеры), image — картинка превью", "kind", "page", "image")
+	h.ogRenders = h.reg.Counter("kontakt_radio_og_renders_total", "Нарисованные картинки превью (промахи кеша)")
+	h.onAir = h.reg.Histogram("kontakt_radio_on_air_seconds", "Сколько станция пробыла в эфире",
+		[]float64{10, 60, 300, 900, 1800, 3600, 7200, 14400, 43200})
+	start := float64(time.Now().Unix())
+	h.reg.Gauge("kontakt_radio_start_time_seconds", "Когда запущен сервер радио (видно перезапуски и обновления)",
+		func() float64 { return start })
+	h.reg.Gauge("kontakt_radio_listeners_tuned", "Приёмники, настроенные на станцию в эфире (остальные слушают шорох)", func() float64 {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		n := 0
+		for _, s := range h.st {
+			n += len(s.subs)
+		}
+		return float64(n)
+	})
+	h.reg.GaugeVec("kontakt_radio_station_listeners", "Слушатели по волнам (только частота: имя станции задаёт человек)", "freq",
+		func() map[string]float64 {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			m := make(map[string]float64, len(h.st))
+			for f, s := range h.st {
+				m[FormatFreq(f)] = float64(len(s.subs))
+			}
+			return m
+		})
 	h.reg.Gauge("kontakt_radio_stations", "Станции в эфире", func() float64 {
 		h.mu.Lock()
 		defer h.mu.Unlock()
@@ -132,7 +183,9 @@ func (h *Hub) Handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(h.Stations())
 	})
-	mux.Handle("/metrics", h.reg.Handler())
+	if !h.opt.PrivateMetrics {
+		mux.Handle("/metrics", h.reg.Handler())
+	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /{$}", h.serveIndex)
 	mux.HandleFunc("GET /w/{freq}", h.serveShare)
@@ -237,6 +290,8 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 	defer h.removeStation(s)
+	h.hosts.Inc()
+	defer func() { h.onAir.Observe(time.Since(s.since).Seconds()) }()
 
 	h.mu.Lock()
 	for l := range h.ls { // кто уже стоял на этой частоте — сразу слышит
@@ -275,11 +330,12 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 			tokens = burstBytes
 		}
 		if float64(len(data)) > tokens {
-			h.dropped.Inc()
+			h.dropped.Inc("host_rate")
 			continue
 		}
 		tokens -= float64(len(data))
 		h.framesIn.Add(uint64((len(data) + FrameBytes - 1) / FrameBytes))
+		h.bytesIn.Add(uint64(len(data)))
 		h.broadcast(s, data)
 	}
 }
@@ -290,9 +346,10 @@ func (h *Hub) broadcast(s *station, data []byte) {
 	for l := range s.subs {
 		select {
 		case l.out <- data: // data не меняется после отправки: одна копия на всех
+			h.framesOut.Inc()
 			h.bytesOut.Add(uint64(len(data)))
 		default:
-			h.dropped.Inc()
+			h.dropped.Inc("slow_listener")
 		}
 	}
 }
@@ -312,7 +369,7 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	if len(h.ls) >= h.opt.MaxListeners {
 		h.mu.Unlock()
-		h.rejected.Inc("full")
+		h.rejected.Inc("listeners_full")
 		http.Error(w, "приёмников слишком много", http.StatusServiceUnavailable)
 		return
 	}
@@ -324,6 +381,7 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 	l := &listener{out: make(chan []byte, listenerBuf)}
 	h.mu.Lock()
 	h.ls[l] = struct{}{}
+	h.sessions.Inc()
 	h.mu.Unlock()
 	h.changed()
 
@@ -368,6 +426,7 @@ func (h *Hub) tune(l *listener, f int) {
 		delete(s.subs, l)
 	}
 	l.tuned = f
+	h.tunes.Inc()
 	if s := h.st[f]; s != nil {
 		s.subs[l] = struct{}{}
 	}

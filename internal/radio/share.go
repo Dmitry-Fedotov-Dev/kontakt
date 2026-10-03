@@ -87,6 +87,7 @@ func (h *Hub) serveShare(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "частота вне диапазона 87.5–108.0", http.StatusNotFound)
 		return
 	}
+	h.shares.Inc("page")
 	base := baseURL(r)
 	q := url.Values{}
 	if name != "" {
@@ -170,14 +171,15 @@ func (c *ogCache) get(key string, make func() []byte) []byte {
 func (h *Hub) serveOG(w http.ResponseWriter, r *http.Request) {
 	var img []byte
 	if r.PathValue("freq") == "radio.png" {
-		img = h.og.get("", func() []byte { return OGImage(0, "", "") })
+		img = h.og.get("", func() []byte { h.ogRenders.Inc(); return OGImage(0, "", "") })
 	} else {
 		f, name, track, ok := h.shareParams(r)
 		if !ok || !strings.HasSuffix(r.PathValue("freq"), ".png") {
 			http.NotFound(w, r)
 			return
 		}
-		img = h.og.get(strconv.Itoa(f)+"\x00"+name+"\x00"+track, func() []byte { return OGImage(f, name, track) })
+		h.shares.Inc("image")
+		img = h.og.get(strconv.Itoa(f)+"\x00"+name+"\x00"+track, func() []byte { h.ogRenders.Inc(); return OGImage(f, name, track) })
 	}
 	if img == nil {
 		http.Error(w, "картинка не собралась", http.StatusInternalServerError)

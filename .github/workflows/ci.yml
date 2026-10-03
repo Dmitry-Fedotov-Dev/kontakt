@@ -52,6 +52,18 @@ jobs:
         run: |
           python3 .github/scripts/check_js.py internal/webapp/static
           python3 .github/scripts/check_js.py internal/radio/static
+      - name: monitoring config, alert rules, dashboards
+        # promtool из того же образа, что в monitoring/docker-compose.yml. Тесты правил гоняют
+        # тревоги радио на синтетических рядах; дашборды обязаны совпадать с генераторами.
+        run: |
+          img=prom/prometheus:v3.5.0
+          docker run --rm -v "$PWD/monitoring/prometheus:/etc/prometheus:ro" --entrypoint promtool $img \
+            check config /etc/prometheus/prometheus.yml
+          docker run --rm -v "$PWD/monitoring/prometheus/rules:/rules:ro" -w /rules --entrypoint promtool $img \
+            test rules radio_test.yml
+          python3 monitoring/grafana/gen_radio_dashboard.py /tmp/kontakt-radio.json
+          diff -q /tmp/kontakt-radio.json monitoring/grafana/dashboards/kontakt-radio.json \
+            || { echo "::error::kontakt-radio.json не совпадает с gen_radio_dashboard.py — перегенерируйте"; exit 1; }
       - uses: actions/upload-artifact@v7
         with:
           name: kontakt-linux-amd64
