@@ -369,20 +369,39 @@ registerProcessor("tx", TX);
 `;
 
 let ctx = null, rx = null, rxAn = null, audioReady = null;
+const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(what)), ms))]);
 function ensureAudio() {
   if (audioReady) return audioReady;
   audioReady = (async () => {
-    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "playback" });
-    const url = URL.createObjectURL(new Blob([WORKLETS], { type: "text/javascript" }));
-    await ctx.audioWorklet.addModule(url);
-    URL.revokeObjectURL(url);
-    rx = new AudioWorkletNode(ctx, "rx", { numberOfInputs: 0, outputChannelCount: [2] });
-    rx.connect(ctx.destination);
-    rxAn = ctx.createAnalyser(); rxAn.fftSize = 512; rx.connect(rxAn); // радио «пляшет» под звук
-    if (ctx.state !== "running") await ctx.resume();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error("браузер без Web Audio — откройте в Chrome или Firefox");
+    ctx = ctx || new AC({ latencyHint: "playback" });
+    if (!ctx.audioWorklet) throw new Error("браузер без AudioWorklet — откройте в Chrome или Firefox");
+    ctx.onstatechange = () => renderHost();
+    // resume() НЕ ждём: без касания пользователя его промис висит вечно, и вместе с ним
+    // зависали бы табличка ON AIR и очередь. Звук продолжится от следующего касания экрана.
+    ctx.resume().catch(() => { /* разрешат при следующем касании — см. обработчик ниже */ });
+    if (!rx) {
+      const url = URL.createObjectURL(new Blob([WORKLETS], { type: "text/javascript" }));
+      try { await withTimeout(ctx.audioWorklet.addModule(url), 10000, "звуковой модуль не загрузился за 10 с"); }
+      finally { URL.revokeObjectURL(url); }
+      rx = new AudioWorkletNode(ctx, "rx", { numberOfInputs: 0, outputChannelCount: [2] });
+      rx.connect(ctx.destination);
+      rxAn = ctx.createAnalyser(); rxAn.fftSize = 512; rx.connect(rxAn); // радио «пляшет» под звук
+    }
   })();
-  audioReady.catch(err => { audioReady = null; hostHint("звук не включился: " + (err && err.message || err), true); });
+  audioReady.catch(err => { audioReady = null; showError("звук не включился: " + (err && err.message || err)); });
   return audioReady;
+}
+// Любое касание — повод разбудить звук, если браузер его приостановил.
+["pointerdown", "keydown"].forEach(ev => document.addEventListener(ev, () => {
+  if (ctx && ctx.state !== "running") ctx.resume().catch(() => { /* не разрешили и сейчас — попробуем при следующем касании */ });
+}, true));
+// Ошибка держится на экране 8 секунд: раньше её тут же затирало обновление подсказки.
+let errUntil = 0, errText = "";
+function showError(msg) {
+  errUntil = performance.now() + 8000; errText = msg;
+  hintHold = errUntil; hostHint(msg, true);
 }
 
 // ---------- состояние ----------
@@ -649,6 +668,7 @@ function setSticker(a, b, glitch) {
   sticker.classList.toggle("glitch", !!glitch);
 }
 function drawSticker() {
+  if (performance.now() < errUntil) return setSticker("нет звука", errText);
   if (!st.power) return setSticker("крутни ручку", "");
   const { s, d } = nearest(st.dial);
   if (s && d < CATCH) setSticker(s.n, s.t || "", st.strength < 0.7);
@@ -684,12 +704,16 @@ function pickFree() { // случайная волна подальше от ч�
 const fmt = f => (f / 10).toFixed(1);
 function hostHint(msg, warn) { const h = $("hostHint"); h.textContent = msg || " "; h.classList.toggle("warn", !!warn); }
 let hintHold = 0;
+let connecting = false, lastTxAt = 0;
 function renderHost() {
   $("hostFreq").textContent = st.hostFreq ? fmt(st.hostFreq) + " MHz" : "— MHz";
   $("fDown").disabled = $("fUp").disabled = st.onAir;
   $("onair").classList.toggle("live", st.onAir);
   $("onair").setAttribute("aria-pressed", String(st.onAir));
   if (performance.now() < hintHold) return;
+  if (connecting) return hostHint("подключаюсь к эфиру…");
+  if (ctx && ctx.state !== "running" && (st.onAir || current)) return hostHint("браузер приостановил звук — коснись экрана", true);
+  if (st.onAir && performance.now() - lastTxAt > 3000) return hostHint("звук в эфир не идёт — коснись экрана; не помогло — обнови страницу", true);
   // Тишина в эфире не выглядит как ошибка — поэтому о ней говорим прямо.
   if (st.onAir) {
     const me = st.stations.find(s => s.f === st.hostFreq);
@@ -734,7 +758,7 @@ async function ensureTx() {
   node.port.onmessage = e => {
     const { f, p } = e.data;
     vu(p);
-    if (hws && hws.readyState === 1 && hws.bufferedAmount < 16000) { hws.send(ulawEncode(f)); st.framesTx = (st.framesTx || 0) + 1; }
+    if (hws && hws.readyState === 1 && hws.bufferedAmount < 16000) { hws.send(ulawEncode(f)); st.framesTx = (st.framesTx || 0) + 1; lastTxAt = performance.now(); }
   };
   tx = { mix, air, music, monitor, mic, node };
   applyGains();
@@ -839,14 +863,18 @@ $("micBtn").onclick = async () => {
 
 $("onair").onclick = async () => {
   if (hws) { hws.close(); return; }
+  if (connecting) return;
   if (taken(st.hostFreq)) { shake($("onair")); hintHold = performance.now() + 2500; hostHint("волну " + fmt(st.hostFreq) + " уже заняли — стрелками на соседнюю", true); return; }
-  await ensureTx();
+  connecting = true; hintHold = 0; renderHost(); // табличка отвечает сразу, а не после запуска звука
+  try { await ensureTx(); } catch (_) { connecting = false; return; } // причина уже на экране
+  connecting = false;
+  lastTxAt = performance.now();
   let opened = false;
   hws = new WebSocket(wsURL("/ws/host?f=" + st.hostFreq + "&name=" + encodeURIComponent($("name").value.trim())));
   hws.onopen = () => { opened = true; st.onAir = true; $("name").disabled = true; sendTitle(); renderHost(); };
-  hws.onclose = () => {
+  hws.onclose = e => {
     hws = null; st.onAir = false; $("name").disabled = false;
-    if (!opened) { shake($("onair")); hintHold = performance.now() + 2500; hostHint("не пустили: волну заняли раньше или эфир переполнен", true); }
+    if (!opened) { shake($("onair")); showError("сервер не пустил в эфир (код " + e.code + "): волну заняли раньше, эфир переполнен или нет связи"); }
     renderHost();
   };
 };
@@ -1011,6 +1039,7 @@ function frame() {
 }
 
 st.knobAngle = (st.dial - MIN) / TURN_MHZ * 2 * Math.PI;
+setInterval(() => { if (st.mode === "tx") renderHost(); }, 1000);
 renderQueue();
 connectListen();
 requestAnimationFrame(frame);
