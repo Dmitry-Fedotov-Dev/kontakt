@@ -58,7 +58,11 @@ cleanup() {
   rm -f "$STATE/run.pid" "$TARGET"
   if [ "${MONITORING:-}" = 1 ]; then docker compose -f monitoring/docker-compose.yml down >/dev/null 2>&1 || true; fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+# Ctrl+C и TERM — выход. Без exit обработчик только прибрал бы, и цикл ниже принял бы
+# погашенный сервер за упавший и поднял его снова: так и было без туннеля.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 reload=0
 trap 'reload=1' USR1
 echo $$ >"$STATE/run.pid"
