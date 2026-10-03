@@ -6,7 +6,8 @@
 #   PORT=31000 bash scripts/radio.sh  # искать свободный порт, начиная с 31000
 #   bash scripts/radio.sh update      # из ДРУГОГО окна: git pull, сборка и перезапуск радио —
 #                                     # туннель не трогается, адрес остаётся прежним
-#   MONITORING=1 bash scripts/radio.sh  # плюс Prometheus и Grafana (Docker) — дашборд «Открытое радио»
+#   MONITORING=1 bash scripts/radio.sh  # плюс Prometheus и Grafana — дашборд «Открытое радио»
+#                                       # (Docker или без него — сам выберет monitoring/stack.sh)
 #
 # Мониторинг: скрипт всегда пишет monitoring/prometheus/targets/radio.json с портом этого
 # запуска, и уже работающий стек monitoring/ видит радио сам. Радио на телефоне (Termux,
@@ -56,7 +57,7 @@ cleanup() {
   kill $srv $cf 2>/dev/null || true
   wait 2>/dev/null || true
   rm -f "$STATE/run.pid" "$TARGET"
-  if [ "${MONITORING:-}" = 1 ]; then docker compose -f monitoring/docker-compose.yml down >/dev/null 2>&1 || true; fi
+  if [ -n "${MONITORING:-}" ]; then monitoring/stack.sh down; fi
 }
 trap cleanup EXIT
 # Ctrl+C и TERM — выход. Без exit обработчик только прибрал бы, и цикл ниже принял бы
@@ -99,14 +100,14 @@ if [ "${TUNNEL:-}" = 1 ]; then
   echo "  Открытое радио в интернете: $url"
 fi
 echo "  Локально: http://localhost:$port   (Ctrl+C — выключить)"
-if [ "${MONITORING:-}" = 1 ]; then
-  command -v docker >/dev/null || { echo "MONITORING=1: нужен Docker (на телефоне его нет — см. monitoring/radio-target.sh)"; exit 1; }
+if [ -n "${MONITORING:-}" ]; then
   pick() { local p=$1; while busy "$p"; do p=$((p + 1)); done; echo "$p"; }
   export GRAFANA_PORT="${GRAFANA_PORT:-$(pick $((port + 50)))}"
   export PROMETHEUS_PORT="${PROMETHEUS_PORT:-$(pick $((port + 51)))}"
   [ "$PROMETHEUS_PORT" != "$GRAFANA_PORT" ] || PROMETHEUS_PORT=$(pick $((GRAFANA_PORT + 1)))
-  echo "  Мониторинг: Prometheus $PROMETHEUS_PORT, Grafana $GRAFANA_PORT (первый раз Docker качает образы — пара минут)…"
-  docker compose -f monitoring/docker-compose.yml up -d 2>&1 | sed "s/^/  /"
+  echo "  Мониторинг: Prometheus $PROMETHEUS_PORT, Grafana $GRAFANA_PORT…"
+  monitoring/stack.sh up
+  if monitoring/stack.sh sees "127.0.0.1:$port"; then echo "  Prometheus видит радио"; else echo "  Prometheus НЕ видит радио — графики будут пустыми"; fi
   echo "  Дашборд: http://localhost:$GRAFANA_PORT/d/kontakt-radio"
 fi
 echo "  Обновить, не меняя адрес: в другом окне  bash scripts/radio.sh update"

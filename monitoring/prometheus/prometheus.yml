@@ -1,3 +1,5 @@
+# Файлы целей перечитываются раз в 10 с: на дисках Windows (/mnt/…) и в общих папках
+# Docker Desktop уведомления об изменении файлов не приходят, и новая цель ждала бы 5 минут.
 # Адреса по умолчанию — как в scripts/run.sh: signal (админ-порт) и media. Если порты
 # подобраны на месте (scripts/cluster-tunnel.sh), скрипт пишет их в targets/*.json, и
 # Prometheus подхватывает файл сам, без перезапуска. Незапущенные цели — down, это нормально.
@@ -14,12 +16,14 @@ scrape_configs:
       - targets: ["127.0.0.1:8091"]
     file_sd_configs:
       - files: [/etc/prometheus/targets/signal*.json]
+        refresh_interval: 10s
 
   - job_name: media
     static_configs:
       - targets: ["127.0.0.1:8082"]
     file_sd_configs:
       - files: [/etc/prometheus/targets/media*.json]
+        refresh_interval: 10s
 
   - job_name: mesh
     # узлы kontakt-node: админка Master'а и Worker'ов (как в docs/MESH.md «посмотреть
@@ -28,11 +32,13 @@ scrape_configs:
       - targets: ["127.0.0.1:7401", "127.0.0.1:7421", "127.0.0.1:7422", "127.0.0.1:7423", "127.0.0.1:7424"]
     file_sd_configs:
       - files: [/etc/prometheus/targets/mesh*.json]
+        refresh_interval: 10s
 
   - job_name: cloudflared
     # метрики своего туннеля (§19): сессии и соединения, а не «Мбит/с туннеля»
     file_sd_configs:
       - files: [/etc/prometheus/targets/cloudflared*.json]
+        refresh_interval: 10s
 
   - job_name: radio
     # «Открытое радио». Цели — только из файлов: порт подбирается на месте.
@@ -40,6 +46,7 @@ scrape_configs:
     #   на телефоне за туннелем: monitoring/radio-target.sh https://….trycloudflare.com
     file_sd_configs:
       - files: [/etc/prometheus/targets/radio*.json]
+        refresh_interval: 10s
 
   - job_name: host
     static_configs:

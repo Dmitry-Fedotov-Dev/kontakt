@@ -120,7 +120,7 @@ K6_PROMETHEUS_RW_SERVER_URL=http://127.0.0.1:9092/api/v1/write K6_FEATURES=nativ
 
 Порты заняты вашими сервисами — `GRAFANA_PORT=… PROMETHEUS_PORT=… docker compose …`, либо `MONITORING=1 ./scripts/cluster-tunnel.sh`: подберёт свободные, поднимет стек и напечатает адрес Grafana. Станцию, запущенную `cluster-tunnel.sh`, Prometheus находит сам (файлы целей в `monitoring/prometheus/targets/`).
 
-Сеть стека хостовая (метрики слушают только `127.0.0.1`); в Docker Desktop включите host networking или запускайте из WSL. Дашборд правится в `monitoring/grafana/gen_dashboard.py`, PNG за прогон — `monitoring/report.sh`.
+Без Docker или с Docker Desktop (Windows, macOS) — `monitoring/local.sh up`: те же Prometheus, Grafana, правила и дашборды обычными программами (скачиваются один раз в `~/.cache/kontakt-monitoring`). `MONITORING=1` в скриптах выбирает сам (`monitoring/stack.sh`): у Docker Desktop «хост» — его виртуальная машина, и ни браузер, ни станция в WSL до такого стека не достают. Явно — `MONITORING=local` или `MONITORING=docker`. Дашборд правится в `monitoring/grafana/gen_dashboard.py`, PNG за прогон — `monitoring/report.sh`.
 
 **Радио.** Дашборд «Открытое радио» (`/d/kontakt-radio`): станции и слушатели (по волнам — только частота), поток от ведущих против нормы 50 кадров/с, полоса, потери кадров с причиной, отказы, перезапуски, ссылки на волну и картинки превью, длительность эфира. `scripts/radio.sh` сам пишет цель для Prometheus; `MONITORING=1 bash scripts/radio.sh` ещё и поднимает стек. Радио на телефоне — Prometheus на компьютере берёт метрики через туннель: `monitoring/radio-target.sh https://….trycloudflare.com`. Метрики — только счётчики, без адресов и названий; спрятать их из туннеля — флаг `-admin 127.0.0.1:27621`.
 

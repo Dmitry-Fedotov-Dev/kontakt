@@ -8,7 +8,9 @@
 #
 #   ./scripts/cluster-tunnel.sh              # адрес https://….trycloudflare.com — в выводе
 #   PORT_BASE=31000 ./scripts/cluster-tunnel.sh   # искать свободные порты, начиная с 31000
-#   MONITORING=1 ./scripts/cluster-tunnel.sh      # плюс Prometheus и Grafana (Docker) на свободных портах
+#   MONITORING=1 ./scripts/cluster-tunnel.sh      # плюс Prometheus и Grafana на свободных портах:
+#                                                 # с Docker Desktop или без Docker — обычными программами
+#                                                 # (monitoring/local.sh), иначе в Docker; см. monitoring/stack.sh
 #
 # Quick Tunnel — только для проверки и демонстраций: без гарантии доступности, до 200
 # одновременных HTTP-запросов, адрес меняется при каждом запуске. Для постоянного адреса —
@@ -67,14 +69,7 @@ pick SIGNAL_ADMIN $((PORT_BASE + 11))
 pick MEDIA_WS $((PORT_BASE + 2))
 pick MEDIA_GRPC $((PORT_BASE + 22))
 pick CF_METRICS $((PORT_BASE + 40))
-if [ "${MONITORING:-}" = 1 ]; then
-  command -v docker >/dev/null || { echo "MONITORING=1: нужен Docker (в WSL — Docker Desktop с интеграцией WSL или docker в WSL)"; exit 1; }
-  if docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi "docker desktop"; then
-    # Стек живёт в сети хоста (метрики станции слушают только 127.0.0.1). У Docker Desktop
-    # «хост» — его виртуальная машина: без host networking Prometheus не видит станцию в WSL.
-    echo "Docker Desktop: включите Settings → Resources → Network → Enable host networking (4.34+),"
-    echo "  иначе мониторинг не увидит станцию. Либо docker прямо в WSL."
-  fi
+if [ -n "${MONITORING:-}" ]; then
   pick GRAFANA_PORT $((PORT_BASE + 50))
   pick PROMETHEUS_PORT $((PORT_BASE + 51))
   export GRAFANA_PORT PROMETHEUS_PORT
@@ -88,7 +83,7 @@ cleanup() {
   kill "${pids[@]}" 2>/dev/null || true
   wait 2>/dev/null || true
   rm -f "$TARGETS"/{signal,media,cloudflared}-cluster-tunnel.json
-  if [ "${MONITORING:-}" = 1 ]; then docker compose -f monitoring/docker-compose.yml down >/dev/null 2>&1 || true; fi
+  if [ -n "${MONITORING:-}" ]; then monitoring/stack.sh down; fi
 }
 trap cleanup EXIT INT TERM
 
@@ -154,35 +149,16 @@ echo "Контакт доступен: $url"
 echo "  (два разных браузера или обычное окно + инкогнито — иначе станция видит одного человека)"
 echo "  метрики туннеля: http://127.0.0.1:$CF_METRICS/metrics, журналы: $STATE/"
 echo
-grafana=""
-if [ "${MONITORING:-}" = 1 ]; then
+if [ -n "${MONITORING:-}" ]; then
   echo "Мониторинг: Prometheus $PROMETHEUS_PORT, Grafana $GRAFANA_PORT…"
-  # на экран и в журнал, каждая строка со временем: первый запуск качает образы (~400 МБ),
-  # и молча это выглядело зависанием
-  echo "  (первый раз Docker скачивает образы Prometheus и Grafana — пара минут)"
-  docker compose -f monitoring/docker-compose.yml up -d 2>&1 | while IFS= read -r l; do printf '%s %s\n' "$(date +%T)" "$l"; done | tee -a "$STATE/monitoring.log"
-  # Проверка изнутри контейнеров: с Docker Desktop «хост» контейнера — не WSL, и запрос из WSL
-  # на 127.0.0.1 не дошёл бы, хотя Grafana в Windows-браузере открывается.
-  in_ct() { docker exec "kontakt-monitoring-$1-1" wget -qO- "$2" 2>/dev/null; }
-  for _ in $(seq 60); do in_ct grafana "http://127.0.0.1:$GRAFANA_PORT/api/health" >/dev/null && { grafana="http://localhost:$GRAFANA_PORT"; break; }; sleep 2; done
-  [ -n "$grafana" ] || printf '%s Grafana не ответила за 2 мин — docker compose -f monitoring/docker-compose.yml logs grafana\n' "$(date +%T)" | tee -a "$STATE/monitoring.log"
-  # Видит ли Prometheus станцию: самая частая беда с Docker Desktop без host networking
-  seen=""
-  for _ in $(seq 15); do
-    in_ct prometheus "http://127.0.0.1:$PROMETHEUS_PORT/api/v1/targets?state=active" | grep -q "\"scrapeUrl\":\"http://127.0.0.1:$SIGNAL_ADMIN/metrics\"[^}]*\"health\":\"up\"" && { seen=1; break; }
-    sleep 2
-  done
-  if [ -n "$seen" ]; then
+  monitoring/stack.sh up 2>&1 | while IFS= read -r l; do printf '%s %s\n' "$(date +%T)" "$l"; done | tee -a "$STATE/monitoring.log"
+  if monitoring/stack.sh sees "127.0.0.1:$SIGNAL_ADMIN"; then
     printf '%s Prometheus видит станцию (signal 127.0.0.1:%s — up)\n' "$(date +%T)" "$SIGNAL_ADMIN" | tee -a "$STATE/monitoring.log"
   else
-    printf '%s Prometheus НЕ видит станцию на 127.0.0.1:%s — графики будут пустыми.\n' "$(date +%T)" "$SIGNAL_ADMIN" | tee -a "$STATE/monitoring.log"
-    echo "  Docker Desktop: Settings → Resources → Network → Enable host networking, затем перезапуск скрипта;"
-    echo "  либо docker прямо в WSL (sudo apt install docker.io) вместо Docker Desktop."
+    printf '%s Prometheus НЕ видит станцию на 127.0.0.1:%s — графики будут пустыми; журналы: data/monitoring-local/ или docker compose logs\n' "$(date +%T)" "$SIGNAL_ADMIN" | tee -a "$STATE/monitoring.log"
   fi
-fi
-if [ -n "$grafana" ]; then
-  echo "Мониторинг: $grafana (дашборды «Контакт: станция» и «Kontakt Mesh»)"
-elif [ "${MONITORING:-}" != 1 ]; then
+  echo "Мониторинг: http://localhost:$GRAFANA_PORT (Dashboards → Kontakt: «Контакт: станция», «Kontakt Mesh», «Открытое радио»)"
+else
   echo "Мониторинг: MONITORING=1 ./scripts/cluster-tunnel.sh — или уже запущенный стек monitoring/ увидит эту станцию сам"
 fi
 echo "Ctrl+C — остановить кластер, этот туннель и его мониторинг (другие туннели не затрагиваются)"
