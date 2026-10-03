@@ -268,7 +268,7 @@ function setIdle(kind, text, hint) {
   gate.hidden = termsOk;
   handset.classList.toggle("entry", !termsOk);
   syncMain();
-  lcd(kind || "", text || "Трубка лежит", hint || (termsOk ? "Снимите трубку — вас соединят со случайным человеком." : "Случайный собеседник, только голос. Ничего не записывается."));
+  lcd(kind || "", text || "Трубка лежит", hint || (termsOk ? "Снимите трубку — вас соединят со случайным человеком на станции." : "Случайный собеседник, только голос. Ничего не записывается."));
 }
 function syncMain() {
   if (me.banned) { mainBtn.hidden = true; return; }
