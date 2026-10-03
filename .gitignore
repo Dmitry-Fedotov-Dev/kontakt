@@ -9,3 +9,5 @@ dist/
 build/
 *.log
 .DS_Store
+k6/**/recordings/
+reports/
