@@ -37,7 +37,16 @@ jobs:
         with:
           go-version-file: go.mod
       - name: build
-        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/loadgen
+        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/loadgen ./cmd/kontakt-node
+      - name: kontakt-node for OpenWrt
+        # узел mesh обязан собираться для роутеров (docs/MESH.md, фаза 5): MIPS без FPU,
+        # ARM. Собирается здесь, чтобы зависимость с cgo или без softfloat не пришла молча.
+        run: |
+          for t in linux/mipsle linux/mips linux/arm linux/arm64; do
+            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} GOMIPS=softfloat \
+              go build -trimpath -ldflags "-s -w" -o "bin/kontakt-node-${t%/*}-${t#*/}" ./cmd/kontakt-node
+          done
+          ls -la bin/kontakt-node-*
       - name: static JS
         # статика вшита в web: синтаксическая ошибка дошла бы до браузера молча
         run: python3 .github/scripts/check_js.py internal/webapp/static
