@@ -17,11 +17,14 @@ type Heartbeat struct {
 	Utilization  float64 `json:"utilization"`   // -1 — ёмкость канала неизвестна
 	CallsFree    int     `json:"calls_free"`
 	Version      string  `json:"version"`
+	// Рёбра узла — для графа системы у Master'а (§3: топология). Не длиннее MaxPeers.
+	Links []AdvertLink `json:"links,omitempty"`
 }
 
 // PeerInfo — что Master сообщает о другом узле.
 type PeerInfo struct {
 	ID     NodeID            `json:"id"`
+	Name   string            `json:"name,omitempty"` // имя для людей; NodeID — для машин
 	Pub    ed25519.PublicKey `json:"pub"`
 	Role   Role              `json:"role"`
 	Addr   string            `json:"addr"`
@@ -71,6 +74,9 @@ func (r *Registry) Beat(id NodeID, hb Heartbeat) bool {
 	e := r.m[id]
 	if e == nil {
 		return false
+	}
+	if len(hb.Links) > 64 { // граф ограничен: узел не раздует реестр Master'а
+		hb.Links = hb.Links[:64]
 	}
 	e.Heartbeat, e.LastSeen, e.Health = hb, r.now(), hb.Health
 	if e.Health == "" {

@@ -23,6 +23,7 @@ type Advert struct {
 	TTL         int64        `json:"ttl"`    // нс
 	Hops        int          `json:"hops"`   // сколько раз уже пересылали
 	Role        Role         `json:"role"`
+	Name        string       `json:"name,omitempty"`
 	Health      Health       `json:"health"`
 	Utilization float64      `json:"util"` // -1 — неизвестна
 	CallsFree   int          `json:"calls_free"`

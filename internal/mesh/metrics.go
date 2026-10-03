@@ -66,6 +66,7 @@ func (n *Node) MetricsRegistry(cf *Cloudflared) *metrics.Registry {
 		return 0
 	})
 	r.Gauge("kontakt_mesh_topology_nodes", "Узлы в ограниченной топологии вокруг этого.", func() float64 { return float64(len(n.Topo.Nodes())) })
+	n.graphMetrics(r)
 	if n.Registry != nil {
 		r.GaugeVec("kontakt_registry_nodes", "Узлы в реестре Master'а по состоянию.", "health", func() map[string]float64 {
 			out := map[string]float64{string(Healthy): 0, string(Degraded): 0, string(Offline): 0}

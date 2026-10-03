@@ -56,3 +56,15 @@ func TestCounterFuncType(t *testing.T) {
 		}
 	}
 }
+
+// Ряды с несколькими метками; значения меток экранируются по формату Prometheus.
+func TestGaugeSet(t *testing.T) {
+	r := NewRegistry()
+	r.GaugeSet("g", "help", func() []Sample {
+		return []Sample{{Labels: [][2]string{{"source", "a"}, {"title", `узел "1"\x`}}, Value: 2.5}}
+	})
+	out := scrape(r)
+	if want := `g{source="a",title="узел \"1\"\\x"} 2.5`; !strings.Contains(out, want) {
+		t.Fatalf("нет %q:\n%s", want, out)
+	}
+}

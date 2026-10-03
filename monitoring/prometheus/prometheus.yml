@@ -16,6 +16,12 @@ scrape_configs:
     static_configs:
       - targets: ["127.0.0.1:8082"]
 
+  - job_name: mesh
+    # узлы kontakt-node: админка Master'а и Worker'ов (как в docs/MESH.md «посмотреть
+    # руками»); на своей установке впишите свои адреса админок
+    static_configs:
+      - targets: ["127.0.0.1:7401", "127.0.0.1:7421", "127.0.0.1:7422", "127.0.0.1:7423", "127.0.0.1:7424"]
+
   - job_name: host
     static_configs:
       - targets: ["127.0.0.1:9101"] # профиль linux-host

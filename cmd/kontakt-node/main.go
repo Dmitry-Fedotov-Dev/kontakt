@@ -26,6 +26,7 @@ import (
 
 func main() {
 	role := flag.String("role", "worker", "master | worker | standalone")
+	name := flag.String("name", "", "имя узла для людей (на графе в Grafana), например «дом-роутер»")
 	keyPath := flag.String("identity", "data/node.key", "ключ узла: создаётся при первом запуске, переживает перезапуск")
 	listen := flag.String("listen", ":7400", "адрес для mesh-соединений (TCP)")
 	advertise := flag.String("advertise", "", "как до узла достучаться снаружи (по умолчанию -listen)")
@@ -53,7 +54,7 @@ func main() {
 		return
 	}
 
-	cfg := mesh.Config{Role: mesh.Role(*role), Identity: id, Listen: *listen, Advertise: *advertise,
+	cfg := mesh.Config{Role: mesh.Role(*role), Name: *name, Identity: id, Listen: *listen, Advertise: *advertise,
 		MasterAddr: *masterAddr, JoinToken: os.Getenv("KONTAKT_JOIN_TOKEN"),
 		MaxPeers: *maxPeers, MaxHops: *maxHops, CapacityMbps: *capacity, Reserve: *reserve}
 	if *bootstrap != "" {

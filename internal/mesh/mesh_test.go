@@ -426,3 +426,48 @@ func TestNodeMetricsUnknownCapacity(t *testing.T) {
 		}
 	}
 }
+
+// Граф у Master'а: рёбра из heartbeat'ов сводятся в пары, одностороннее ребро —
+// unconfirmed, OFFLINE-узел остаётся привязан к Master'у ребром lost.
+func TestMasterGraph(t *testing.T) {
+	mid, _ := NewIdentity()
+	m, _ := NewNode(Config{Role: RoleMaster, Identity: mid, Name: "master"})
+	clock := time.Now()
+	m.Registry.now = func() time.Time { return clock }
+	ok := LinkMetrics{RTT: 10 * time.Millisecond, Samples: 20}
+	m.Registry.Upsert(PeerInfo{ID: "A", Role: RoleWorker, Name: "a"}, nil, Version)
+	m.Registry.Upsert(PeerInfo{ID: "B", Role: RoleWorker}, nil, Version)
+	m.Registry.Upsert(PeerInfo{ID: "C", Role: RoleWorker}, nil, Version)
+	m.Registry.Beat("A", Heartbeat{Health: Healthy, Links: []AdvertLink{{To: "B", Metrics: ok}, {To: "C", Metrics: ok}}})
+	m.Registry.Beat("B", Heartbeat{Health: Healthy, Links: []AdvertLink{{To: "A", Metrics: LinkMetrics{RTT: 30 * time.Millisecond, Loss: 0.02, Samples: 20}}}})
+	m.Registry.Beat("C", Heartbeat{Health: Healthy})
+	nodes, edges := m.Graph()
+	if len(nodes) != 4 {
+		t.Fatalf("узлов %d", len(nodes))
+	}
+	q := map[string]GraphEdge{}
+	for _, e := range edges {
+		q[string(e.A)+"-"+string(e.B)] = e
+	}
+	if e := q["A-B"]; !e.Confirmed || e.Quality != "warning" || e.Metrics.RTT != 30*time.Millisecond {
+		t.Fatalf("A–B: худшая из двух оценок и warning по потерям 2%%: %+v", e)
+	}
+	if e := q["A-C"]; e.Confirmed || e.Quality != "unconfirmed" {
+		t.Fatalf("A–C объявил только A: %+v", e)
+	}
+	clock = clock.Add(20 * time.Second) // дольше TTL (15 с) — OFFLINE, но меньше 3×TTL — ещё не удалены
+	m.Registry.Expire()
+	_, edges = m.Graph()
+	lost := 0
+	for _, e := range edges {
+		if e.Control && e.Quality == "lost" {
+			lost++
+		}
+		if !e.Control {
+			t.Fatalf("рёбра OFFLINE-узлов остались на графе: %+v", e)
+		}
+	}
+	if lost != 3 {
+		t.Fatalf("рёбер lost %d, ждали 3", lost)
+	}
+}

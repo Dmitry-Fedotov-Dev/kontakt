@@ -24,6 +24,7 @@ type Stats struct {
 // Config — настройки узла.
 type Config struct {
 	Role       Role
+	Name       string // имя узла для людей (на графе); по умолчанию — начало NodeID
 	Identity   *Identity
 	Listen     string            // адрес для входящих mesh-соединений (TCP)
 	Advertise  string            // как до нас достучаться (по умолчанию Listen)
@@ -99,6 +100,7 @@ type helloBody struct {
 
 type registerBody struct {
 	Role       Role       `json:"role"`
+	Name       string     `json:"name,omitempty"`
 	Addr       string     `json:"addr"`
 	Proof      []byte     `json:"proof"` // HMAC(токен, NodeID|время): токен по сети не идёт
 	ProofTS    int64      `json:"proof_ts"`
@@ -521,7 +523,7 @@ func (n *Node) onRegister(c Conn, e *Envelope) {
 		c.Close()
 		return
 	}
-	info := PeerInfo{ID: e.From, Pub: e.Pub, Role: rb.Role, Addr: rb.Addr, Health: Healthy}
+	info := PeerInfo{ID: e.From, Name: rb.Name, Pub: e.Pub, Role: rb.Role, Addr: rb.Addr, Health: Healthy}
 	n.Registry.Upsert(info, rb.Transports, rb.Version)
 	adm := IssueAdmission(n.cfg.Identity, e.From, e.Pub, rb.Role, n.cfg.AdmissionTTL)
 	if n.send(c, MsgAdmission, admissionBody{Admission: adm, Peers: n.Registry.Peers(e.From, n.cfg.MaxPeers)}) != nil {
@@ -596,7 +598,7 @@ func (n *Node) masterSession() error {
 	}
 	defer c.Close()
 	ts := time.Now().UnixNano()
-	if err := n.send(c, MsgRegister, registerBody{Role: n.cfg.Role, Addr: n.cfg.Advertise,
+	if err := n.send(c, MsgRegister, registerBody{Role: n.cfg.Role, Name: n.cfg.Name, Addr: n.cfg.Advertise,
 		Proof: joinProof(n.cfg.JoinToken, n.ID, ts), ProofTS: ts,
 		Transports: []PathKind{n.cfg.Transport.Kind()}, Version: Version}); err != nil {
 		return err
@@ -708,7 +710,8 @@ func (n *Node) heartbeat() Heartbeat {
 	nc, cc := n.Capacity()
 	cpu, mem := processUsage()
 	return Heartbeat{Health: n.health(nc), CPU: cpu, MemoryMB: mem, ActiveCalls: cc.ActiveCalls,
-		BandwidthBps: nc.ObservedMbps * 1e6, Utilization: nc.Utilization, CallsFree: cc.Calls, Version: Version}
+		BandwidthBps: nc.ObservedMbps * 1e6, Utilization: nc.Utilization, CallsFree: cc.Calls, Version: Version,
+		Links: n.Links()}
 }
 
 // Links — рёбра к соседям с замерами.
@@ -739,7 +742,7 @@ func (n *Node) advertise() {
 	ver := n.advVer64
 	n.mu.Unlock()
 	a := Advert{Origin: n.ID, Version: ver, Issued: time.Now().UnixNano(), TTL: int64(n.cfg.AdvertTTL),
-		Role: n.cfg.Role, Health: n.health(nc), Utilization: nc.Utilization, CallsFree: cc.Calls, Links: n.Links()}
+		Role: n.cfg.Role, Name: n.cfg.Name, Health: n.health(nc), Utilization: nc.Utilization, CallsFree: cc.Calls, Links: n.Links()}
 	n.Topo.Apply(&a)
 	e, err := n.signer.Seal(MsgTopology, a)
 	if err != nil {
@@ -845,7 +848,7 @@ func (n *Node) RouteFailovers() int {
 func (n *Node) adverts() map[NodeID]Advert {
 	ads := n.Topo.Snapshot()
 	nc, cc := n.Capacity()
-	ads[n.ID] = Advert{Origin: n.ID, Role: n.cfg.Role, Health: n.health(nc), Utilization: nc.Utilization,
+	ads[n.ID] = Advert{Origin: n.ID, Role: n.cfg.Role, Name: n.cfg.Name, Health: n.health(nc), Utilization: nc.Utilization,
 		CallsFree: cc.Calls, Links: n.Links()}
 	return ads
 }

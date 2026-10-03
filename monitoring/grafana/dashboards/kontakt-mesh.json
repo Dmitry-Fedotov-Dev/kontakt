@@ -1,0 +1,803 @@
+{
+ "uid": "kontakt-mesh",
+ "title": "Kontakt Mesh",
+ "tags": [
+  "kontakt",
+  "mesh"
+ ],
+ "description": "Граф системы Kontakt Mesh: Master, Worker'ы, рёбра и их качество.",
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "10s",
+ "editable": true,
+ "time": {
+  "from": "now-30m",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "observer",
+    "label": "Глазами узла",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "query_result(kontakt_mesh_observer_info)",
+     "refId": "A"
+    },
+    "regex": "/observer=\"(?<value>[^\"]+)\".*title=\"(?<text>[^\"]+)\"/",
+    "refresh": 2,
+    "sort": 1,
+    "includeAll": false,
+    "multi": false
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "panels": [
+  {
+   "type": "row",
+   "title": "Сводка",
+   "collapsed": false,
+   "id": 1,
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Worker'ы HEALTHY",
+   "description": "Worker'ы в состоянии HEALTHY глазами наблюдателя (Master не считается).",
+   "id": 2,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(kontakt_mesh_graph_node{observer=\"$observer\",detail__health=\"HEALTHY\",detail__role!=\"master\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "DEGRADED",
+   "description": "Узлы в DEGRADED: канал выше порога предупреждения или узел сам сообщил о деградации.",
+   "id": 3,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 4,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(kontakt_mesh_graph_node{observer=\"$observer\",detail__health=\"DEGRADED\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "OFFLINE",
+   "description": "Узлы без heartbeat дольше TTL (у Master'а).",
+   "id": 4,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(kontakt_mesh_graph_node{observer=\"$observer\",detail__health=\"OFFLINE\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Рёбра в порядке",
+   "description": "Рёбра данных, качество которых проходит пороги маршрутизации.",
+   "id": 5,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(kontakt_mesh_graph_edge{observer=\"$observer\",detail__quality=\"ok\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Плохие рёбра",
+   "description": "Рёбра warning или critical: маршрутизация их штрафует или обходит.",
+   "id": 6,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(kontakt_mesh_graph_edge{observer=\"$observer\",detail__quality=~\"warning|critical\"}) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Failover за час",
+   "description": "Сколько раз основной маршрут отказывал и заменялся (все узлы).",
+   "id": 7,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 20,
+    "y": 1,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(kontakt_route_failovers_total[1h])) or vector(0)",
+     "legendFormat": "__auto",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Граф системы",
+   "collapsed": false,
+   "id": 8,
+   "gridPos": {
+    "x": 0,
+    "y": 5,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "nodeGraph",
+   "title": "Kontakt Mesh — граф системы",
+   "id": 9,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "description": "Узлы и рёбра глазами выбранного наблюдателя (Master видит всю систему по heartbeat'ам, Worker — свою окрестность). Цвет узла — здоровье, синий — Master. Ребро: зелёное — в порядке, оранжевое — выше порога предупреждения, красное — выше критического (маршрутизация его обходит), серое пунктиром — не подтверждено второй стороной или ещё не измерено, синее пунктиром — control plane к Master'у (голос по нему не ходит), красное пунктиром — heartbeat пропал (узел OFFLINE). На узле — активные звонки, на ребре (при наведении) — RTT. Стрелки направления не означают: ребро общее для обоих концов.",
+   "gridPos": {
+    "x": 0,
+    "y": 6,
+    "w": 24,
+    "h": 26
+   },
+   "targets": [
+    {
+     "refId": "nodes",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "kontakt_mesh_graph_node{observer=\"$observer\"}",
+     "legendFormat": "__auto",
+     "format": "table",
+     "instant": true,
+     "range": false
+    },
+    {
+     "refId": "edges",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "kontakt_mesh_graph_edge{observer=\"$observer\"}",
+     "legendFormat": "__auto",
+     "format": "table",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "transformations": [
+    {
+     "id": "calculateField",
+     "options": {
+      "mode": "reduceRow",
+      "reduce": {
+       "reducer": "lastNotNull"
+      },
+      "alias": "mainstat",
+      "replaceFields": false,
+      "timeSeries": false
+     }
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "instance": true,
+       "observer": true,
+       "Value": true,
+       "Value #nodes": true,
+       "Value #edges": true
+      }
+     }
+    },
+    {
+     "id": "convertFieldType",
+     "filter": {
+      "id": "byRefId",
+      "options": "nodes"
+     },
+     "options": {
+      "conversions": [
+       {
+        "targetField": "mainstat",
+        "destinationType": "string"
+       }
+      ]
+     }
+    }
+   ],
+   "options": {
+    "nodes": {
+     "mainStatUnit": ""
+    },
+    "edges": {
+     "mainStatUnit": "ms"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Узлы и рёбра",
+   "collapsed": false,
+   "id": 10,
+   "gridPos": {
+    "x": 0,
+    "y": 32,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "table",
+   "title": "Узлы",
+   "id": 11,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "description": "По узлам графа: звонки, свободно (по замерам), загрузка канала (пусто — ёмкость неизвестна), CPU, память, давность heartbeat.",
+   "gridPos": {
+    "x": 0,
+    "y": 33,
+    "w": 24,
+    "h": 9
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "kontakt_mesh_graph_node_stat{observer=\"$observer\"}",
+     "legendFormat": "__auto",
+     "format": "table",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "transformations": [
+    {
+     "id": "groupingToMatrix",
+     "options": {
+      "columnField": "stat",
+      "rowField": "title",
+      "valueField": "Value"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 2
+    },
+    "overrides": []
+   }
+  },
+  {
+   "type": "table",
+   "title": "Рёбра",
+   "id": 12,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "description": "Рёбра графа: тип пути, качество по порогам маршрутизации, потери, джиттер, RTT (мс).",
+   "gridPos": {
+    "x": 0,
+    "y": 42,
+    "w": 24,
+    "h": 10
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "kontakt_mesh_graph_edge{observer=\"$observer\"}",
+     "legendFormat": "__auto",
+     "format": "table",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "job": true,
+       "instance": true,
+       "observer": true,
+       "id": true,
+       "color": true,
+       "strokeDasharray": true,
+       "source": true,
+       "target": true
+      },
+      "indexByName": {
+       "detail__from": 0,
+       "detail__to": 1,
+       "detail__kind": 2,
+       "detail__quality": 3,
+       "detail__loss": 4,
+       "detail__jitter": 5,
+       "Value": 6
+      },
+      "renameByName": {
+       "Value": "RTT, мс",
+       "detail__from": "от",
+       "detail__to": "к",
+       "detail__kind": "путь",
+       "detail__quality": "качество",
+       "detail__loss": "потери",
+       "detail__jitter": "джиттер"
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 2
+    },
+    "overrides": []
+   }
+  },
+  {
+   "type": "row",
+   "title": "Качество рёбер во времени",
+   "collapsed": false,
+   "id": 13,
+   "gridPos": {
+    "x": 0,
+    "y": 52,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "RTT рёбер",
+   "description": "Сглаженный RTT каждого ребра, как его меряет каждый узел.",
+   "id": 14,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 53,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "kontakt_rtt_seconds",
+     "legendFormat": "{{instance}} → {{peer}}",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Потери на рёбрах",
+   "description": "Доля потерянных проб в окне; ≥5% — ребро непригодно для маршрута.",
+   "id": 15,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 53,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "kontakt_link_loss",
+     "legendFormat": "{{instance}} → {{peer}}",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "min": 0,
+     "max": 1,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  }
+ ]
+}

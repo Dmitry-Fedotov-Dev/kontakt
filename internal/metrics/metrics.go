@@ -173,6 +173,48 @@ func (g *gaugeFunc) write(b *strings.Builder) {
 	}
 }
 
+// ---------- набор рядов с произвольными метками ----------
+
+// Sample — один ряд: метки по порядку и значение.
+type Sample struct {
+	Labels [][2]string
+	Value  float64
+}
+
+type gaugeSet struct {
+	name, help string
+	f          func() []Sample
+}
+
+// GaugeSet — датчик, ряды и метки которого вычисляются при сборе (например, рёбра
+// графа: source, target, kind). Меток может быть сколько угодно.
+func (r *Registry) GaugeSet(name, help string, f func() []Sample) {
+	r.add(&gaugeSet{name: name, help: help, f: f})
+}
+
+func (g *gaugeSet) write(b *strings.Builder) {
+	header(b, g.name, g.help, "gauge")
+	for _, s := range g.f() {
+		b.WriteString(g.name)
+		if len(s.Labels) > 0 {
+			b.WriteByte('{')
+			for i, l := range s.Labels {
+				if i > 0 {
+					b.WriteByte(',')
+				}
+				fmt.Fprintf(b, "%s=\"%s\"", l[0], escapeLabel(l[1]))
+			}
+			b.WriteByte('}')
+		}
+		fmt.Fprintf(b, " %s\n", num(s.Value))
+	}
+}
+
+// escapeLabel — экранирование значения метки по формату Prometheus: \, " и перевод строки.
+func escapeLabel(v string) string {
+	return strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`).Replace(v)
+}
+
 // ---------- гистограмма ----------
 
 type Histogram struct {

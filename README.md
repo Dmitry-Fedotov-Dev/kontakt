@@ -83,4 +83,6 @@ K6_PROMETHEUS_RW_SERVER_URL=http://127.0.0.1:9092/api/v1/write K6_FEATURES=nativ
 
 Сеть стека хостовая (метрики слушают только `127.0.0.1`); в Docker Desktop включите host networking или запускайте из WSL. Дашборд правится в `monitoring/grafana/gen_dashboard.py`, PNG за прогон — `monitoring/report.sh`.
 
+**Граф Kontakt Mesh.** Дашборд «Kontakt Mesh»: узлы и рёбра системы глазами выбранного узла (Master видит всё), цвет — здоровье и качество связи, таблицы узлов и рёбер, RTT и потери во времени. Посмотреть на демо-стенде: `./scripts/mesh-demo.sh` (Master + 5 Worker'ов) и стек мониторинга. Подробнее о mesh — [docs/MESH.md](docs/MESH.md).
+
 CI (`.github/workflows/ci.yml`) устроен как у xk6-sip: тесты, сборка и проверка JS страницы, функциональные сценарии с JUnit и WAV проваленных проверок звука, нагрузка с PNG дашборда, govulncheck и отчёт gosec.

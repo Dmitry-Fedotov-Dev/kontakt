@@ -144,6 +144,30 @@ func TestMeshEndToEnd(t *testing.T) {
 		t.Fatal("нет альтернативы основному маршруту")
 	}
 
+	// Граф системы у Master'а: все узлы, рёбра данных с качеством, control plane.
+	waitFor(t, "граф у Master'а", 3*time.Second, func() bool {
+		nodes, edges := c.master.Graph()
+		data, ctl := 0, 0
+		for _, e := range edges {
+			if e.Control {
+				ctl++
+			} else {
+				data++
+			}
+		}
+		return len(nodes) == 5 && data == 6 && ctl == 4
+	})
+	_, edges := c.master.Graph()
+	for _, e := range edges {
+		lossyPair := (e.A == w1.ID && e.B == w3.ID) || (e.A == w3.ID && e.B == w1.ID)
+		if lossyPair && e.Quality != "critical" {
+			t.Fatalf("ребро W1–W3 с потерями на графе %q, ждали critical: %+v", e.Quality, e.Metrics)
+		}
+		if !lossyPair && !e.Control && e.Quality == "critical" {
+			t.Fatalf("исправное ребро на графе critical: %+v", e)
+		}
+	}
+
 	// 1. Отказ Master'а не рвёт связи Worker'ов и маршруты (§6, §48.1).
 	closeOnce(c.master)
 	waitFor(t, "Worker'ы заметили отказ Master'а", 3*time.Second, func() bool { return !w1.MasterUp() })
