@@ -5,7 +5,7 @@
 #   ./scripts/mesh-demo.sh
 #   docker compose -f monitoring/docker-compose.yml up -d   # дашборд «Kontakt Mesh»: http://localhost:3002
 #
-# Проверить руками: закройте Worker (kill по PID из вывода) — через ~15 с он станет
+# Проверить руками: закройте Worker (kill <pid> из вывода) — через ~15 с он станет
 # OFFLINE (красный), соседи перестроят маршруты; закройте Master — связи Worker'ов
 # останутся. Админка узлов: 127.0.0.1:7401 (Master), 7421…7425 (Worker'ы).
 set -euo pipefail
@@ -38,4 +38,4 @@ for i in "${!names[@]}"; do
 done
 echo
 echo "Mesh запущен. Граф: дашборд «Kontakt Mesh» в Grafana; состояние: curl -s 127.0.0.1:7401/mesh/status"
-wait -n
+wait # все узлы: отказ одного (Master, Worker) — сценарий проверки, а не повод гасить остальные
