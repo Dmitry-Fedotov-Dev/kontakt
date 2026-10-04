@@ -1,6 +1,78 @@
 # Контакт
 [English version](README.en.md)
 
+## Запуск и обновление
+
+### Один раз: что поставить
+
+Всё запускается в Linux-оболочке: **Linux**, **WSL на Windows** или **Termux на Android**.
+На Windows сначала `wsl` в PowerShell: команды вида `TUNNEL=1 команда` — синтаксис bash,
+PowerShell их не понимает.
+
+```bash
+# Ubuntu / WSL: Go 1.24+ — с go.dev (в apt часто слишком старый)
+curl -LO https://go.dev/dl/go1.24.7.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.24.7.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/.local/bin' >> ~/.bashrc && source ~/.bashrc
+# cloudflared — для публичной ссылки (Linux-версия; Windows-туннели она не трогает)
+mkdir -p ~/.local/bin && curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o ~/.local/bin/cloudflared && chmod +x ~/.local/bin/cloudflared
+
+# Termux
+pkg install golang git cloudflared curl
+
+# сам проект
+git clone https://github.com/Dmitry-Fedotov-Dev/kontakt && cd kontakt
+```
+
+Мониторинг (по желанию) — Docker или Docker Desktop; без Docker тоже работает (см. ниже).
+
+### Запуск
+
+Каждое — в своём окне терминала (в Termux: свайп от левого края → NEW SESSION). Остановить —
+`Ctrl+C`: гасятся только свои процессы, чужие туннели и сервисы не трогаются, порты
+подбираются сами.
+
+| Что | Команда | Где открыть |
+|---|---|---|
+| **Контакт** со ссылкой для всех | `./scripts/cluster-tunnel.sh` | `https://….trycloudflare.com` — в выводе |
+| Контакт только на этой машине | `./scripts/run.sh` | `http://localhost:8080` |
+| **Открытое радио** со ссылкой | `TUNNEL=1 bash scripts/radio.sh` | ссылка в выводе; локально `http://localhost:27620` |
+| Радио только на этой машине | `bash scripts/radio.sh` | `http://localhost:27620` |
+| Mesh-демо (Master + 5 узлов) | `./scripts/mesh-demo.sh` | граф — в Grafana |
+| **С мониторингом** | добавить `MONITORING=1` перед командой Контакта или радио (только у одного из них) | Grafana — адрес в выводе (обычно `http://localhost:27630`) |
+| Мониторинг отдельно | `monitoring/stack.sh up` / `down` | `http://localhost:3002` |
+
+- Ссылка выдаётся только когда туннель уже соединился с Cloudflare (5–20 с).
+- Микрофон браузер даёт только по https или на `localhost`: с других устройств — по ссылке туннеля.
+- Проверить звонок: два разных браузера (или обычное окно + инкогнито) — иначе станция видит одного человека.
+- Телефон в Termux: перед запуском `termux-wake-lock`, иначе Android усыпит Termux; скрипты
+  запускайте через `bash scripts/…`.
+- Мониторинг сам выбирает способ: Docker на Linux, отдельный compose для Docker Desktop,
+  без Docker — обычными программами (`MONITORING=local`). Пустые графики — смотрите
+  `http://localhost:27631/targets`: цели должны быть UP.
+
+### Обновление
+
+```bash
+git pull
+```
+
+| Что | Как применить | Ссылка туннеля |
+|---|---|---|
+| Контакт | `Ctrl+C`, запустить снова | **сменится** |
+| Радио | во **втором** окне: `bash scripts/radio.sh update` (сам делает `git pull`, собирает; не собралось — работает прежняя версия) | **остаётся**; ведущий и слушатели переподключаются сами |
+| Дашборды Grafana | ничего — подхватываются сами за ~10 с | — |
+| Конфиг Prometheus, правила тревог | `monitoring/stack.sh down && monitoring/stack.sh up` | — |
+
+Открытые страницы продолжают работать со старой версией до обновления вкладки.
+
+Постоянная ссылка (своё доменное имя) — `./scripts/tunnel.sh publish <домен>`; адрес
+`trycloudflare.com` временный и меняется при каждом запуске туннеля.
+
+Что и как проверять — [docs/TEST_CASES.md](docs/TEST_CASES.md).
+
+---
+
 <img width="427" height="900" alt="image" src="https://github.com/user-attachments/assets/ee221aa9-4ef8-4bf3-8cf6-3c27cf632ed8" />
 
 Снимаешь трубку, и говоришь со случайным человеком.
@@ -9,63 +81,6 @@
 - Три сервиса на Go: **web**, **signal**, **media**. Media управляется по gRPC.
 - Голос нигде не хранится. У каждого есть право на вечный бан собеседника по куке (в дальнейшем будет бан по железу).
 - Сто каналов (50 разговоров) — это 0,22 ядра и 43 МБ ОЗУ, подробности в [LOAD_REPORT.md](LOAD_REPORT.md). Канал стоит сети около 69 кбит/с в каждую сторону (G.711 + RTP, замер по `kontakt_media_bytes_*_total`; с заголовками IP/UDP — около 80). Ёмкость сети **не константа**: у Cloudflare Tunnel нет официального потолка в Мбит/с, она зависит от трафика, сессий и машины, поэтому её меряют нагрузкой (`k6/load.js`) и метриками, а не делят «25 Мбит/с на канал». Quick Tunnel (`*.trycloudflare.com`) — только для разработки и демонстраций: без гарантии доступности, до 200 одновременных HTTP-запросов, временное имя.
-
-## Запуск за минуту
-
-### Запуск на телефоне в Termux:
-
-#### подготовка termux:
-
-предоставьте termux права на файловую систему, на остальное права не нужны (при необходимости снимите галочки с лишних пунктов)
-```bash
-
-termux-setup-storage
-
-```
-
-```bash
-
-// Разархивировать в домашнюю папку:
-unzip ~/storage/downloads/kontakt.zip
-
-// В первой вкладке (сессии) termux: 
-pkg install golang git cloudflared
-  ./scripts/run.sh                 
-Во второй вкладке (сессии) termux:
-  ./scripts/tunnel.sh quick
-
-```
-
-### Минимальный кластер за туннелем — одной командой
-
-```bash
-./scripts/cluster-tunnel.sh      # media + signal + web + временный туннель, адрес — в выводе
-```
-
-Не мешает тому, что уже работает на машине: порты подбирает сам (занятые пропускает,
-`PORT_BASE=…` — с какого начинать), cloudflared запускает со своим пустым конфигом вместо
-`~/.cloudflared/config.yml`, со своими метриками и журналом (`data/cluster-tunnel/`), а по Ctrl+C
-гасит только свои процессы — ваши туннели и сервисы не трогает.
-
-## На windows-машинах:
-
-в папке проекта:
-
-```bash
-
-./scripts/run.sh             // в первой сессии
-
-./scripts/tunnel.sh quick    // во второй сессии
-
-```
-
-по результату выполнения команд в терминале будет выдан адрес после следующих строк в CLI:
-```bash
-
-Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):
-
-```
-
 
 ## Открытое радио (макет)
 

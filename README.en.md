@@ -1,5 +1,70 @@
 # Kontakt
 [Читать на русском](README.md)
+
+## Run and update
+
+### Once: what to install
+
+Everything runs in a Linux shell: **Linux**, **WSL on Windows** or **Termux on Android**.
+On Windows run `wsl` in PowerShell first: commands like `TUNNEL=1 command` are bash syntax.
+
+```bash
+# Ubuntu / WSL: Go 1.24+ from go.dev (apt is often too old)
+curl -LO https://go.dev/dl/go1.24.7.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.24.7.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/.local/bin' >> ~/.bashrc && source ~/.bashrc
+# cloudflared for a public link (the Linux build; it does not touch Windows tunnels)
+mkdir -p ~/.local/bin && curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o ~/.local/bin/cloudflared && chmod +x ~/.local/bin/cloudflared
+
+# Termux
+pkg install golang git cloudflared curl
+
+# the project
+git clone https://github.com/Dmitry-Fedotov-Dev/kontakt && cd kontakt
+```
+
+### Run
+
+One terminal window per command (Termux: swipe from the left edge → NEW SESSION). `Ctrl+C`
+stops only this script's processes; other tunnels and services are left alone, free ports are
+picked automatically.
+
+| What | Command | Open |
+|---|---|---|
+| **Kontakt** with a public link | `./scripts/cluster-tunnel.sh` | `https://….trycloudflare.com` from the output |
+| Kontakt on this machine only | `./scripts/run.sh` | `http://localhost:8080` |
+| **Open Radio** with a public link | `TUNNEL=1 bash scripts/radio.sh` | link in the output; locally `http://localhost:27620` |
+| Radio on this machine only | `bash scripts/radio.sh` | `http://localhost:27620` |
+| Mesh demo (Master + 5 nodes) | `./scripts/mesh-demo.sh` | graph in Grafana |
+| **With monitoring** | prefix the Kontakt or radio command with `MONITORING=1` (only one of them) | Grafana address in the output (usually `http://localhost:27630`) |
+| Monitoring alone | `monitoring/stack.sh up` / `down` | `http://localhost:3002` |
+
+- The link is printed only once the tunnel is connected to Cloudflare (5–20 s).
+- Browsers grant the microphone only over https or on `localhost`: other devices use the tunnel link.
+- To test a call use two different browsers (or a normal + an incognito window).
+- Termux: run `termux-wake-lock` first and start scripts with `bash scripts/…`.
+- Monitoring picks its mode: Docker on Linux, a separate compose file for Docker Desktop, or
+  plain binaries without Docker (`MONITORING=local`). Empty graphs — check
+  `http://localhost:27631/targets`: targets must be UP.
+
+### Update
+
+```bash
+git pull
+```
+
+| What | How to apply | Tunnel link |
+|---|---|---|
+| Kontakt | `Ctrl+C`, start again | **changes** |
+| Radio | in a **second** window: `bash scripts/radio.sh update` (pulls and builds; on a build error the old version keeps running) | **stays**; host and listeners reconnect by themselves |
+| Grafana dashboards | nothing — picked up in ~10 s | — |
+| Prometheus config, alert rules | `monitoring/stack.sh down && monitoring/stack.sh up` | — |
+
+Open pages keep the old version until the tab is reloaded. A permanent link on your own
+domain: `./scripts/tunnel.sh publish <domain>`. Test plan: [docs/TEST_CASES.md](docs/TEST_CASES.md) (Russian).
+
+---
+
 <p align="center">
   <img width="427" height="900" alt="Kontakt Screenshot" src="https://github.com/user-attachments/assets/ee221aa9-4ef8-4bf3-8cf6-3c27cf632ed8" />
 </p>
@@ -15,63 +80,6 @@ Pick up the phone and start talking to a random stranger.
 - **Bandwidth:** a channel costs about 69 kbps per direction (G.711 + RTP, measured from `kontakt_media_bytes_*_total`; about 80 kbps with IP/UDP headers). Capacity is **measured, not assumed**: Cloudflare Tunnel has no official Mbps limit — it depends on traffic, sessions and the host — so it comes from load tests (`k6/load.js`) and metrics. Quick Tunnel (`*.trycloudflare.com`) is for development and demos only: no uptime guarantee, 200 in-flight HTTP requests, a temporary hostname.
 
 ---
-
-## Quick Start Guide
-
-### Running on Mobile (Android / Termux)
-
-#### 1. Termux Setup
-Grant Termux storage permissions (you can leave other optional permissions disabled if prompted):
-
-```bash
-termux-setup-storage
-```
-
-#### 2. Installation & Run
-Unzip the project archive into your home directory:
-
-```bash
-unzip ~/storage/downloads/kontakt.zip
-```
-
-Install required packages and run the service in your **first Termux tab/session**:
-
-```bash
-pkg install golang git cloudflared
-./scripts/run.sh
-```
-
-In a **second Termux tab/session**, launch the Cloudflare tunnel:
-
-```bash
-./scripts/tunnel.sh quick
-```
-
----
-
-### Running on Windows Machines
-
-Open a terminal inside the project directory:
-
-**1. First Session:**
-```bash
-./scripts/run.sh
-```
-
-**2. Second Session:**
-```bash
-./scripts/tunnel.sh quick
-```
-
----
-
-### Accessing the App
-
-Once both scripts are running, look for the public URL generated in the terminal output following this line:
-
-```text
-Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):
-```
 
 ## Open Radio (prototype)
 
