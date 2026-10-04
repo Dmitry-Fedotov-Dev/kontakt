@@ -8,6 +8,8 @@ on:
 # Устроено как CI xk6-sip: unit и e2e, сборка, функциональные звонковые
 # сценарии и нагрузка с мониторингом. Звонки делает ТОЛЬКО xk6-sip — те же
 # SIP-софтфоны по UDP, что у людей (Linphone, MicroSIP), с проверкой звука.
+# Общие для проектов части — из github.com/Dmitry-Fedotov-Dev/ci (версия @v1);
+# здесь остаётся только своё: станция, сценарии звонков, нагрузка, сборка для роутеров.
 
 env:
   SIP_EXT_VERSION: v0.4.0
@@ -15,19 +17,10 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - name: gofmt
-        run: test -z "$(gofmt -l .)"
-      - name: vet
-        run: go vet ./...
-      - name: test
-        # дважды, как требует CLAUDE.md: асинхронные e2e должны быть устойчивы
-        run: go test -race -count=2 ./...
+    # дважды, как требует CLAUDE.md: асинхронные e2e должны быть устойчивы
+    uses: Dmitry-Fedotov-Dev/ci/.github/workflows/go.yml@v1
+    with:
+      test-flags: -race -count=2
 
   build:
     runs-on: ubuntu-latest
@@ -48,24 +41,24 @@ jobs:
           done
           ls -la bin/kontakt-node-*
       - name: static JS
-        # статика вшита в web: синтаксическая ошибка дошла бы до браузера молча
-        run: |
-          python3 .github/scripts/check_js.py internal/webapp/static
-          python3 .github/scripts/check_js.py internal/radio/static
-      - name: monitoring config, alert rules, dashboards
-        # promtool из того же образа, что в monitoring/docker-compose.yml. Тесты правил гоняют
-        # тревоги радио на синтетических рядах; дашборды обязаны совпадать с генераторами.
-        run: |
-          img=prom/prometheus:v3.5.0
-          docker run --rm -v "$PWD/monitoring/prometheus:/etc/prometheus:ro" --entrypoint promtool $img \
-            check config /etc/prometheus/prometheus.yml
-          docker run --rm -v "$PWD/monitoring/prometheus:/p:ro" -w /p/tests --entrypoint promtool $img \
-            test rules radio_test.yml
-          for g in gen_dashboard:kontakt gen_mesh_dashboard:kontakt-mesh gen_radio_dashboard:kontakt-radio; do
-            python3 "monitoring/grafana/${g%%:*}.py" "/tmp/${g##*:}.json" >/dev/null
-            diff -q "/tmp/${g##*:}.json" "monitoring/grafana/dashboards/${g##*:}.json" \
-              || { echo "::error::${g##*:}.json не совпадает с ${g%%:*}.py — перегенерируйте"; exit 1; }
-          done
+        # статика вшита в web и radio: синтаксическая ошибка дошла бы до браузера молча
+        uses: Dmitry-Fedotov-Dev/ci/actions/inline-js@v1
+        with:
+          paths: internal/webapp/static internal/radio/static
+      - name: prometheus config and alert rules
+        # promtool из того же образа, что в monitoring/docker-compose.yml; тесты правил гоняют
+        # тревоги радио на синтетических рядах
+        uses: Dmitry-Fedotov-Dev/ci/actions/promtool@v1
+        with:
+          dir: monitoring/prometheus
+          rule-tests: tests/radio_test.yml
+      - name: dashboards match generators
+        uses: Dmitry-Fedotov-Dev/ci/actions/dashboards-sync@v1
+        with:
+          pairs: |
+            monitoring/grafana/gen_dashboard.py monitoring/grafana/dashboards/kontakt.json
+            monitoring/grafana/gen_mesh_dashboard.py monitoring/grafana/dashboards/kontakt-mesh.json
+            monitoring/grafana/gen_radio_dashboard.py monitoring/grafana/dashboards/kontakt-radio.json
       - uses: actions/upload-artifact@v7
         with:
           name: kontakt-linux-amd64
@@ -75,20 +68,10 @@ jobs:
     # k6 с расширением xk6-sip — один раз для функциональных сценариев и нагрузки
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: Dmitry-Fedotov-Dev/ci/actions/xk6-build@v1
         with:
-          repository: Dmitry-Fedotov-Dev/xk6-sip
-          ref: ${{ env.SIP_EXT_VERSION }}
-          path: xk6-sip
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: xk6-sip/go.mod
-      - name: xk6 build
-        run: |
-          go install go.k6.io/xk6@latest
-          mkdir -p bin
-          xk6 build "$K6_RELEASE" --with github.com/Dmitry-Fedotov-Dev/xk6-sip=./xk6-sip --output bin/k6
-          ./bin/k6 version
+          k6-version: ${{ env.K6_RELEASE }}
+          with: github.com/Dmitry-Fedotov-Dev/xk6-sip@${{ env.SIP_EXT_VERSION }}
       - uses: actions/upload-artifact@v7
         with:
           name: k6-xk6-sip
@@ -132,10 +115,13 @@ jobs:
           exit $failed
       - name: summary
         if: always()
-        run: |
-          python3 .github/scripts/summary.py functional reports $SCENARIOS
-          python3 .github/scripts/summary.py functional --all-steps reports $SCENARIOS > reports/summary.md
-          cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+        uses: Dmitry-Fedotov-Dev/ci/actions/k6-summary@v1
+        with:
+          kind: functional
+          reports: reports
+          scenarios: ${{ env.SCENARIOS }}
+          lang: ru
+          output: reports/summary.md
       - name: keep reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -184,13 +170,14 @@ jobs:
           bash monitoring/report.sh "$TESTID" $((START - 30)) $(($(date +%s) - 10)) reports/dashboard.png
       - name: summary
         if: always()
-        run: |
-          if [ -f reports/summary.json ]; then
-            python3 .github/scripts/summary.py load reports/summary.json \
-              "40 абонентов 2 минуты, разговор 6 с, звук сравнивается у каждого второго." > reports/summary.md
-            cat reports/summary.md
-            cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
+        uses: Dmitry-Fedotov-Dev/ci/actions/k6-summary@v1
+        with:
+          kind: load
+          reports: reports/summary.json
+          title: 40 абонентов 2 минуты, разговор 6 с, звук сравнивается у каждого второго.
+          note: Дашборд прогона целиком — `dashboard.png` в артефакте **load-report**.
+          lang: ru
+          output: reports/summary.md
       - name: keep reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -203,22 +190,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: stable # govulncheck проверяет и stdlib тулчейна
-      - name: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
-      - name: gosec
-        # Отчёт, а не барьер: почти все замечания — преобразования в DSP и
+      - name: govulncheck and gosec
+        # gosec — отчёт, а не барьер: почти все замечания — преобразования в DSP и
         # math/rand для SSRC и шума. Настоящие (G112/G114: HTTP без таймаутов)
         # — это задача «защита от флуда»; когда её закроют, gosec стоит
-        # сделать блокирующим с исключениями.
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -quiet -no-fail -fmt json -out gosec.json ./...
-          python3 .github/scripts/summary.py gosec gosec.json >> "$GITHUB_STEP_SUMMARY"
+        # сделать блокирующим с исключениями (gosec-fail, gosec-args).
+        uses: Dmitry-Fedotov-Dev/ci/actions/go-security@v1
+        with:
+          lang: ru
       - uses: actions/upload-artifact@v7
         if: always()
         with:
