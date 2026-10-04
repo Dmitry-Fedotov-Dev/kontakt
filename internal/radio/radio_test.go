@@ -3,6 +3,7 @@ package radio
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -261,5 +262,129 @@ func TestPageServed(t *testing.T) {
 	r, err := http.Get(srv.URL + "/")
 	if err != nil || r.StatusCode != 200 {
 		t.Fatalf("страница: %v %v", err, r)
+	}
+}
+
+// texts читает сокет в своей горутине (после тайм-аута чтения gorilla/websocket соединение уже
+// не читает) и отдаёт текстовые сообщения; collect — всё, что пришло за d.
+type texts chan string
+
+func readTexts(c *websocket.Conn) texts {
+	ch := make(texts, 64)
+	go func() {
+		for {
+			typ, b, err := c.ReadMessage()
+			if err != nil {
+				return
+			}
+			if typ == websocket.TextMessage {
+				ch <- string(b)
+			}
+		}
+	}()
+	return ch
+}
+
+func (ch texts) collect(d time.Duration) []string {
+	var out []string
+	end := time.After(d)
+	for {
+		select {
+		case m := <-ch:
+			out = append(out, m)
+		case <-end:
+			return out
+		}
+	}
+}
+
+// Поворот ручки и подключения не рассылают список станций всем: раньше каждое такое событие
+// стоило 6,9 КБ × все приёмники. Смена трека — короткое сообщение, а не весь список.
+func TestListNotResentOnTune(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=1053&name=X")
+	defer host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	l, _, _ := dial(t, srv, "/ws/listen")
+	defer l.Close()
+	lt := readTexts(l)
+	if got := lt.collect(1500 * time.Millisecond); len(got) != 1 {
+		t.Fatalf("при подключении ждали один список: %q", got)
+	}
+
+	for i := 0; i < 10; i++ { // другие приёмники приходят и крутят ручку
+		o, _, _ := dial(t, srv, "/ws/listen")
+		o.WriteJSON(map[string]int{"tune": 1053})
+		o.WriteJSON(map[string]int{"tune": 900 + i})
+		defer o.Close()
+	}
+	if got := lt.collect(2500 * time.Millisecond); len(got) != 0 {
+		t.Fatalf("список разослан из-за чужих приёмников: %q", got)
+	}
+
+	host.WriteJSON(map[string]string{"title": "песня"})
+	got := lt.collect(2500 * time.Millisecond)
+	if len(got) != 1 || got[0] != `{"title":{"f":1053,"t":"песня"}}` {
+		t.Fatalf("после смены трека ждали короткое сообщение о треке: %q", got)
+	}
+
+	// новый приёмник получает полный список уже с новым треком и без числа слушателей
+	n, _, _ := dial(t, srv, "/ws/listen")
+	defer n.Close()
+	first := readTexts(n).collect(time.Second)
+	if len(first) != 1 || !strings.Contains(first[0], `"t":"песня"`) || strings.Contains(first[0], `"l":`) {
+		t.Fatalf("список новому приёмнику: %q", first)
+	}
+}
+
+func TestHostGetsListenerCount(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=1053&name=X")
+	defer host.Close()
+	ht := readTexts(host)
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	for i := 0; i < 2; i++ {
+		l, _, _ := dial(t, srv, "/ws/listen")
+		defer l.Close()
+		l.WriteJSON(map[string]int{"tune": 1053})
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, m := range ht.collect(time.Second) {
+			if m == `{"listeners":2}` {
+				return
+			}
+		}
+	}
+	t.Fatal("ведущий не узнал, что его слушают двое")
+}
+
+// Список кодируется один раз на версию: байты в метрике = размер списка × число приёмников.
+func TestListBytesMetric(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=1053&name=X")
+	defer host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	var size int
+	for i := 0; i < 5; i++ {
+		l, _, _ := dial(t, srv, "/ws/listen")
+		defer l.Close()
+		got := readTexts(l).collect(300 * time.Millisecond)
+		if len(got) != 1 {
+			t.Fatalf("приёмник %d: %q", i, got)
+		}
+		size = len(got[0])
+	}
+	want := fmt.Sprintf("kontakt_radio_list_bytes_total %d", 5*size)
+	rec := httptest.NewRecorder()
+	h.MetricsHandler().ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(rec.Body.String(), want) {
+		t.Fatalf("ждали %q", want)
 	}
 }

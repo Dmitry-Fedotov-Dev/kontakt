@@ -476,6 +476,7 @@ const st = {
   strength: 0, dist: 1,
   scratchVis: 0,
   hostFreq: 0,       // десятые МГц, 0 — ещё не выбрана
+  hostListeners: 0,  // от сервера ведущему ({"listeners":N}); в общем списке станций числа нет
   onAir: false,
 };
 window.radioState = st; // для отладки и проверки в браузере
@@ -496,6 +497,7 @@ function connectListen() {
       try {
         const m = JSON.parse(e.data);
         if (m.stations) st.stations = m.stations;
+        if (m.title) { const x = st.stations.find(s => s.f === m.title.f); if (x) x.t = m.title.t; }
         if (m.report) return toast(REPORT_TEXT[m.report] || "жалоба не дошла — попробуй ещё раз");
       }
       catch (_) { /* битый список: следующий придёт через секунду */ }
@@ -795,8 +797,8 @@ function renderHost() {
   if (st.onAir) {
     const me = st.stations.find(s => s.f === st.hostFreq);
     if (vol.air === 0) hostHint("AIR на нуле — в эфире тишина, подними фейдер AIR", true);
-    else if (!nowTitle()) hostHint("в эфире тишина — нажми PLAY или микрофон" + (me ? " · слушают: " + me.l : ""), true);
-    else hostHint("в эфире" + (me ? " · слушают: " + me.l : "") + " · " + nowTitle());
+    else if (!nowTitle()) hostHint("в эфире тишина — нажми PLAY или микрофон" + (me ? " · слушают: " + st.hostListeners : ""), true);
+    else hostHint("в эфире" + (me ? " · слушают: " + st.hostListeners : "") + " · " + nowTitle());
   } else if (taken(st.hostFreq)) hostHint("эта волна занята — стрелками на соседнюю", true);
   else if (vol.air === 0) hostHint("AIR на нуле — подними фейдер, иначе в эфире будет тишина", true);
   else hostHint("волна свободна — нажми на табличку ON AIR");
@@ -968,7 +970,9 @@ function connectHost() {
   ws.onmessage = e => {
     if (typeof e.data !== "string") return;
     try {
-      if (JSON.parse(e.data).card === "yellow") showError("на станцию пожаловались — жёлтая карточка. Ещё жалобы — и эфир закроется");
+      const m = JSON.parse(e.data);
+      if (m.card === "yellow") showError("на станцию пожаловались — жёлтая карточка. Ещё жалобы — и эфир закроется");
+      if (typeof m.listeners === "number") { st.hostListeners = m.listeners; renderHost(); }
     } catch (_) {}
   };
   ws.onclose = e => {

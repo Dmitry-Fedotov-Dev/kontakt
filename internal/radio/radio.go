@@ -9,10 +9,13 @@
 // Протокол (WebSocket):
 //
 //	/ws/host?f=1017&name=…   ведущий; двоичные сообщения — кадры μ-law, текстовые —
-//	                         {"title":"…"} (что сейчас в эфире)
+//	                         {"title":"…"} (что сейчас в эфире); получает {"listeners":N},
+//	                         когда число слушателей изменилось (не чаще раза в 2 с)
 //	/ws/listen               слушатель; шлёт {"tune":1017} (0 — между станциями),
-//	                         получает двоичные кадры станции и раз в секунду, если
-//	                         что-то изменилось, текст {"stations":[…]};
+//	                         получает двоичные кадры станции, при подключении и когда станция
+//	                         вышла в эфир или ушла — {"stations":[{f,n,t}…]}, при смене трека —
+//	                         только {"title":{"f":1017,"t":"…"}}. Числа слушателей в списке нет:
+//	                         иначе каждый поворот ручки рассылал бы список всем;
 //	                         {"report":true} — жалоба на станцию, на которой стоит,
 //	                         ответ {"report":"yellow"|"banned"|…}
 //
@@ -86,7 +89,8 @@ type Hub struct {
 	mu      sync.Mutex
 	st      map[int]*station
 	ls      map[*listener]struct{}
-	version atomic.Uint64
+	version atomic.Uint64 // меняется — полный список всем приёмникам
+	content atomic.Uint64 // меняется и при смене трека — только ключ кеша полного списка
 
 	framesIn  *metrics.Counter
 	framesOut *metrics.Counter
@@ -107,6 +111,11 @@ type Hub struct {
 	og        ogCache
 
 	reportTimes map[string][]time.Time // под mu: кто сколько жаловался за час
+
+	listMu    sync.Mutex // кеш списка станций для сокета: один JSON на версию, а не на слушателя
+	listVer   uint64     // content, для которого собран listJSON
+	listJSON  []byte
+	listBytes *metrics.Counter
 }
 
 type station struct {
@@ -130,6 +139,7 @@ type listener struct {
 	heard      *station // станция, которую слышит, и с какого момента (под Hub.mu)
 	heardSince time.Time
 	counted    bool // прослушивание уже засчитано
+	stale      bool // под Hub.mu: не влезло сообщение о треке — при следующем тике полный список
 }
 
 // Station — то, что видят слушатели.
@@ -174,6 +184,8 @@ func NewHub(opt Options) *Hub {
 		"Жалобы на станции по исходу: yellow, banned, noted — от новичка (в зачёт не пошла), остальное — не принята",
 		"result", "yellow", "banned", "noted", "already", "no_station", "listen_more", "self", "rate_limited", "no_identity", "error")
 	h.kicked = h.reg.Counter("kontakt_radio_hosts_banned_total", "Станции, снятые с эфира баном")
+	h.listBytes = h.reg.Counter("kontakt_radio_list_bytes_total",
+		"Байты списков станций, отправленные приёмникам (служебный трафик сверх звука)")
 	h.hosts = h.reg.Counter("kontakt_radio_host_sessions_total", "Выходы станций в эфир")
 	h.sessions = h.reg.Counter("kontakt_radio_listener_sessions_total", "Подключения приёмников")
 	h.tunes = h.reg.Counter("kontakt_radio_tunes_total", "Перенастройки приёмников (ручка поймала или потеряла станцию)")
@@ -308,7 +320,83 @@ func clean(s string, max int) string {
 	return strings.TrimSpace(b.String())
 }
 
-func (h *Hub) changed() { h.version.Add(1) }
+// changed — изменился список станций (вышла в эфир, ушла, сменила трек). Число слушателей сюда
+// не относится: его получает только ведущий (hostListeners).
+func (h *Hub) changed() {
+	h.version.Add(1)
+	h.content.Add(1)
+}
+
+// titleChanged — ведущий сменил трек: всем приёмникам короткое {"title":…} вместо полного списка
+// (трек меняется чаще всего: 50 станций — раз в несколько секунд). Кому не влезло в очередь,
+// получит полный список на следующем тике.
+func (h *Hub) titleChanged(s *station, title string) {
+	b, _ := json.Marshal(map[string]any{"title": map[string]any{"f": s.freq, "t": title}})
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if s.title == title {
+		return
+	}
+	s.title = title
+	h.content.Add(1) // в кеше полного списка — старый трек
+	if h.st[s.freq] != s {
+		return
+	}
+	for l := range h.ls {
+		select {
+		case l.ctl <- b:
+			h.listBytes.Add(uint64(len(b)))
+		default:
+			l.stale = true
+		}
+	}
+}
+
+// listMessage — {"stations":[…]} текущей версии; кодируется один раз на версию, все приёмники
+// получают одни и те же байты. Замер до этого: 500 приёмников × 50 станций — 27 Мбит на каждое
+// изменение, а менялось от любого поворота ручки.
+func (h *Hub) listMessage() (uint64, []byte) {
+	h.listMu.Lock()
+	defer h.listMu.Unlock()
+	v, c := h.version.Load(), h.content.Load()
+	if h.listJSON != nil && h.listVer == c {
+		return v, h.listJSON
+	}
+	type wire struct {
+		Freq  int    `json:"f"`
+		Name  string `json:"n"`
+		Title string `json:"t,omitempty"`
+	}
+	st := h.Stations()
+	out := make([]wire, len(st))
+	for i, x := range st {
+		out[i] = wire{x.Freq, x.Name, x.Title}
+	}
+	h.listJSON, _ = json.Marshal(map[string]any{"stations": out})
+	h.listVer = c
+	return v, h.listJSON
+}
+
+// hostListeners шлёт ведущему число его слушателей, когда оно изменилось.
+func (h *Hub) hostListeners(s *station, done <-chan struct{}) {
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	last := -1
+	for {
+		select {
+		case <-done:
+			return
+		case <-t.C:
+			h.mu.Lock()
+			n := len(s.subs)
+			h.mu.Unlock()
+			if n != last {
+				last = n
+				s.sayHost(map[string]int{"listeners": n})
+			}
+		}
+	}
+}
 
 // ---------- ведущий ----------
 
@@ -365,6 +453,9 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 	s.conn = conn
 	s.wmu.Unlock()
 	defer conn.Close()
+	hostDone := make(chan struct{})
+	defer close(hostDone)
+	go h.hostListeners(s, hostDone)
 	defer h.removeStation(s)
 	h.hosts.Inc()
 	defer func() { h.onAir.Observe(time.Since(s.since).Seconds()) }()
@@ -408,10 +499,7 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 				Title *string `json:"title"`
 			}
 			if json.Unmarshal(data, &m) == nil && m.Title != nil {
-				h.mu.Lock()
-				s.title = clean(*m.Title, titleRunes)
-				h.mu.Unlock()
-				h.changed()
+				h.titleChanged(s, clean(*m.Title, titleRunes))
 			}
 			continue
 		}
@@ -498,12 +586,11 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	l := &listener{id: identity.FromRequest(r), out: make(chan []byte, listenerBuf), ctl: make(chan []byte, 4)}
+	l := &listener{id: identity.FromRequest(r), out: make(chan []byte, listenerBuf), ctl: make(chan []byte, 16)}
 	h.mu.Lock()
 	h.ls[l] = struct{}{}
 	h.sessions.Inc()
 	h.mu.Unlock()
-	h.changed()
 
 	done := make(chan struct{})
 	go h.writeListener(conn, l, done)
@@ -539,7 +626,6 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(h.ls, l)
 	h.mu.Unlock()
-	h.changed()
 	close(done)
 	conn.Close()
 }
@@ -564,7 +650,6 @@ func (h *Hub) tune(l *listener, f int) {
 		l.heard, l.heardSince = s, time.Now()
 	}
 	h.mu.Unlock()
-	h.changed()
 }
 
 func (h *Hub) writeListener(conn *websocket.Conn, l *listener, done chan struct{}) {
@@ -576,12 +661,12 @@ func (h *Hub) writeListener(conn *websocket.Conn, l *listener, done chan struct{
 		return conn.WriteMessage(typ, b) == nil
 	}
 	sendList := func() bool {
-		v := h.version.Load()
-		if v == seen {
+		if h.version.Load() == seen {
 			return true
 		}
+		v, b := h.listMessage()
 		seen = v
-		b, _ := json.Marshal(map[string]any{"stations": h.Stations()})
+		h.listBytes.Add(uint64(len(b)))
 		return send(websocket.TextMessage, b)
 	}
 	if !sendList() {
@@ -604,6 +689,11 @@ func (h *Hub) writeListener(conn *websocket.Conn, l *listener, done chan struct{
 			}
 		case <-tick.C:
 			h.countListen(l)
+			h.mu.Lock()
+			if l.stale {
+				l.stale, seen = false, ^uint64(0)
+			}
+			h.mu.Unlock()
 			if !sendList() {
 				conn.Close()
 				return
