@@ -147,19 +147,43 @@ func TestHostRateLimited(t *testing.T) {
 	host, _, _ := dial(t, srv, "/ws/host?f=950")
 	defer host.Close()
 	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
-	for i := 0; i < 200; i++ { // 4 с эфира разом
+	for i := 0; i < 300; i++ { // 6 с эфира разом
 		host.WriteMessage(websocket.BinaryMessage, frame(1))
 	}
 	deadline := time.Now().Add(3 * time.Second)
-	for h.framesIn.Value()+h.dropped.Value("host_rate") < 200 && time.Now().Before(deadline) {
+	for h.framesIn.Value()+h.dropped.Value("host_rate") < 300 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	in := h.framesIn.Value()
 	if in > burstBytes/FrameBytes+10 || in < burstBytes/FrameBytes {
 		t.Fatalf("принято %d кадров, ждали около %d", in, burstBytes/FrameBytes)
 	}
-	if d := h.dropped.Value("host_rate"); d+in != 200 {
-		t.Fatalf("отброшено сверх 64 кбит/с: %d, принято %d — в сумме должно быть 200", d, in)
+	if d := h.dropped.Value("host_rate"); d+in != 300 {
+		t.Fatalf("отброшено сверх 64 кбит/с: %d, принято %d — в сумме должно быть 300", d, in)
+	}
+}
+
+// Часы звуковой карты ведущего спешат на 2,4 % (51,2 кадра/с вместо 50 — так было на стенде):
+// сервер это пропускает целиком, ничего не отбрасывая.
+func TestHostClockDriftNotDropped(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=950")
+	defer host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	tick := time.NewTicker(time.Second / 512 * 10) // 51,2 кадра/с
+	defer tick.Stop()
+	for i := 0; i < 256; i++ { // 5 с эфира
+		<-tick.C
+		host.WriteMessage(websocket.BinaryMessage, frame(1))
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for h.framesIn.Value()+h.dropped.Value("host_rate") < 256 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if d := h.dropped.Value("host_rate"); d != 0 {
+		t.Fatalf("отброшено %d кадров ведущего, у которого часы спешат на 2,4 %%", d)
 	}
 }
 

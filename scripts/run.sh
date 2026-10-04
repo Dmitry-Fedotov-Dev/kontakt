@@ -70,8 +70,10 @@ pids+=($!) core+=($!)
              -radio "http://127.0.0.1:$RADIO_HTTP" ${HTTPS:+-https "$HTTPS"} &
 pids+=($!) core+=($!)
 mkdir -p "$TARGETS"
+# без своей метки instance: её роль играет адрес. С общей меткой (была «radio-run») два стенда
+# рядом склеивались в один ряд, и время старта, прыгая между ними, зажигало RadioRestartLoop.
 for t in "signal:$SIGNAL_ADMIN" "media:$MEDIA_WS" "radio:$RADIO_ADMIN"; do
-  printf '[{"targets":["127.0.0.1:%s"],"labels":{"instance":"%s-run"}}]\n' "${t#*:}" "${t%%:*}" >"$TARGETS/${t%%:*}-run-${t#*:}.json"
+  printf '[{"targets":["127.0.0.1:%s"]}]\n' "${t#*:}" >"$TARGETS/${t%%:*}-run-${t#*:}.json"
 done
 
 echo
