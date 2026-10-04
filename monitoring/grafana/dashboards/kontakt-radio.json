@@ -703,7 +703,7 @@
   {
    "type": "timeseries",
    "title": "Полоса",
-   "description": "Сколько звука сервер принимает от ведущих и раздаёт слушателям.",
+   "description": "Сколько звука сервер принимает от ведущих и раздаёт слушателям, и служебный трафик — списки станций и сообщения о треке приёмникам. Служебный должен быть долями мегабита: если он растёт вместе с числом слушателей, а не с выходом станций, — список снова рассылается не по делу (LOAD_REPORT.md).",
    "id": 12,
    "datasource": {
     "type": "prometheus",
@@ -735,6 +735,17 @@
      },
      "expr": "sum(rate(kontakt_radio_bytes_out_total{instance=~\"$instance\"}[$window])) * 8",
      "legendFormat": "слушателям",
+     "range": true,
+     "instant": false
+    },
+    {
+     "refId": "C",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(kontakt_radio_list_bytes_total{instance=~\"$instance\"}[$window])) * 8 or vector(0)",
+     "legendFormat": "списки станций (служебное)",
      "range": true,
      "instant": false
     }
