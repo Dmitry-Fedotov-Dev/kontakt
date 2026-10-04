@@ -37,8 +37,10 @@ BANS="${BANS:-data/bans.json}"
 if [ -f .env ] && [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then set -a; . ./.env; set +a; fi
 
 mkdir -p bin data
-echo "Сборка…"
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/radio ./cmd/notify
+if [ "${NO_BUILD:-}" != 1 ]; then # cluster-tunnel.sh собирает сам — и при update проверяет сборку заранее
+  echo "Сборка…"
+  CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/radio ./cmd/notify
+fi
 
 pids=() core=()
 TARGETS=monitoring/prometheus/targets

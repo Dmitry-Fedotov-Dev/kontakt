@@ -29,6 +29,7 @@ IP=127.0.0.1 SIP_UDP=:5060 ./scripts/run.sh       # плюс SIP/UDP для со
 go test -race -count=2 ./...                      # всё; e2e поднимает станцию в процессе
 bin/k6 run k6/functional/pair.js                  # звонки — только через xk6-sip
 ./scripts/cluster-tunnel.sh                       # то же за временным туннелем; MONITORING=1 — плюс Grafana
+./scripts/cluster-tunnel.sh update                # обновить стенд, не меняя адрес (NO_PULL=1 — без git pull)
 TUNNEL=1 bash scripts/radio.sh                    # радио; обновить, не меняя ссылку: bash scripts/radio.sh update
 monitoring/stack.sh up | down                     # мониторинг: Docker / Docker Desktop / без Docker — сам
 promtool test rules monitoring/prometheus/tests/{radio,station}_test.yml   # тесты тревог (в CI — образом Prometheus)
@@ -130,5 +131,7 @@ push. Не сделано: выбор нового Master'а (лучше Raft), 
   `{"title":…}`, число слушателей — только ведущему.
 - **gorilla/websocket: после тайм-аута чтения соединение мёртвое** — повторный `ReadMessage`
   возвращает ошибку, а через тысячу раз паникует. В тестах читать одной горутиной в канал.
+- **Стенд обновлять через `cluster-tunnel.sh update`, а не перезапуском**: перезапуск поднимает новый
+  Quick Tunnel, и у владельца и слушателей ломается ссылка. Падение сервиса скрипт поднимает сам.
 - **Из Git Bash в WSL** (`wsl … /mnt/d/…`) MSYS переписывает пути — нужен `MSYS_NO_PATHCONV=1`;
   `$переменные` в `wsl -- bash -c '…'` раскрываются раньше времени — скрипт кладите в файл.
