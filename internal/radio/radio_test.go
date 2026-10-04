@@ -147,19 +147,19 @@ func TestHostRateLimited(t *testing.T) {
 	host, _, _ := dial(t, srv, "/ws/host?f=950")
 	defer host.Close()
 	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
-	for i := 0; i < 300; i++ { // 6 с эфира разом
+	for i := 0; i < 400; i++ { // 8 с эфира разом
 		host.WriteMessage(websocket.BinaryMessage, frame(1))
 	}
 	deadline := time.Now().Add(3 * time.Second)
-	for h.framesIn.Value()+h.dropped.Value("host_rate") < 300 && time.Now().Before(deadline) {
+	for h.framesIn.Value()+h.dropped.Value("host_rate") < 400 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	in := h.framesIn.Value()
 	if in > burstBytes/FrameBytes+10 || in < burstBytes/FrameBytes {
 		t.Fatalf("принято %d кадров, ждали около %d", in, burstBytes/FrameBytes)
 	}
-	if d := h.dropped.Value("host_rate"); d+in != 300 {
-		t.Fatalf("отброшено сверх 64 кбит/с: %d, принято %d — в сумме должно быть 300", d, in)
+	if d := h.dropped.Value("host_rate"); d+in != 400 {
+		t.Fatalf("отброшено сверх 64 кбит/с: %d, принято %d — в сумме должно быть 400", d, in)
 	}
 }
 
