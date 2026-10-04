@@ -18,7 +18,7 @@ env:
 jobs:
   test:
     # дважды, как требует CLAUDE.md: асинхронные e2e должны быть устойчивы
-    uses: Dmitry-Fedotov-Dev/ci/.github/workflows/go.yml@v1
+    uses: Dmitry-Fedotov-Dev/ci/.github/workflows/go.yml@next
     with:
       test-flags: -race -count=2
 
@@ -42,18 +42,18 @@ jobs:
           ls -la bin/kontakt-node-*
       - name: static JS
         # статика вшита в web и radio: синтаксическая ошибка дошла бы до браузера молча
-        uses: Dmitry-Fedotov-Dev/ci/actions/inline-js@v1
+        uses: Dmitry-Fedotov-Dev/ci/actions/inline-js@next
         with:
           paths: internal/webapp/static internal/radio/static
       - name: prometheus config and alert rules
         # promtool из того же образа, что в monitoring/docker-compose.yml; тесты правил гоняют
         # тревоги радио на синтетических рядах
-        uses: Dmitry-Fedotov-Dev/ci/actions/promtool@v1
+        uses: Dmitry-Fedotov-Dev/ci/actions/promtool@next
         with:
           dir: monitoring/prometheus
           rule-tests: tests/radio_test.yml
       - name: dashboards match generators
-        uses: Dmitry-Fedotov-Dev/ci/actions/dashboards-sync@v1
+        uses: Dmitry-Fedotov-Dev/ci/actions/dashboards-sync@next
         with:
           pairs: |
             monitoring/grafana/gen_dashboard.py monitoring/grafana/dashboards/kontakt.json
@@ -68,7 +68,7 @@ jobs:
     # k6 с расширением xk6-sip — один раз для функциональных сценариев и нагрузки
     runs-on: ubuntu-latest
     steps:
-      - uses: Dmitry-Fedotov-Dev/ci/actions/xk6-build@v1
+      - uses: Dmitry-Fedotov-Dev/ci/actions/xk6-build@next
         with:
           k6-version: ${{ env.K6_RELEASE }}
           with: github.com/Dmitry-Fedotov-Dev/xk6-sip@${{ env.SIP_EXT_VERSION }}
@@ -115,7 +115,7 @@ jobs:
           exit $failed
       - name: summary
         if: always()
-        uses: Dmitry-Fedotov-Dev/ci/actions/k6-summary@v1
+        uses: Dmitry-Fedotov-Dev/ci/actions/k6-summary@next
         with:
           kind: functional
           reports: reports
@@ -170,7 +170,7 @@ jobs:
           bash monitoring/report.sh "$TESTID" $((START - 30)) $(($(date +%s) - 10)) reports/dashboard.png
       - name: summary
         if: always()
-        uses: Dmitry-Fedotov-Dev/ci/actions/k6-summary@v1
+        uses: Dmitry-Fedotov-Dev/ci/actions/k6-summary@next
         with:
           kind: load
           reports: reports/summary.json
@@ -195,7 +195,7 @@ jobs:
         # math/rand для SSRC и шума. Настоящие (G112/G114: HTTP без таймаутов)
         # — это задача «защита от флуда»; когда её закроют, gosec стоит
         # сделать блокирующим с исключениями (gosec-fail, gosec-args).
-        uses: Dmitry-Fedotov-Dev/ci/actions/go-security@v1
+        uses: Dmitry-Fedotov-Dev/ci/actions/go-security@next
         with:
           lang: ru
       - uses: actions/upload-artifact@v7
