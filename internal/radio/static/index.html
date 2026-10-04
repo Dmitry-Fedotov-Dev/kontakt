@@ -409,16 +409,54 @@ function ensureAudio() {
       try { await withTimeout(ctx.audioWorklet.addModule(url), 10000, "звуковой модуль не загрузился за 10 с"); }
       finally { URL.revokeObjectURL(url); }
       rx = new AudioWorkletNode(ctx, "rx", { numberOfInputs: 0, outputChannelCount: [2] });
-      rx.connect(ctx.destination);
+      routeRx();
       rxAn = ctx.createAnalyser(); rxAn.fftSize = 512; rx.connect(rxAn); // радио «пляшет» под звук
     }
   })();
   audioReady.catch(err => { audioReady = null; showError("звук не включился: " + (err && err.message || err)); });
   return audioReady;
 }
+// Приёмник играет через <audio>, а не прямо из Web Audio: так Android считает вкладку
+// медиаплеером и не глушит её при погашенном экране, а Media Session показывает станцию на
+// экране блокировки. Не дал браузер играть — звук идёт напрямую, как раньше.
+let rxEl = null;
+function routeRx() {
+  if (!ctx.createMediaStreamDestination) { rx.connect(ctx.destination); return; }
+  const dst = ctx.createMediaStreamDestination();
+  rx.connect(dst);
+  rxEl = new Audio();
+  rxEl.srcObject = dst.stream;
+  rxEl.play().catch(() => { rx.disconnect(dst); rx.connect(ctx.destination); rxEl = null; });
+}
+let msKey = null;
+function mediaSession(s) {
+  if (!("mediaSession" in navigator) || !window.MediaMetadata) return;
+  const key = s ? s.f + "|" + s.n + "|" + (s.t || "") : "";
+  if (key === msKey) return;
+  msKey = key;
+  navigator.mediaSession.metadata = new MediaMetadata(s
+    ? { title: s.t || s.n, artist: s.n + " · " + fmt(s.f) + " FM", album: "Открытое радио" }
+    : { title: "между станциями", album: "Открытое радио" });
+  navigator.mediaSession.playbackState = "playing";
+}
+// Ведущему экран не гаснет, пока он в эфире: с погашенным экраном Android притормаживает
+// вкладку, и эфир идёт рывками. Блокировка снимается сама, когда вкладку прячут, — берём заново.
+let wake = null;
+async function holdScreen(on) {
+  try {
+    if (on && !wake && navigator.wakeLock && document.visibilityState === "visible") {
+      wake = await navigator.wakeLock.request("screen");
+      wake.addEventListener("release", () => { wake = null; });
+    } else if (!on && wake) {
+      const w = wake; wake = null; await w.release();
+    }
+  } catch (_) { /* не дали (энергосбережение, старый браузер) — эфир идёт и так */ }
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") holdScreen(st.onAir); });
 // Любое касание — повод разбудить звук, если браузер его приостановил.
 ["pointerdown", "keydown"].forEach(ev => document.addEventListener(ev, () => {
   if (ctx && ctx.state !== "running") ctx.resume().catch(() => { /* не разрешили и сейчас — попробуем при следующем касании */ });
+  if (rxEl && rxEl.paused) rxEl.play().catch(() => {});
 }, true));
 // Ошибка держится на экране 8 секунд: раньше её тут же затирало обновление подсказки.
 let errUntil = 0, errText = "";
@@ -743,6 +781,7 @@ function hostHint(msg, warn) { const h = $("hostHint"); h.textContent = msg || "
 let hintHold = 0;
 let connecting = false, lastTxAt = 0;
 function renderHost() {
+  holdScreen(st.onAir);
   $("hostFreq").textContent = st.hostFreq ? fmt(st.hostFreq) + " MHz" : "— MHz";
   $("fDown").disabled = $("fUp").disabled = st.onAir;
   $("onair").classList.toggle("live", st.onAir);
@@ -1153,6 +1192,7 @@ $("shareTx").onclick = () => share(st.hostFreq, $("name").value.trim(), nowTitle
 setInterval(() => {
   const { s, d } = nearest(st.dial);
   $("shareRx").hidden = !(st.power && s && d < CATCH);
+  if (st.power) mediaSession(s && d < CATCH ? s : null);
   $("reportRx").hidden = $("shareRx").hidden || !me.moderation;
   $("shareTx").hidden = !st.onAir;
 }, 300);
