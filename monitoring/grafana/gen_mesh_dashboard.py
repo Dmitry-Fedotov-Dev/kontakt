@@ -5,6 +5,19 @@ import json, sys
 
 DS = {"type": "prometheus", "uid": "prometheus"}
 O = 'observer="$observer"'
+
+
+def V(name, match=""):
+    """Ряд kontakt_mesh_graph_<name> глазами выбранного узла, а если его нет — глазами Master'а.
+
+    Список «Глазами узла» Grafana заполняет при открытии дашборда, а автообновление его не
+    перечитывает: открыли до запуска mesh — переменная пустая (var-observer= в адресе), и граф
+    навсегда показывал «mesh не запущен». Ушедший из mesh наблюдатель — то же самое.
+    """
+    m = "kontakt_mesh_graph_" + name
+    return (f'({m}{{{O}{match}}} or on() '
+            f'({m}{{{match.lstrip(",")}}} and on(observer) kontakt_mesh_observer_info{{title=~"master.*"}}))')
+
 panels, pid, y = [], [0], [0]
 
 
@@ -53,15 +66,15 @@ WARN = [{"color": "green", "value": None}, {"color": "orange", "value": 1}]
 
 row("Сводка")
 stat("Worker'ы HEALTHY", "Worker'ы в состоянии HEALTHY глазами наблюдателя (Master не считается).",
-     f'count(kontakt_mesh_graph_node{{{O},detail__health="HEALTHY",detail__role!="master"}}) or vector(0)', 0, color="green")
+     "count(" + V("node", ',detail__health="HEALTHY",detail__role!="master"') + ") or vector(0)", 0, color="green")
 stat("DEGRADED", "Узлы в DEGRADED: канал выше порога предупреждения или узел сам сообщил о деградации.",
-     f'count(kontakt_mesh_graph_node{{{O},detail__health="DEGRADED"}}) or vector(0)', 4, steps=WARN)
+     "count(" + V("node", ',detail__health="DEGRADED"') + ") or vector(0)", 4, steps=WARN)
 stat("OFFLINE", "Узлы без heartbeat дольше TTL (у Master'а).",
-     f'count(kontakt_mesh_graph_node{{{O},detail__health="OFFLINE"}}) or vector(0)', 8, steps=BAD)
+     "count(" + V("node", ',detail__health="OFFLINE"') + ") or vector(0)", 8, steps=BAD)
 stat("Рёбра в порядке", "Рёбра данных, качество которых проходит пороги маршрутизации.",
-     f'count(kontakt_mesh_graph_edge{{{O},detail__quality="ok"}}) or vector(0)', 12, color="green")
+     "count(" + V("edge", ',detail__quality="ok"') + ") or vector(0)", 12, color="green")
 stat("Плохие рёбра", "Рёбра warning или critical: маршрутизация их штрафует или обходит.",
-     f'count(kontakt_mesh_graph_edge{{{O},detail__quality=~"warning|critical"}}) or vector(0)', 16, steps=WARN)
+     "count(" + V("edge", ',detail__quality=~"warning|critical"') + ") or vector(0)", 16, steps=WARN)
 stat("Failover за час", "Сколько раз основной маршрут отказывал и заменялся (все узлы).",
      'sum(increase(kontakt_route_failovers_total[1h])) or vector(0)', 20, steps=WARN)
 y[0] += 4
@@ -74,9 +87,9 @@ y[0] += 4
 #     но кадр рёбер есть. `or on()` добавляет заглушку только при пустой левой части.
 NO_MESH = ('label_replace(label_replace(label_replace(vector(0), "id", "no-mesh", "", ""), '
            '"title", "mesh не запущен", "", ""), "subtitle", "./scripts/mesh-demo.sh", "", "")')
-NODES_Q = f'kontakt_mesh_graph_node{{{O}}} or on() {NO_MESH}'
-EDGES_Q = (f'kontakt_mesh_graph_edge{{{O}}} or on() max by (id, source, target) ('
-           f'label_replace(label_replace(label_replace(topk(1, kontakt_mesh_graph_node{{{O}}} or on() {NO_MESH}), '
+NODES_Q = f'{V("node")} or on() {NO_MESH}'
+EDGES_Q = (f'{V("edge")} or on() max by (id, source, target) ('
+           f'label_replace(label_replace(label_replace(topk(1, {V("node")} or on() {NO_MESH}), '
            '"source", "$1", "id", "(.*)"), "target", "$1", "id", "(.*)"), "id", "idle", "", ""))')
 
 row("Граф системы")
@@ -112,7 +125,7 @@ panels.append({
     "type": "table", "title": "Узлы", "id": nid(), "datasource": DS,
     "description": "По узлам графа: звонки, свободно (по замерам), загрузка канала (пусто — ёмкость неизвестна), CPU, память, давность heartbeat.",
     "gridPos": {"x": 0, "y": y[0], "w": 24, "h": 9},
-    "targets": [tgt(f'kontakt_mesh_graph_node_stat{{{O}}}', table=True)],
+    "targets": [tgt(V("node_stat"), table=True)],
     "transformations": [{"id": "groupingToMatrix", "options": {"columnField": "stat", "rowField": "title", "valueField": "Value"}}],
     "fieldConfig": {"defaults": {"decimals": 2}, "overrides": []},
 })
@@ -120,7 +133,7 @@ panels.append({
     "type": "table", "title": "Рёбра", "id": nid(), "datasource": DS,
     "description": "Рёбра графа: тип пути, качество по порогам маршрутизации, потери, джиттер, RTT (мс).",
     "gridPos": {"x": 0, "y": y[0] + 9, "w": 24, "h": 10},
-    "targets": [tgt(f'kontakt_mesh_graph_edge{{{O}}}', table=True)],
+    "targets": [tgt(V("edge"), table=True)],
     "transformations": [{"id": "organize", "options": {
         "excludeByName": {"Time": True, "__name__": True, "job": True, "instance": True, "observer": True, "id": True,
                           "color": True, "strokeDasharray": True, "source": True, "target": True},

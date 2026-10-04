@@ -19,12 +19,12 @@ import (
 
 func main() {
 	httpAddr := flag.String("http", "127.0.0.1:8081", "HTTP: /sip (WebSocket) и /api (за web-сервисом)")
-	adminAddr := flag.String("admin", "127.0.0.1:8091", "админка: /admin/reload, /admin/stats, /admin/unban (только localhost!)")
+	adminAddr := flag.String("admin", "127.0.0.1:8091", "админка: /admin/reload, /admin/stats, /admin/ban, /admin/unban, /admin/journal, /mod/* для радио (только localhost!)")
 	sipAddr := flag.String("sip", "", "UDP SIP для софтфонов, например :5060 (пусто — выключено)")
 	ip := flag.String("ip", "", "IP для Via/Contact у UDP-софтфонов (по умолчанию — определить)")
 	mediaAddr := flag.String("media", "127.0.0.1:7002", "адрес gRPC медиа-сервиса")
 	cfgPath := flag.String("config", "config/kontakt.json", "конфиг поведения (перечитывается на лету)")
-	bansPath := flag.String("bans", "data/bans.json", "база банов (хеши кук и число карточек)")
+	bansPath := flag.String("bans", "data/bans.json", "база модерации (хеши кук, баны, карточки); рядом — журнал действий *-journal.jsonl")
 	flag.Parse()
 	log.SetPrefix("[signal] ")
 	if *ip == "" {
@@ -60,7 +60,8 @@ func main() {
 	}()
 	go func() { log.Fatal(http.ListenAndServe(*httpAddr, srv.HTTPHandler())) }()
 	c := cfg.Get()
-	log.Printf("HTTP %s, админка %s, media %s; линия по умолчанию %s, жалобы: %s", *httpAddr, *adminAddr, *mediaAddr, c.DefaultLine, c.BanPolicy)
+	log.Printf("HTTP %s, админка %s, media %s; линия по умолчанию %s; бан — %d разных жалобщика за %d дн., доверие с %d-й сессии",
+		*httpAddr, *adminAddr, *mediaAddr, c.DefaultLine, c.BanReporters, c.BanWindowDays, c.TrustTalks)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)

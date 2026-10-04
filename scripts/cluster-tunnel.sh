@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Минимальный кластер «Контакта» (media + signal + web) за временным Cloudflare-туннелем.
+# Минимальный кластер «Контакта» (media + signal + web + радио под /radio/) за временным Cloudflare-туннелем.
 # Не трогает то, что уже работает на машине:
 #   - порты подбираются сами: занятый пропускается, берётся следующий свободный;
 #   - cloudflared запускается со СВОИМ пустым конфигом, а не с ~/.cloudflared/config.yml —
@@ -68,13 +68,15 @@ pick SIGNAL_HTTP $((PORT_BASE + 1))
 pick SIGNAL_ADMIN $((PORT_BASE + 11))
 pick MEDIA_WS $((PORT_BASE + 2))
 pick MEDIA_GRPC $((PORT_BASE + 22))
+pick RADIO_HTTP $((PORT_BASE + 3))
+pick RADIO_ADMIN $((PORT_BASE + 13))
 pick CF_METRICS $((PORT_BASE + 40))
 if [ -n "${MONITORING:-}" ]; then
   pick GRAFANA_PORT $((PORT_BASE + 50))
   pick PROMETHEUS_PORT $((PORT_BASE + 51))
   export GRAFANA_PORT PROMETHEUS_PORT
 fi
-export HTTP="127.0.0.1:$WEB_PORT" SIGNAL_HTTP SIGNAL_ADMIN MEDIA_WS MEDIA_GRPC RTP
+export HTTP="127.0.0.1:$WEB_PORT" SIGNAL_HTTP SIGNAL_ADMIN MEDIA_WS MEDIA_GRPC RADIO_HTTP RADIO_ADMIN RTP
 
 pids=()
 TARGETS=monitoring/prometheus/targets
@@ -91,12 +93,12 @@ trap cleanup EXIT INT TERM
 # без вывода скрипт выглядел зависшим, а ожидание старта съедало время сборки.
 echo "Сборка (первый раз — до нескольких минут)…"
 mkdir -p bin
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/radio
 echo "Сборка готова, запуск…"
 
 ./scripts/run.sh >"$STATE/cluster.log" 2>&1 & # run.sh соберёт ещё раз — из кеша, за секунды
 pids+=($!)
-echo "Кластер: web $WEB_PORT, signal $SIGNAL_HTTP (админка $SIGNAL_ADMIN), media $MEDIA_WS (gRPC $MEDIA_GRPC), RTP $RTP"
+echo "Кластер: web $WEB_PORT, signal $SIGNAL_HTTP (админка $SIGNAL_ADMIN), media $MEDIA_WS (gRPC $MEDIA_GRPC), радио $RADIO_HTTP (метрики $RADIO_ADMIN), RTP $RTP"
 for _ in $(seq 120); do
   curl -fsS "http://127.0.0.1:$WEB_PORT/healthz" >/dev/null 2>&1 && break
   if ! kill -0 "${pids[0]}" 2>/dev/null; then
@@ -146,6 +148,7 @@ for t in "signal:$SIGNAL_ADMIN" "media:$MEDIA_WS" "cloudflared:$CF_METRICS"; do
 done
 echo
 echo "Контакт доступен: $url"
+echo "Радио:            $url/radio/  (та же кука и та же модерация)"
 echo "  (два разных браузера или обычное окно + инкогнито — иначе станция видит одного человека)"
 echo "  метрики туннеля: http://127.0.0.1:$CF_METRICS/metrics, журналы: $STATE/"
 echo

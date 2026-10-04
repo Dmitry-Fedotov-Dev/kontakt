@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"kontakt/internal/identity"
+	"kontakt/internal/moderation"
 	"kontakt/internal/sip"
 )
 
@@ -150,19 +150,18 @@ func (s *Server) HTTPHandler() http.Handler {
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		c := s.Cfg.Get()
 		writeJSON(w, map[string]any{
-			"default_line": c.DefaultLine, "allowed_lines": c.AllowedLines, "ban_policy": c.BanPolicy,
+			"default_line": c.DefaultLine, "allowed_lines": c.AllowedLines, "ban_reporters": c.BanReporters,
 			"report_window_sec": c.ReportWindowSec, "maintenance": c.Maintenance, "max_call_minutes": c.MaxCallMinutes,
 		})
 	})
 	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
-		id := identity.FromRequest(r)
-		st := s.Mod.Status(id)
-		writeJSON(w, map[string]any{"banned": id != "" && st.Banned, "cards": st.Cards})
+		st := s.Mod.Status(identity.FromRequest(r), moderation.Calls)
+		writeJSON(w, map[string]any{"banned": st.Banned, "cards": st.Cards})
 	})
 	return mux
 }
 
-// AdminHandler — только для localhost: перезагрузка конфига, статистика, разбан.
+// AdminHandler — только для localhost: перезагрузка конфига, статистика, модерация.
 func (s *Server) AdminHandler(mediaStats func() (any, error)) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/admin/reload", func(w http.ResponseWriter, r *http.Request) {
@@ -180,8 +179,7 @@ func (s *Server) AdminHandler(mediaStats func() (any, error)) http.Handler {
 	mux.Handle("/metrics", s.m.reg.Handler())
 	mux.HandleFunc("/admin/config", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.Cfg.Get()) })
 	mux.HandleFunc("/admin/stats", func(w http.ResponseWriter, r *http.Request) {
-		banned, yellow := s.Mod.Count()
-		out := map[string]any{"signal": s.Stats(), "banned": banned, "yellow_cards": yellow}
+		out := map[string]any{"signal": s.Stats(), "moderation": s.Mod.Count()}
 		if mediaStats != nil {
 			if ms, err := mediaStats(); err == nil {
 				out["media"] = ms
@@ -191,19 +189,17 @@ func (s *Server) AdminHandler(mediaStats func() (any, error)) http.Handler {
 		}
 		writeJSON(w, out)
 	})
-	mux.HandleFunc("/admin/unban", func(w http.ResponseWriter, r *http.Request) {
-		id := r.URL.Query().Get("id") // значение куки kontakt_id этого человека
-		if r.Method != http.MethodPost || id == "" {
-			http.Error(w, "POST /admin/unban?id=<значение куки kontakt_id>", http.StatusBadRequest)
-			return
+	// Бан, разбан, журнал; бан в calls/all сразу выгоняет со станции, эфир радио снимет само.
+	admin := s.Mod.AdminHandler(func(key string, z moderation.Zone) {
+		if z != moderation.Air {
+			s.kickKey(key)
 		}
-		if err := s.Mod.Unban(id); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		log.Printf("admin: разбан")
-		fmt.Fprintln(w, "ok")
 	})
+	for _, p := range []string{"/admin/ban", "/admin/unban", "/admin/journal"} {
+		mux.Handle(p, admin)
+	}
+	// База модерации для радио: оно банит и проверяет эфир по ней же.
+	mux.Handle("/mod/", s.Mod.Handler())
 	return mux
 }
 

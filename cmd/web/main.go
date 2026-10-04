@@ -24,10 +24,15 @@ func main() {
 	addr := flag.String("http", ":8080", "публичный адрес (его открывать в туннель)")
 	signalURL := flag.String("signal", "http://127.0.0.1:8081", "signal: /sip и /api")
 	mediaURL := flag.String("media", "http://127.0.0.1:8082", "media: /media")
+	radioURL := flag.String("radio", "", "Открытое радио под /radio/, например http://127.0.0.1:27620 (пусто — без радио)")
 	httpsAddr := flag.String("https", "", "ещё и HTTPS с самоподписанным сертификатом, например :8443 — браузер даёт микрофон только по https или на localhost")
 	flag.Parse()
 	log.SetPrefix("[web]    ")
-	h := webapp.Handler(mustURL(*signalURL), mustURL(*mediaURL))
+	up := webapp.Upstreams{Signal: mustURL(*signalURL), Media: mustURL(*mediaURL)}
+	if *radioURL != "" {
+		up.Radio = mustURL(*radioURL)
+	}
+	h := webapp.Handler(up)
 	if *httpsAddr != "" {
 		ip := netutil.DetectIP()
 		cert, err := selfSigned(ip)
@@ -39,6 +44,9 @@ func main() {
 		log.Printf("в локальной сети: https://%s%s (браузер предупредит о сертификате — это нормально)", ip, portOf(*httpsAddr))
 	}
 	log.Printf("Контакт: http://localhost%s", portOf(*addr))
+	if up.Radio != nil {
+		log.Printf("радио: http://localhost%s%s/", portOf(*addr), webapp.RadioPrefix)
+	}
 	log.Fatal(http.ListenAndServe(*addr, h))
 }
 

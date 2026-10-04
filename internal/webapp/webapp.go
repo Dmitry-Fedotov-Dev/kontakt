@@ -1,5 +1,5 @@
 // Package webapp — входная точка «Контакта»: пиксельная трубка, вечная кука,
-// прокси /sip и /api → signal, /media → media.
+// прокси /sip и /api → signal, /media → media, /radio/ → Открытое радио.
 package webapp
 
 import (
@@ -10,7 +10,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
-	"time"
 
 	"kontakt/internal/identity"
 )
@@ -18,12 +17,23 @@ import (
 //go:embed static
 var staticFS embed.FS
 
-func Handler(signalURL, mediaURL *url.URL) http.Handler {
+// Upstreams — куда web проксирует. Radio == nil — радио на этом домене нет.
+type Upstreams struct {
+	Signal, Media, Radio *url.URL
+}
+
+// RadioPrefix — радио под тем же доменом, что и рулетка: одна кука kontakt_id, одна модерация.
+const RadioPrefix = "/radio"
+
+func Handler(up Upstreams) http.Handler {
 	quiet := log.New(discard{}, "", 0) // прокси не пишет в журнал ничего об абонентах
-	sigProxy := httputil.NewSingleHostReverseProxy(signalURL)
-	sigProxy.ErrorLog = quiet
-	mediaProxy := httputil.NewSingleHostReverseProxy(mediaURL)
-	mediaProxy.ErrorLog = quiet
+	proxy := func(u *url.URL) *httputil.ReverseProxy {
+		p := httputil.NewSingleHostReverseProxy(u)
+		p.ErrorLog = quiet
+		return p
+	}
+	sigProxy := proxy(up.Signal)
+	mediaProxy := proxy(up.Media)
 
 	static, _ := fs.Sub(staticFS, "static")
 	files := http.FileServer(http.FS(static))
@@ -32,23 +42,28 @@ func Handler(signalURL, mediaURL *url.URL) http.Handler {
 	mux.Handle("/sip", sigProxy)
 	mux.Handle("/api/", sigProxy)
 	mux.Handle("/media", mediaProxy)
+	if up.Radio != nil {
+		rp := proxy(up.Radio)
+		director := rp.Director
+		rp.Director = func(r *http.Request) {
+			director(r)
+			// По нему радио строит абсолютные ссылки (og:url, og:image) с /radio.
+			r.Header.Set("X-Forwarded-Prefix", RadioPrefix)
+		}
+		mux.Handle(RadioPrefix+"/", http.StripPrefix(RadioPrefix, rp))
+	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	mux.Handle("/", files)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if identity.FromRequest(r) == "" && !strings.HasPrefix(r.URL.Path, "/media") {
-			id := identity.New()
-			http.SetCookie(w, &http.Cookie{
-				Name: identity.CookieName, Value: id, Path: "/",
-				MaxAge: 10 * 365 * 24 * 3600, Expires: time.Now().AddDate(10, 0, 0),
-				HttpOnly: true, SameSite: http.SameSiteLaxMode,
-				Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
-			})
-			r.AddCookie(&http.Cookie{Name: identity.CookieName, Value: id}) // чтобы и этот запрос уже был «с кукой»
+		if !strings.HasPrefix(r.URL.Path, "/media") {
+			identity.Ensure(w, r)
 		}
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Permissions-Policy", "microphone=(self), camera=(), geolocation=()")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if !strings.HasPrefix(r.URL.Path, RadioPrefix+"/") { // радио ставит эти заголовки само
+			w.Header().Set("Referrer-Policy", "no-referrer")
+			w.Header().Set("Permissions-Policy", "microphone=(self), camera=(), geolocation=()")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+		}
 		mux.ServeHTTP(w, r)
 	})
 }

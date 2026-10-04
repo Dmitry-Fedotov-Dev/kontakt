@@ -30,8 +30,11 @@ var indexHTML = func() string {
 // hostOK — только то, что бывает в имени хоста: Host приходит от клиента и попадает в разметку.
 var hostOK = regexp.MustCompile(`^[A-Za-z0-9.\-]+(:[0-9]+)?$|^\[[0-9A-Fa-f:]+\](:[0-9]+)?$`)
 
-// baseURL — абсолютный адрес сайта: og:image обязан быть абсолютным. За туннелем Cloudflare
-// и обратным прокси о https говорит X-Forwarded-Proto.
+// prefixOK — путь, под которым радио отдаёт web (/radio): тоже от клиента и тоже в разметку.
+var prefixOK = regexp.MustCompile(`^(/[a-z0-9-]+)+$`)
+
+// baseURL — абсолютный адрес радио: og:image обязан быть абсолютным. За туннелем Cloudflare
+// и обратным прокси о https говорит X-Forwarded-Proto, о пути (/radio за web) — X-Forwarded-Prefix.
 func baseURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
@@ -43,7 +46,11 @@ func baseURL(r *http.Request) string {
 	if !hostOK.MatchString(host) {
 		host = "localhost"
 	}
-	return scheme + "://" + host
+	prefix := r.Header.Get("X-Forwarded-Prefix")
+	if !prefixOK.MatchString(prefix) {
+		prefix = ""
+	}
+	return scheme + "://" + host + prefix
 }
 
 func (h *Hub) liveStation(f int) (name, title string, ok bool) {

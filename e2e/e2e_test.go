@@ -1,11 +1,13 @@
-// Сквозные тесты: web-прокси + signal + media (по настоящему gRPC), браузерные трубки по WebSocket
-// с куками и обычный SIP-софтфон по UDP.
+// Сквозные тесты: web-прокси + signal + media (по настоящему gRPC) + радио под /radio/ с общей
+// модерацией (через /mod/* signal'а), браузерные трубки по WebSocket с куками и обычный
+// SIP-софтфон по UDP.
 package e2e
 
 import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -27,6 +29,7 @@ import (
 	"kontakt/internal/media"
 	"kontakt/internal/mediaapi"
 	"kontakt/internal/moderation"
+	"kontakt/internal/radio"
 	"kontakt/internal/signal"
 	"kontakt/internal/sip"
 	"kontakt/internal/webapp"
@@ -39,12 +42,15 @@ type stack struct {
 	eng     *media.Engine
 	mc      *mediaapi.Client
 	udp     *signal.UDPServer
+	admin   *httptest.Server
+	radio   *radio.Hub
 	cfgPath string
 }
 
 func writeConfig(t *testing.T, path string, mutate func(*config.Config)) {
 	c := config.Default()
 	c.ApplyDelayMs = 300
+	c.TrustTalks = 0 // новые куки в тестах — не новички; доверие проверяет отдельный тест
 	if mutate != nil {
 		mutate(&c)
 	}
@@ -90,13 +96,22 @@ func newStack(t *testing.T, mutate func(*config.Config)) *stack {
 		t.Fatal(err)
 	}
 
+	st.admin = httptest.NewServer(st.sig.AdminHandler(nil))
+
+	// радио: модерация — база signal'а через его админку, как в cmd/radio -mod
+	st.radio = radio.NewHub(radio.Options{Mod: moderation.NewRemote(st.admin.URL), ReportAfter: 50 * time.Millisecond})
+	radioHTTP := httptest.NewServer(st.radio.Handler())
+
 	// web
 	su, _ := url.Parse(sigHTTP.URL)
 	mu, _ := url.Parse(mediaHTTP.URL)
-	st.web = httptest.NewServer(webapp.Handler(su, mu))
+	ru, _ := url.Parse(radioHTTP.URL)
+	st.web = httptest.NewServer(webapp.Handler(webapp.Upstreams{Signal: su, Media: mu, Radio: ru}))
 
 	t.Cleanup(func() {
 		st.web.Close()
+		radioHTTP.Close()
+		st.admin.Close()
 		sigHTTP.Close()
 		st.udp.Close()
 		st.mc.Close()
@@ -416,7 +431,7 @@ func TestSameCookieNotMatched(t *testing.T) {
 }
 
 func TestYellowCardThenBan(t *testing.T) {
-	st := newStack(t, nil) // политика по умолчанию — yellow
+	st := newStack(t, nil) // по умолчанию бан — от двух разных жалобщиков
 	bad := identity.New()
 
 	a, b := newPhone(t, st, ""), newPhone(t, st, bad)
@@ -463,9 +478,9 @@ func TestYellowCardThenBan(t *testing.T) {
 func TestHotConfigInstantBan(t *testing.T) {
 	st := newStack(t, nil)
 	go st.sig.Cfg.Watch(make(chan struct{}))
-	writeConfig(t, st.cfgPath, func(c *config.Config) { c.BanPolicy = "instant" })
+	writeConfig(t, st.cfgPath, func(c *config.Config) { c.BanReporters = 1 })
 	start := time.Now()
-	for st.sig.Cfg.Get().BanPolicy != "instant" {
+	for st.sig.Cfg.Get().BanReporters != 1 {
 		if time.Since(start) > 3*time.Second {
 			t.Fatal("конфиг не применился")
 		}
@@ -479,16 +494,216 @@ func TestHotConfigInstantBan(t *testing.T) {
 	b.pickUp("32")
 	a.expectState("talking", "")
 	if res := a.report(); res["result"] != "banned" {
-		t.Fatalf("instant: %v", res)
+		t.Fatalf("бан с первой жалобы: %v", res)
 	}
 	b.expectBye(signal.ReasonBanned)
 
 	// битый конфиг не применяется
-	os.WriteFile(st.cfgPath, []byte(`{"ban_policy":"forever"}`), 0o644)
+	os.WriteFile(st.cfgPath, []byte(`{"ban_reporters":0}`), 0o644)
 	time.Sleep(1200 * time.Millisecond)
-	if st.sig.Cfg.Get().BanPolicy != "instant" {
+	if st.sig.Cfg.Get().BanReporters != 1 {
 		t.Fatal("применился конфиг с ошибкой")
 	}
+}
+
+// Жалоба новичка разводит пару, но карточки не даёт: новая кука в инкогнито не должна банить.
+func TestNewcomerReportNoted(t *testing.T) {
+	st := newStack(t, func(c *config.Config) { c.TrustTalks = 3; c.BanReporters = 1 })
+	bad := identity.New()
+	a, b := newPhone(t, st, ""), newPhone(t, st, bad)
+	a.pickUp("32")
+	b.pickUp("32")
+	a.expectState("talking", "")
+	if res := a.report(); res["result"] != "noted" {
+		t.Fatalf("жалоба новичка: %v", res)
+	}
+	a.expectState("searching", signal.ReasonReported)
+	b.expectState("searching", signal.ReasonPeerLeft)
+	if me := getJSON(t, st.web.URL+"/api/me", bad); me["banned"] != false || me["cards"] != float64(0) {
+		t.Fatalf("жалоба новичка дала карточку: %v", me)
+	}
+	// после жалобы этих двоих больше не соединяют
+	time.Sleep(300 * time.Millisecond)
+	if s := st.sig.Stats(); s.Talking != 0 {
+		t.Fatalf("пару после жалобы соединили снова: %+v", s)
+	}
+}
+
+// Новичок набирает доверие разговорами: после засчитанного разговора его жалоба идёт в зачёт.
+func TestTrustAfterTalk(t *testing.T) {
+	old := signal.CountedTalk
+	signal.CountedTalk = 100 * time.Millisecond
+	t.Cleanup(func() { signal.CountedTalk = old })
+	st := newStack(t, func(c *config.Config) { c.TrustTalks = 1 })
+	me, bad := identity.New(), identity.New()
+
+	a, x := newPhone(t, st, me), newPhone(t, st, "")
+	a.pickUp("32")
+	x.pickUp("32")
+	a.expectState("talking", "")
+	time.Sleep(200 * time.Millisecond)
+	x.inDialog("BYE", "")
+	a.expectState("searching", signal.ReasonPeerLeft)
+
+	b := newPhone(t, st, bad)
+	b.pickUp("32")
+	a.expectState("talking", "")
+	if res := a.report(); res["result"] != "yellow" {
+		t.Fatalf("жалоба после засчитанного разговора: %v", res)
+	}
+}
+
+// radioWS — сокет радио через web (/radio/…) с кукой id.
+func radioWS(t *testing.T, st *stack, path, id string) *websocket.Conn {
+	t.Helper()
+	h := http.Header{"Cookie": {identity.CookieName + "=" + id}}
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(st.web.URL, "http")+webapp.RadioPrefix+path, h)
+	if err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	t.Cleanup(func() { c.Close() })
+	return c
+}
+
+// radioText ждёт текстовое сообщение с ключом key, пропуская звук и списки станций.
+func radioText(t *testing.T, c *websocket.Conn, key string) string {
+	t.Helper()
+	c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for {
+		typ, b, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("ждали %q: %v", key, err)
+		}
+		var m map[string]any
+		if typ == websocket.TextMessage && json.Unmarshal(b, &m) == nil && m[key] != nil {
+			return fmt.Sprint(m[key])
+		}
+	}
+}
+
+func expectClose(t *testing.T, c *websocket.Conn, code int) {
+	t.Helper()
+	c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for {
+		_, _, err := c.ReadMessage()
+		if err == nil {
+			continue
+		}
+		if !websocket.IsCloseError(err, code) {
+			t.Fatalf("ждали закрытие %d, а: %v", code, err)
+		}
+		return
+	}
+}
+
+func radioListener(t *testing.T, st *stack, id string, f int) *websocket.Conn {
+	l := radioWS(t, st, "/ws/listen", id)
+	l.WriteJSON(map[string]int{"tune": f})
+	for st.radio.Stations()[0].Listeners == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	return l
+}
+
+// Радио под /radio/ на том же домене: одна кука, одна база. Две жалобы слушателей закрывают
+// ведущему эфир, но не рулетку; бан из админки в зоне all выгоняет и из разговора.
+func TestRadioSharedModeration(t *testing.T) {
+	st := newStack(t, nil)
+	bad := identity.New()
+
+	resp, err := http.Get(st.web.URL + "/radio/w/101.7?n=X")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := new(strings.Builder)
+	io.Copy(page, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.Contains(page.String(), "/radio/og/1017.png") {
+		t.Fatalf("ссылка на волну за web: %d, og без /radio:\n%.400s", resp.StatusCode, page)
+	}
+
+	host := radioWS(t, st, "/ws/host?f=1017&name=BAD", bad)
+	host.WriteMessage(websocket.BinaryMessage, make([]byte, radio.FrameBytes))
+	waitFor(t, func() bool { return len(st.radio.Stations()) == 1 })
+
+	l1 := radioListener(t, st, identity.New(), 1017)
+	time.Sleep(100 * time.Millisecond) // ReportAfter — 50 мс
+	l1.WriteJSON(map[string]bool{"report": true})
+	if r := radioText(t, l1, "report"); r != "yellow" {
+		t.Fatalf("первая жалоба на станцию: %s", r)
+	}
+	if c := radioText(t, host, "card"); c != "yellow" {
+		t.Fatalf("ведущему: %s", c)
+	}
+	l1.WriteJSON(map[string]bool{"report": true})
+	if r := radioText(t, l1, "report"); r != "already" {
+		t.Fatalf("повторная жалоба: %s", r)
+	}
+	l2 := radioListener(t, st, identity.New(), 1017)
+	l2.WriteJSON(map[string]bool{"report": true})
+	if r := radioText(t, l2, "report"); r != "listen_more" {
+		t.Fatalf("жалоба сразу после настройки: %s", r)
+	}
+	time.Sleep(100 * time.Millisecond)
+	l2.WriteJSON(map[string]bool{"report": true})
+	if r := radioText(t, l2, "report"); r != "banned" {
+		t.Fatalf("вторая жалоба от другого слушателя: %s", r)
+	}
+	expectClose(t, host, radio.CloseBanned)
+	expectClose(t, radioWS(t, st, "/ws/host?f=1017", bad), radio.CloseBanned)
+	if me := getJSON(t, st.web.URL+"/radio/api/me", bad); me["banned"] != true {
+		t.Fatalf("/radio/api/me: %v", me)
+	}
+
+	// эфир закрыт, рулетка — нет
+	if me := getJSON(t, st.web.URL+"/api/me", bad); me["banned"] != false {
+		t.Fatalf("бан эфира закрыл и звонки: %v", me)
+	}
+	b, c := newPhone(t, st, bad), newPhone(t, st, "")
+	b.pickUp("32")
+	c.pickUp("32")
+	b.expectState("talking", "")
+
+	post := func(path string) {
+		resp, err := http.Post(st.admin.URL+path, "", nil)
+		if err != nil || resp.StatusCode != 200 {
+			t.Fatalf("%s: %v %v", path, err, resp)
+		}
+		resp.Body.Close()
+	}
+	post("/admin/ban?zone=all&key=" + moderation.Key(bad))
+	b.expectBye(signal.ReasonBanned)
+	if r := b.dial("32"); r.Status != 403 {
+		t.Fatalf("после бана all пустили звонить: %d", r.Status)
+	}
+
+	var journal []moderation.Entry
+	jr, _ := http.Get(st.admin.URL + "/admin/journal")
+	json.NewDecoder(jr.Body).Decode(&journal)
+	jr.Body.Close()
+	var got []string
+	for _, e := range journal {
+		got = append(got, e.Action+"/"+string(e.Zone)+"/"+e.By)
+	}
+	if strings.Join(got, " ") != "yellow/air/auto ban/air/auto ban/all/admin" {
+		t.Fatalf("журнал: %v", got)
+	}
+
+	post("/admin/unban?zone=all&key=" + moderation.Key(bad))
+	if me := getJSON(t, st.web.URL+"/radio/api/me", bad); me["banned"] != false {
+		t.Fatalf("после разбана: %v", me)
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	for i := 0; i < 300; i++ {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("не дождались")
 }
 
 func TestMaintenance(t *testing.T) {

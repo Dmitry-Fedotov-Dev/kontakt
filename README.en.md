@@ -31,8 +31,8 @@ picked automatically.
 
 | What | Command | Open |
 |---|---|---|
-| **Kontakt** with a public link | `./scripts/cluster-tunnel.sh` | `https://….trycloudflare.com` from the output |
-| Kontakt on this machine only | `./scripts/run.sh` | `http://localhost:8080` |
+| **Kontakt** with a public link | `./scripts/cluster-tunnel.sh` | `https://….trycloudflare.com` from the output; radio — same link + `/radio/` |
+| Kontakt on this machine only | `./scripts/run.sh` | `http://localhost:8080`, radio — `http://localhost:8080/radio/` |
 | **Open Radio** with a public link | `TUNNEL=1 bash scripts/radio.sh` | link in the output; locally `http://localhost:27620` |
 | Radio on this machine only | `bash scripts/radio.sh` | `http://localhost:27620` |
 | Mesh demo (Master + 5 nodes) | `./scripts/mesh-demo.sh` | graph in Grafana |
@@ -75,7 +75,7 @@ Pick up the phone and start talking to a random stranger.
 
 - **Browser Protocol:** Runs directly in the browser via WebSocket ([RFC 7118](https://datatracker.ietf.org/doc/html/rfc7118)). Connect seamlessly from any browser-enabled device.
 - **Microservice Architecture:** Powered by three Go services: **web**, **signal**, and **media** (managed via gRPC).
-- **Privacy & Security:** Voice data is never stored anywhere. Users have the ability to permanently ban a peer via cookies (hardware-based bans planned for future updates).
+- **Privacy & Security:** Voice data is never stored anywhere. Moderation is shared with the radio (one cookie, one database): a report gives a yellow card, reports from two different people within a week ban the cookie for good — per zone: calls, going on air, or both. Reports from brand-new cookies split the pair but do not count. Hardware-based bans are planned.
 - **High Efficiency:** 100 channels (50 simultaneous calls) consume as little as 0.22 CPU cores and 43 MB RAM. See [LOAD_REPORT.md](LOAD_REPORT.md) for benchmark details.
 - **Bandwidth:** a channel costs about 69 kbps per direction (G.711 + RTP, measured from `kontakt_media_bytes_*_total`; about 80 kbps with IP/UDP headers). Capacity is **measured, not assumed**: Cloudflare Tunnel has no official Mbps limit — it depends on traffic, sessions and the host — so it comes from load tests (`k6/load.js`) and metrics. Quick Tunnel (`*.trycloudflare.com`) is for development and demos only: no uptime guarantee, 200 in-flight HTTP requests, a temporary hostname.
 

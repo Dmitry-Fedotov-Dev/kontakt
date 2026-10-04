@@ -3,7 +3,9 @@
   "allowed_lines": [
     "32"
   ],
-  "ban_policy": "yellow",
+  "ban_reporters": 2,
+  "ban_window_days": 7,
+  "trust_talks": 3,
   "report_window_sec": 120,
   "max_reports_per_hour": 10,
   "max_call_minutes": 0,

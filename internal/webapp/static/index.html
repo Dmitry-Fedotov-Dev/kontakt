@@ -250,7 +250,7 @@ const handset = $("handset"), lamp = $("lamp"), stateEl = $("state"), sub = $("s
 
 // Линия одна: G.711 со звучанием «32». Выбора битрейта в интерфейсе нет.
 const LINE = "32";
-let cfg = { ban_policy: "yellow", report_window_sec: 120 };
+let cfg = { ban_reporters: 2, report_window_sec: 120 };
 let me = { banned: false, cards: 0 };
 const TERMS_VERSION = "1";
 let termsOk = false;
@@ -288,7 +288,7 @@ async function loadState() {
   if (me.banned) return showBanned();
   if (cfg.maintenance) return setIdle("bad", "Станция на обслуживании", "Попробуйте снять трубку чуть позже.");
   setIdle();
-  if (me.cards > 0) sub.textContent = "У вас жёлтая карточка: ещё одна жалоба — и вход закроется навсегда.";
+  if (me.cards > 0) sub.textContent = "У вас жёлтая карточка: ещё жалобы — и вход закроется навсегда.";
 }
 
 async function pollStats() {
@@ -478,7 +478,7 @@ function onSIP(text) {
     const why = reasonText(m);
     teardown(false);
     if (why === "banned") return showBanned();
-    if (why === "yellow-card") { me.cards = (me.cards || 0) + 1; return setIdle("bad", "Жёлтая карточка", "На вас пожаловались. Ещё одна жалоба — и вход закроется навсегда."); }
+    if (why === "yellow-card") { me.cards = (me.cards || 0) + 1; return setIdle("bad", "Жёлтая карточка", "На вас пожаловались. Ещё жалобы — и вход закроется навсегда."); }
     if (why === "time-limit") return setIdle("", "Время вышло", "Снимите трубку, чтобы продолжить.");
     setIdle("bad", "Станция положила трубку", "Попробуйте снять трубку ещё раз.");
   } else if (m.method === "OPTIONS") reply200(m);
@@ -574,6 +574,7 @@ reportBtn.onclick = async () => {
   const r = await sendInfo({ report: true });
   const text = {
     yellow: "Собеседнику выдана жёлтая карточка.", banned: "Собеседник заблокирован навсегда.",
+    noted: "Жалоба принята, больше вас не соединят.",
     already: "На этого собеседника вы уже жаловались.", no_recent_call: "Жаловаться не на кого.",
     rate_limited: "Слишком много жалоб за час."
   }[r && r.result] || "Жалоба не дошла, попробуйте ещё раз.";

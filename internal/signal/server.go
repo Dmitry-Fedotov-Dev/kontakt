@@ -88,9 +88,14 @@ type Leg struct {
 type pairRec struct {
 	peerID  string
 	peerLeg *Leg
+	since   time.Time
 	endedAt time.Time
 	report  bool
 }
+
+// CountedTalk — разговор не короче этого засчитывается обоим как сессия: так новичок
+// набирает доверие (см. moderation.Policy.TrustTalks). Переменная — для тестов.
+var CountedTalk = 30 * time.Second
 
 type Server struct {
 	Cfg   *config.Live
@@ -112,7 +117,20 @@ func New(cfg *config.Live, mod *moderation.Store, media Media) *Server {
 	s := &Server{Cfg: cfg, Mod: mod, Media: media, legs: map[string]*Leg{},
 		lastPeer: map[string]*pairRec{}, blocked: map[[2]string]bool{}, reports: map[string][]time.Time{}}
 	s.initMetrics()
+	// Пороги модерации — из горячего конфига; по той же базе банит и радио (через /mod/*).
+	mod.SetPolicy(PolicyOf(cfg.Get()))
+	prev := cfg.OnApply
+	cfg.OnApply = func(old, c config.Config) {
+		if prev != nil {
+			prev(old, c)
+		}
+		mod.SetPolicy(PolicyOf(c))
+	}
 	return s
+}
+
+func PolicyOf(c config.Config) moderation.Policy {
+	return moderation.Policy{Reporters: c.BanReporters, WindowDays: c.BanWindowDays, TrustTalks: c.TrustTalks}
 }
 
 // ---------- входящие SIP-запросы ----------
@@ -200,7 +218,7 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 	case id == "":
 		s.reject(inv, tr, 403, "Forbidden", "no-identity")
 		return
-	case s.Mod.Banned(id):
+	case s.Mod.Banned(id, moderation.Calls):
 		s.reject(inv, tr, 403, "Forbidden", ReasonBanned)
 		return
 	case cfg.Maintenance:
@@ -415,8 +433,9 @@ func (s *Server) connect(a, b *Leg) {
 	s.m.pairs.Inc()
 
 	s.mu.Lock()
-	s.lastPeer[a.identity] = &pairRec{peerID: b.identity, peerLeg: b}
-	s.lastPeer[b.identity] = &pairRec{peerID: a.identity, peerLeg: a}
+	now := time.Now()
+	s.lastPeer[a.identity] = &pairRec{peerID: b.identity, peerLeg: b, since: now}
+	s.lastPeer[b.identity] = &pairRec{peerID: a.identity, peerLeg: a, since: now}
 	s.mu.Unlock()
 
 	if mins := s.Cfg.Get().MaxCallMinutes; mins > 0 {
@@ -444,16 +463,26 @@ func (s *Server) split(a, b *Leg, reasonA, reasonB string) {
 	s.requeue(b, reasonB)
 }
 
+// markEnded отмечает конец разговора (один раз, сколько бы горутин его ни заметили) и
+// засчитывает его обоим, если он был не короче CountedTalk.
 func (s *Server) markEnded(a, b *Leg) {
 	s.mu.Lock()
 	now := time.Now()
-	if r := s.lastPeer[a.identity]; r != nil && r.peerLeg == b && r.endedAt.IsZero() {
-		r.endedAt = now
-	}
-	if r := s.lastPeer[b.identity]; r != nil && r.peerLeg == a && r.endedAt.IsZero() {
-		r.endedAt = now
+	var counted []string
+	for _, p := range [][2]*Leg{{a, b}, {b, a}} {
+		if r := s.lastPeer[p[0].identity]; r != nil && r.peerLeg == p[1] && r.endedAt.IsZero() {
+			r.endedAt = now
+			if now.Sub(r.since) >= CountedTalk {
+				counted = append(counted, p[0].identity)
+			}
+		}
 	}
 	s.mu.Unlock()
+	for _, id := range counted {
+		if err := s.Mod.Seen(id); err != nil {
+			log.Printf("moderation: не удалось сохранить: %v", err)
+		}
+	}
 }
 
 // End — нога уходит со станции. byeReason != "" — её выгоняет станция (послать BYE с причиной);
@@ -582,15 +611,16 @@ func (s *Server) onInfo(l *Leg, m *sip.Msg) {
 // ---------- жалобы ----------
 
 type ReportResult struct {
-	// yellow | banned | already | no_recent_call | rate_limited
+	// yellow | banned | noted (жалоба новичка: развели, в зачёт не пошла) | already |
+	// no_recent_call | rate_limited
 	Result string `json:"result"`
-	Policy string `json:"policy"`
 }
 
 // Report — абонент ноги r жалуется на своего текущего или последнего собеседника.
 func (s *Server) Report(r *Leg) (ReportResult, error) {
 	cfg := s.Cfg.Get()
-	res := ReportResult{Policy: cfg.BanPolicy}
+	var res ReportResult
+	defer func() { s.m.reports.Inc(res.Result) }()
 
 	s.mu.Lock()
 	rec := s.lastPeer[r.identity]
@@ -624,16 +654,19 @@ func (s *Server) Report(r *Leg) (ReportResult, error) {
 	target, targetLeg := rec.peerID, rec.peerLeg
 	s.mu.Unlock()
 
-	result, err := s.Mod.Report(target, cfg.BanPolicy)
+	result, err := s.Mod.Report(target, r.identity, moderation.Calls)
 	if err != nil {
 		log.Printf("moderation: не удалось сохранить: %v", err)
 	}
 	res.Result = result
 	log.Printf("⚑  жалоба принята: «%s»", result)
 
-	if result == moderation.ResultBanned {
+	switch result {
+	case moderation.ResultBanned:
 		s.kick(target) // со станции — отовсюду
-	} else {
+	case moderation.ResultNoted:
+		s.split(r, targetLeg, ReasonReported, ReasonPeerLeft) // без карточки: просто развести
+	default:
 		targetLeg.mu.Lock()
 		withReporter := targetLeg.peer == r && targetLeg.state == legTalking
 		targetLeg.mu.Unlock()
@@ -644,11 +677,14 @@ func (s *Server) Report(r *Leg) (ReportResult, error) {
 	return res, err
 }
 
-func (s *Server) kick(identity string) {
+func (s *Server) kick(identity string) { s.kickKey(moderation.Key(identity)) }
+
+// kickKey выгоняет со станции все ноги человека с ключом записи key (бан из админки — по ключу).
+func (s *Server) kickKey(key string) {
 	s.mu.Lock()
 	var mine []*Leg
 	for _, l := range s.legs {
-		if l.identity == identity {
+		if moderation.Key(l.identity) == key {
 			mine = append(mine, l)
 		}
 	}

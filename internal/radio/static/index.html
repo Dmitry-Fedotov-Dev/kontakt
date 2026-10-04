@@ -100,6 +100,9 @@ button, input { font: inherit; color: inherit; }
 }
 .share { display: block; margin: 14px auto 0; }
 .share[hidden] { display: none !important; }
+.rxbtns { display: flex; justify-content: center; gap: 10px; }
+.rxbtns .share { margin: 14px 0 0; }
+.report.armed { background: #C0392B; color: var(--cream); }
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10;
   padding: 7px 14px 8px; background: var(--amber); color: var(--ink); font-weight: 600; font-size: 13px;
@@ -179,7 +182,10 @@ button, input { font: inherit; color: inherit; }
               aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
     <div class="sticker" id="sticker" aria-live="polite"><b id="st1">крутни ручку</b><span id="st2">&nbsp;</span></div>
-    <button class="btn share" id="shareRx" hidden>SHARE ↗</button>
+    <div class="rxbtns">
+      <button class="btn share" id="shareRx" hidden>SHARE ↗</button>
+      <button class="btn share report" id="reportRx" hidden aria-label="Пожаловаться на станцию">REPORT</button>
+    </div>
   </section>
 
   <!-- Ведущий: табличка эфира, микрофон, три громкости, очередь -->
@@ -431,14 +437,20 @@ window.radioState = st; // для отладки и проверки в брау
 
 // ---------- соединение со списком и эфиром ----------
 let lws = null;
-const wsURL = path => (location.protocol === "https:" ? "wss://" : "ws://") + location.host + path;
+// BASE — путь радио на сайте: "" отдельно, "/radio" за web (одна кука и модерация с рулеткой).
+const BASE = location.pathname.replace(/\/(w\/[^/]*)?$/, "");
+const wsURL = path => (location.protocol === "https:" ? "wss://" : "ws://") + location.host + BASE + path;
 function connectListen() {
   lws = new WebSocket(wsURL("/ws/listen"));
   lws.binaryType = "arraybuffer";
   lws.onopen = () => { st.tuned = -1; retune(); };
   lws.onmessage = e => {
     if (typeof e.data === "string") {
-      try { const m = JSON.parse(e.data); if (m.stations) st.stations = m.stations; }
+      try {
+        const m = JSON.parse(e.data);
+        if (m.stations) st.stations = m.stations;
+        if (m.report) return toast(REPORT_TEXT[m.report] || "жалоба не дошла — попробуй ещё раз");
+      }
       catch (_) { /* битый список: следующий придёт через секунду */ }
       retune();
       if (st.mode === "tx") renderHost();
@@ -888,6 +900,7 @@ $("onair").onclick = async () => {
     return;
   }
   if (connecting) return;
+  if (me.banned) { shake($("onair")); showError(BANNED_TEXT); return; }
   if (taken(st.hostFreq)) { shake($("onair")); hintHold = performance.now() + 2500; hostHint("волну " + fmt(st.hostFreq) + " уже заняли — стрелками на соседнюю", true); return; }
   connecting = true; hintHold = 0; renderHost(); // табличка отвечает сразу, а не после запуска звука
   try { await ensureTx(); } catch (_) { connecting = false; return; } // причина уже на экране
@@ -904,8 +917,20 @@ function connectHost() {
     opened = true; retries = 0; reconnecting = false; st.onAir = true; $("name").disabled = true;
     sendTitle(); renderHost();
   };
+  ws.onmessage = e => {
+    if (typeof e.data !== "string") return;
+    try {
+      if (JSON.parse(e.data).card === "yellow") showError("на станцию пожаловались — жёлтая карточка. Ещё жалобы — и эфир закроется");
+    } catch (_) {}
+  };
   ws.onclose = e => {
     if (hws === ws) hws = null;
+    if (e.code === 4003) { // модерация: эфир закрыт, переподключаться незачем
+      me.banned = true;
+      wantAir = false; reconnecting = false; st.onAir = false; $("name").disabled = false;
+      showError(BANNED_TEXT); renderHost();
+      return;
+    }
     if (wantAir && (opened || reconnecting) && retries < 30) { // связь была и оборвалась — возвращаемся
       reconnecting = true; retries++;
       renderHost();
@@ -1090,7 +1115,7 @@ function shareURL(f, name, track) {
   if (name) q.set("n", name);
   if (track) q.set("t", track);
   const qs = q.toString();
-  return location.origin + "/w/" + fmt(f) + (qs ? "?" + qs : "");
+  return location.origin + BASE + "/w/" + fmt(f) + (qs ? "?" + qs : "");
 }
 let toastT = null;
 function toast(msg) {
@@ -1119,13 +1144,39 @@ $("shareTx").onclick = () => share(st.hostFreq, $("name").value.trim(), nowTitle
 setInterval(() => {
   const { s, d } = nearest(st.dial);
   $("shareRx").hidden = !(st.power && s && d < CATCH);
+  $("reportRx").hidden = $("shareRx").hidden || !me.moderation;
   $("shareTx").hidden = !st.onAir;
 }, 300);
+
+// ---------- жалоба на станцию ----------
+// Модерация общая с рулеткой: на станцию жалуются слушатели, бан закрывает эфир (слушать можно).
+let me = { moderation: false, banned: false, cards: 0 };
+fetch(BASE + "/api/me", { cache: "no-store" }).then(r => r.json()).then(m => { me = m; }).catch(() => {});
+const BANNED_TEXT = "эфир для тебя закрыт: на станцию жаловались слушатели";
+const REPORT_TEXT = {
+  yellow: "станции выдана жёлтая карточка", banned: "станция снята с эфира", noted: "жалоба принята",
+  already: "на эту станцию твоя жалоба уже есть", listen_more: "послушай чуть дольше — потом можно пожаловаться",
+  no_station: "жаловаться не на кого", self: "это твоя станция", rate_limited: "слишком много жалоб за час",
+};
+let reportArm = null;
+$("reportRx").onclick = () => {
+  const b = $("reportRx");
+  if (!b.classList.contains("armed")) { // второе нажатие в течение 3 с — жалоба
+    b.classList.add("armed"); b.textContent = "SURE?";
+    clearTimeout(reportArm);
+    reportArm = setTimeout(() => { b.classList.remove("armed"); b.textContent = "REPORT"; }, 3000);
+    return;
+  }
+  clearTimeout(reportArm);
+  b.classList.remove("armed"); b.textContent = "REPORT";
+  if (lws && lws.readyState === 1) lws.send(JSON.stringify({ report: true }));
+  else toast("нет связи — попробуй ещё раз");
+};
 
 // Открыли по ссылке на волну: стрелка сразу стоит на ней, звук — после первого касания.
 let shared = null;
 {
-  const m = location.pathname.match(/^\/w\/(\d{2,3}(?:\.\d)?)$/);
+  const m = location.pathname.slice(BASE.length).match(/^\/w\/(\d{2,3}(?:\.\d)?)$/);
   const f = m ? Math.round(parseFloat(m[1]) * 10) : 0;
   if (f >= 875 && f <= 1080) {
     const q = new URLSearchParams(location.search);

@@ -76,7 +76,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count(kontakt_mesh_graph_node{observer=\"$observer\",detail__health=\"HEALTHY\",detail__role!=\"master\"}) or vector(0)",
+     "expr": "count((kontakt_mesh_graph_node{observer=\"$observer\",detail__health=\"HEALTHY\",detail__role!=\"master\"} or on() (kontakt_mesh_graph_node{detail__health=\"HEALTHY\",detail__role!=\"master\"} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"}))) or vector(0)",
      "legendFormat": "__auto",
      "range": true,
      "instant": false
@@ -137,7 +137,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count(kontakt_mesh_graph_node{observer=\"$observer\",detail__health=\"DEGRADED\"}) or vector(0)",
+     "expr": "count((kontakt_mesh_graph_node{observer=\"$observer\",detail__health=\"DEGRADED\"} or on() (kontakt_mesh_graph_node{detail__health=\"DEGRADED\"} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"}))) or vector(0)",
      "legendFormat": "__auto",
      "range": true,
      "instant": false
@@ -202,7 +202,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count(kontakt_mesh_graph_node{observer=\"$observer\",detail__health=\"OFFLINE\"}) or vector(0)",
+     "expr": "count((kontakt_mesh_graph_node{observer=\"$observer\",detail__health=\"OFFLINE\"} or on() (kontakt_mesh_graph_node{detail__health=\"OFFLINE\"} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"}))) or vector(0)",
      "legendFormat": "__auto",
      "range": true,
      "instant": false
@@ -267,7 +267,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count(kontakt_mesh_graph_edge{observer=\"$observer\",detail__quality=\"ok\"}) or vector(0)",
+     "expr": "count((kontakt_mesh_graph_edge{observer=\"$observer\",detail__quality=\"ok\"} or on() (kontakt_mesh_graph_edge{detail__quality=\"ok\"} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"}))) or vector(0)",
      "legendFormat": "__auto",
      "range": true,
      "instant": false
@@ -328,7 +328,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "count(kontakt_mesh_graph_edge{observer=\"$observer\",detail__quality=~\"warning|critical\"}) or vector(0)",
+     "expr": "count((kontakt_mesh_graph_edge{observer=\"$observer\",detail__quality=~\"warning|critical\"} or on() (kontakt_mesh_graph_edge{detail__quality=~\"warning|critical\"} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"}))) or vector(0)",
      "legendFormat": "__auto",
      "range": true,
      "instant": false
@@ -471,7 +471,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "kontakt_mesh_graph_node{observer=\"$observer\"} or on() label_replace(label_replace(label_replace(vector(0), \"id\", \"no-mesh\", \"\", \"\"), \"title\", \"mesh не запущен\", \"\", \"\"), \"subtitle\", \"./scripts/mesh-demo.sh\", \"\", \"\")",
+     "expr": "(kontakt_mesh_graph_node{observer=\"$observer\"} or on() (kontakt_mesh_graph_node{} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"})) or on() label_replace(label_replace(label_replace(vector(0), \"id\", \"no-mesh\", \"\", \"\"), \"title\", \"mesh не запущен\", \"\", \"\"), \"subtitle\", \"./scripts/mesh-demo.sh\", \"\", \"\")",
      "legendFormat": "__auto",
      "format": "table",
      "instant": true,
@@ -483,7 +483,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "kontakt_mesh_graph_edge{observer=\"$observer\"} or on() max by (id, source, target) (label_replace(label_replace(label_replace(topk(1, kontakt_mesh_graph_node{observer=\"$observer\"} or on() label_replace(label_replace(label_replace(vector(0), \"id\", \"no-mesh\", \"\", \"\"), \"title\", \"mesh не запущен\", \"\", \"\"), \"subtitle\", \"./scripts/mesh-demo.sh\", \"\", \"\")), \"source\", \"$1\", \"id\", \"(.*)\"), \"target\", \"$1\", \"id\", \"(.*)\"), \"id\", \"idle\", \"\", \"\"))",
+     "expr": "(kontakt_mesh_graph_edge{observer=\"$observer\"} or on() (kontakt_mesh_graph_edge{} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"})) or on() max by (id, source, target) (label_replace(label_replace(label_replace(topk(1, (kontakt_mesh_graph_node{observer=\"$observer\"} or on() (kontakt_mesh_graph_node{} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"})) or on() label_replace(label_replace(label_replace(vector(0), \"id\", \"no-mesh\", \"\", \"\"), \"title\", \"mesh не запущен\", \"\", \"\"), \"subtitle\", \"./scripts/mesh-demo.sh\", \"\", \"\")), \"source\", \"$1\", \"id\", \"(.*)\"), \"target\", \"$1\", \"id\", \"(.*)\"), \"id\", \"idle\", \"\", \"\"))",
      "legendFormat": "__auto",
      "format": "table",
      "instant": true,
@@ -578,7 +578,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "kontakt_mesh_graph_node_stat{observer=\"$observer\"}",
+     "expr": "(kontakt_mesh_graph_node_stat{observer=\"$observer\"} or on() (kontakt_mesh_graph_node_stat{} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"}))",
      "legendFormat": "__auto",
      "format": "table",
      "instant": true,
@@ -624,7 +624,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "kontakt_mesh_graph_edge{observer=\"$observer\"}",
+     "expr": "(kontakt_mesh_graph_edge{observer=\"$observer\"} or on() (kontakt_mesh_graph_edge{} and on(observer) kontakt_mesh_observer_info{title=~\"master.*\"}))",
      "legendFormat": "__auto",
      "format": "table",
      "instant": true,

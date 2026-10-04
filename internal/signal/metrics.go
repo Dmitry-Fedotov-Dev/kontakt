@@ -12,6 +12,7 @@ type stationMetrics struct {
 	calls     *metrics.CounterVec
 	hangups   *metrics.CounterVec
 	pairs     *metrics.Counter
+	reports   *metrics.CounterVec
 	queueWait *metrics.Histogram
 }
 
@@ -29,6 +30,9 @@ func (s *Server) initMetrics() {
 			"Ноги, покинувшие станцию, по причине: user — сам положил трубку, иначе причина станции.", "reason",
 			"user", ReasonBanned, ReasonYellow, ReasonMediaError),
 		pairs: r.Counter("kontakt_pairs_total", "Соединённые пары."),
+		reports: r.CounterVec("kontakt_signal_reports_total",
+			"Жалобы по исходу: yellow, banned, noted — от новичка (в зачёт не пошла), остальное — не принята.", "result",
+			"yellow", "banned", "noted", "already", "no_recent_call", "rate_limited"),
 		queueWait: r.Histogram("kontakt_signal_queue_wait_seconds",
 			"Сколько абонент провёл в очереди до соединения.",
 			[]float64{0.25, 0.5, 1, 2, 3, 5, 10, 20, 30, 60, 120, 300}),

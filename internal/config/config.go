@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,8 +25,14 @@ type Config struct {
 	DefaultLine string `json:"default_line"`
 	// Какие режимы доступны в интерфейсе: "64", "32", "16", "8", "clean".
 	AllowedLines []string `json:"allowed_lines"`
-	// "instant" — любая жалоба = вечный бан; "yellow" — первая жалоба = жёлтая карточка, вторая = бан.
-	BanPolicy string `json:"ban_policy"`
+	// Бан (вечный) — когда за ban_window_days пожаловались столько РАЗНЫХ людей; до этого —
+	// жёлтая карточка. 1 — бан с первой жалобы. Действует и на рулетку, и на эфир радио.
+	BanReporters int `json:"ban_reporters"`
+	// Сколько дней жалоба идёт в зачёт.
+	BanWindowDays int `json:"ban_window_days"`
+	// Жалобы новичка не идут в зачёт, пока у него меньше стольких сессий (разговор от 30 с
+	// или 5 минут у приёмника); 0 — засчитывать всем.
+	TrustTalks int `json:"trust_talks"`
 	// Сколько секунд после разговора на собеседника ещё можно пожаловаться.
 	ReportWindowSec int `json:"report_window_sec"`
 	// Не больше стольких жалоб в час от одного человека (защита от массовых ложных жалоб).
@@ -39,8 +46,8 @@ type Config struct {
 }
 
 func Default() Config {
-	return Config{DefaultLine: "32", AllowedLines: []string{"64", "32", "16", "8"}, BanPolicy: "yellow",
-		ReportWindowSec: 120, MaxReportsPerHour: 10, ApplyDelayMs: 1000}
+	return Config{DefaultLine: "32", AllowedLines: []string{"64", "32", "16", "8"}, BanReporters: 2, BanWindowDays: 7,
+		TrustTalks: 3, ReportWindowSec: 120, MaxReportsPerHour: 10, ApplyDelayMs: 1000}
 }
 
 func (c Config) Validate() error {
@@ -56,10 +63,10 @@ func (c Config) Validate() error {
 			return fmt.Errorf("allowed_lines: %q, можно %v", l, ok)
 		}
 	}
-	if c.BanPolicy != "instant" && c.BanPolicy != "yellow" {
-		return fmt.Errorf(`ban_policy: %q, можно "instant" или "yellow"`, c.BanPolicy)
+	if c.BanReporters < 1 || c.BanWindowDays < 1 {
+		return fmt.Errorf("ban_reporters и ban_window_days — от 1")
 	}
-	if c.ReportWindowSec < 0 || c.MaxReportsPerHour < 0 || c.MaxCallMinutes < 0 || c.ApplyDelayMs < 0 {
+	if c.TrustTalks < 0 || c.ReportWindowSec < 0 || c.MaxReportsPerHour < 0 || c.MaxCallMinutes < 0 || c.ApplyDelayMs < 0 {
 		return fmt.Errorf("отрицательные числа не допускаются")
 	}
 	return nil
@@ -70,6 +77,9 @@ func Parse(b []byte) (Config, error) {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields() // опечатка в ключе не должна молча игнорироваться
 	if err := dec.Decode(&c); err != nil {
+		if strings.Contains(err.Error(), `"ban_policy"`) {
+			err = fmt.Errorf(`%w: ban_policy заменён на ban_reporters ("instant" = 1, "yellow" = 2) и ban_window_days`, err)
+		}
 		return Config{}, err
 	}
 	return c, c.Validate()

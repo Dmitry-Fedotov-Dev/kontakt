@@ -12,7 +12,13 @@
 //	                         {"title":"…"} (что сейчас в эфире)
 //	/ws/listen               слушатель; шлёт {"tune":1017} (0 — между станциями),
 //	                         получает двоичные кадры станции и раз в секунду, если
-//	                         что-то изменилось, текст {"stations":[…]}
+//	                         что-то изменилось, текст {"stations":[…]};
+//	                         {"report":true} — жалоба на станцию, на которой стоит,
+//	                         ответ {"report":"yellow"|"banned"|…}
+//
+// Модерация (Options.Mod) общая с рулеткой: человек — кука kontakt_id, бан эфира — зона air.
+// Забаненный в эфир не выходит (сокет закрывается с кодом 4003), на жёлтую карточку ведущий
+// получает {"card":"yellow"}. Слушать может любой.
 //
 // Частота хранится в десятых долях МГц: 1017 = 101.7 МГц, диапазон 87.5–108.0.
 // Сервер не пишет в журнал ни адресов, ни содержимого эфира.
@@ -33,7 +39,9 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"kontakt/internal/identity"
 	"kontakt/internal/metrics"
+	"kontakt/internal/moderation"
 )
 
 const (
@@ -48,6 +56,10 @@ const (
 	listenerBuf = 25   // 0,5 с кадров на слушателя; медленный теряет кадры, а не тормозит станцию
 	nameRunes   = 24
 	titleRunes  = 64
+
+	CloseBanned    = 4003 // код закрытия сокета ведущего: эфир для него закрыт
+	reportsPerHour = 10   // жалоб от одного человека в час, больше — rate_limited
+	banRecheck     = 30 * time.Second
 )
 
 //go:embed static
@@ -59,6 +71,11 @@ type Options struct {
 	// PrivateMetrics убирает /metrics со страницы радио: тогда метрики отдаёт только
 	// MetricsHandler на отдельном адресе (флаг -admin).
 	PrivateMetrics bool
+	// Mod — модерация; nil — без неё (и без куки): эфир открыт всем, жаловаться некуда.
+	Mod moderation.Moderator
+	// ReportAfter — сколько надо простоять на станции, чтобы на неё пожаловаться (не на
+	// ходу ручкой); CountAfter — прослушивание или эфир такой длины засчитывается как сессия.
+	ReportAfter, CountAfter time.Duration
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
@@ -81,11 +98,15 @@ type Hub struct {
 	sessions  *metrics.Counter
 	tunes     *metrics.Counter
 	shares    *metrics.CounterVec
+	reports   *metrics.CounterVec
+	kicked    *metrics.Counter
 	ogRenders *metrics.Counter
 	onAir     *metrics.Histogram
 	reg       *metrics.Registry
 	upgrader  websocket.Upgrader
 	og        ogCache
+
+	reportTimes map[string][]time.Time // под mu: кто сколько жаловался за час
 }
 
 type station struct {
@@ -93,11 +114,22 @@ type station struct {
 	name, title string
 	since       time.Time
 	subs        map[*listener]struct{}
+
+	host     string          // кука ведущего ("" без модерации)
+	conn     *websocket.Conn // чтобы снять с эфира
+	wmu      sync.Mutex      // текст ведущему пишут жалобы из разных горутин
+	reported map[string]bool // под Hub.mu: кто уже жаловался на этот эфир
 }
 
 type listener struct {
+	id    string
 	tuned int
 	out   chan []byte
+	ctl   chan []byte // текстовые ответы (жалоба) — пишет только writeListener
+
+	heard      *station // станция, которую слышит, и с какого момента (под Hub.mu)
+	heardSince time.Time
+	counted    bool // прослушивание уже засчитано
 }
 
 // Station — то, что видят слушатели.
@@ -116,7 +148,14 @@ func NewHub(opt Options) *Hub {
 	if opt.MaxListeners <= 0 {
 		opt.MaxListeners = 500
 	}
-	h := &Hub{opt: opt, st: map[int]*station{}, ls: map[*listener]struct{}{}, reg: metrics.NewRegistry()}
+	if opt.ReportAfter <= 0 {
+		opt.ReportAfter = 10 * time.Second
+	}
+	if opt.CountAfter <= 0 {
+		opt.CountAfter = 5 * time.Minute
+	}
+	h := &Hub{opt: opt, st: map[int]*station{}, ls: map[*listener]struct{}{}, reg: metrics.NewRegistry(),
+		reportTimes: map[string][]time.Time{}}
 	h.upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 	// Метрики — только счётчики и частоты: ни адресов, ни названий станций и треков (их
 	// задают люди, и в метках они раздули бы число рядов без предела).
@@ -128,8 +167,13 @@ func NewHub(opt Options) *Hub {
 		"Потерянные кадры: slow_listener — слушатель не успевает принимать, host_rate — ведущий шлёт больше 64 кбит/с",
 		"reason", "slow_listener", "host_rate")
 	h.rejected = h.reg.CounterVec("kontakt_radio_rejected_total",
-		"Отказы: busy — волна занята, bad_freq — вне диапазона, full — нет места для станции, listeners_full — для приёмника",
-		"reason", "busy", "bad_freq", "full", "listeners_full")
+		"Отказы: busy — волна занята, bad_freq — вне диапазона, full — нет места для станции, listeners_full — для приёмника, "+
+			"banned — эфир закрыт модерацией, no_identity — нет куки",
+		"reason", "busy", "bad_freq", "full", "listeners_full", "banned", "no_identity")
+	h.reports = h.reg.CounterVec("kontakt_radio_reports_total",
+		"Жалобы на станции по исходу: yellow, banned, noted — от новичка (в зачёт не пошла), остальное — не принята",
+		"result", "yellow", "banned", "noted", "already", "no_station", "listen_more", "self", "rate_limited", "no_identity", "error")
+	h.kicked = h.reg.Counter("kontakt_radio_hosts_banned_total", "Станции, снятые с эфира баном")
 	h.hosts = h.reg.Counter("kontakt_radio_host_sessions_total", "Выходы станций в эфир")
 	h.sessions = h.reg.Counter("kontakt_radio_listener_sessions_total", "Подключения приёмников")
 	h.tunes = h.reg.Counter("kontakt_radio_tunes_total", "Перенастройки приёмников (ручка поймала или потеряла станцию)")
@@ -183,6 +227,16 @@ func (h *Hub) Handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(h.Stations())
 	})
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
+		out := map[string]any{"moderation": h.opt.Mod != nil, "banned": false, "cards": 0}
+		if h.opt.Mod != nil {
+			st := h.opt.Mod.Status(identity.FromRequest(r), moderation.Air)
+			out["banned"], out["cards"] = st.Banned, st.Cards
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		json.NewEncoder(w).Encode(out)
+	})
 	if !h.opt.PrivateMetrics {
 		mux.Handle("/metrics", h.reg.Handler())
 	}
@@ -192,6 +246,9 @@ func (h *Hub) Handler() http.Handler {
 	mux.HandleFunc("GET /og/{freq}", h.serveOG)
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h.opt.Mod != nil { // за web кука уже есть; радио, запущенное отдельно, ставит её само
+			identity.Ensure(w, r)
+		}
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "microphone=(self), camera=(), geolocation=()")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -266,6 +323,22 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "RADIO " + FormatFreq(f)
 	}
+	host := identity.FromRequest(r)
+	if h.opt.Mod != nil {
+		if host == "" {
+			h.rejected.Inc("no_identity")
+			http.Error(w, "нет куки kontakt_id: откройте страницу радио", http.StatusForbidden)
+			return
+		}
+		if h.opt.Mod.Status(host, moderation.Air).Banned {
+			h.rejected.Inc("banned")
+			// Код ответа на апгрейд браузер не показывает — отказываем кодом закрытия сокета.
+			if conn, err := h.upgrader.Upgrade(w, r, nil); err == nil {
+				closeBanned(conn)
+			}
+			return
+		}
+	}
 	h.mu.Lock()
 	switch {
 	case h.st[f] != nil:
@@ -279,7 +352,7 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "в эфире нет места", http.StatusServiceUnavailable)
 		return
 	}
-	s := &station{freq: f, name: name, since: time.Now(), subs: map[*listener]struct{}{}}
+	s := &station{freq: f, name: name, since: time.Now(), subs: map[*listener]struct{}{}, host: host, reported: map[string]bool{}}
 	h.st[f] = s // занимаем до апгрейда: двое не получат одну частоту
 	h.mu.Unlock()
 
@@ -288,6 +361,9 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 		h.removeStation(s)
 		return
 	}
+	s.wmu.Lock()
+	s.conn = conn
+	s.wmu.Unlock()
 	defer conn.Close()
 	defer h.removeStation(s)
 	h.hosts.Inc()
@@ -297,6 +373,7 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 	for l := range h.ls { // кто уже стоял на этой частоте — сразу слышит
 		if l.tuned == f {
 			s.subs[l] = struct{}{}
+			l.heard, l.heardSince = s, time.Now()
 		}
 	}
 	h.mu.Unlock()
@@ -304,7 +381,23 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 
 	conn.SetReadLimit(maxMessage)
 	tokens, last := float64(burstBytes), time.Now()
+	counted, checked := false, time.Now()
 	for {
+		if h.opt.Mod != nil {
+			if !counted && time.Since(s.since) >= h.opt.CountAfter {
+				counted = true
+				go h.opt.Mod.Seen(host)
+			}
+			// Бан из админки — эфир снимается при следующей проверке.
+			if time.Since(checked) >= banRecheck {
+				checked = time.Now()
+				go func() {
+					if h.opt.Mod.Status(host, moderation.Air).Banned {
+						h.kick(s)
+					}
+				}()
+			}
+		}
 		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 		typ, data, err := conn.ReadMessage()
 		if err != nil {
@@ -354,6 +447,33 @@ func (h *Hub) broadcast(s *station, data []byte) {
 	}
 }
 
+// kick снимает станцию с эфира: ведущий получает код 4003 и больше не переподключается.
+func (h *Hub) kick(s *station) {
+	h.kicked.Inc()
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	if s.conn != nil {
+		closeBanned(s.conn)
+	}
+}
+
+func closeBanned(c *websocket.Conn) {
+	c.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(CloseBanned, "banned"), time.Now().Add(time.Second))
+	c.Close()
+}
+
+// sayHost — текст ведущему (карточка). Ведущему пишет только этот метод, под wmu.
+func (s *station) sayHost(v any) {
+	b, _ := json.Marshal(v)
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	if s.conn == nil {
+		return
+	}
+	s.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	s.conn.WriteMessage(websocket.TextMessage, b)
+}
+
 func (h *Hub) removeStation(s *station) {
 	h.mu.Lock()
 	if h.st[s.freq] == s {
@@ -378,7 +498,7 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	l := &listener{out: make(chan []byte, listenerBuf)}
+	l := &listener{id: identity.FromRequest(r), out: make(chan []byte, listenerBuf), ctl: make(chan []byte, 4)}
 	h.mu.Lock()
 	h.ls[l] = struct{}{}
 	h.sessions.Inc()
@@ -396,10 +516,21 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		var m struct {
-			Tune *int `json:"tune"`
+			Tune   *int `json:"tune"`
+			Report bool `json:"report"`
 		}
-		if json.Unmarshal(data, &m) == nil && m.Tune != nil {
+		if json.Unmarshal(data, &m) != nil {
+			continue
+		}
+		if m.Tune != nil {
 			h.tune(l, *m.Tune)
+		}
+		if m.Report {
+			b, _ := json.Marshal(map[string]string{"report": h.report(l)})
+			select {
+			case l.ctl <- b:
+			default: // слушатель засыпал жалобами — ответы теряются, жалобы считаются
+			}
 		}
 	}
 	h.mu.Lock()
@@ -427,8 +558,10 @@ func (h *Hub) tune(l *listener, f int) {
 	}
 	l.tuned = f
 	h.tunes.Inc()
+	l.heard = nil
 	if s := h.st[f]; s != nil {
 		s.subs[l] = struct{}{}
+		l.heard, l.heardSince = s, time.Now()
 	}
 	h.mu.Unlock()
 	h.changed()
@@ -464,11 +597,91 @@ func (h *Hub) writeListener(conn *websocket.Conn, l *listener, done chan struct{
 				conn.Close() // разбудит читающий цикл, тот всё уберёт
 				return
 			}
+		case b := <-l.ctl:
+			if !send(websocket.TextMessage, b) {
+				conn.Close()
+				return
+			}
 		case <-tick.C:
+			h.countListen(l)
 			if !sendList() {
 				conn.Close()
 				return
 			}
 		}
 	}
+}
+
+// ---------- модерация ----------
+
+// countListen засчитывает прослушивание одной станции дольше CountAfter — раз за подключение.
+func (h *Hub) countListen(l *listener) {
+	if h.opt.Mod == nil || l.id == "" {
+		return
+	}
+	h.mu.Lock()
+	ok := !l.counted && l.heard != nil && h.st[l.heard.freq] == l.heard && time.Since(l.heardSince) >= h.opt.CountAfter
+	if ok {
+		l.counted = true
+	}
+	h.mu.Unlock()
+	if ok {
+		h.opt.Mod.Seen(l.id)
+	}
+}
+
+// report — слушатель жалуется на станцию, которую слышит не меньше ReportAfter.
+func (h *Hub) report(l *listener) (res string) {
+	defer func() { h.reports.Inc(res) }()
+	if h.opt.Mod == nil || l.id == "" {
+		return "no_identity"
+	}
+	h.mu.Lock()
+	s := l.heard
+	now := time.Now()
+	recent := h.reportTimes[l.id][:0]
+	for _, t := range h.reportTimes[l.id] {
+		if now.Sub(t) < time.Hour {
+			recent = append(recent, t)
+		}
+	}
+	switch {
+	case s == nil || h.st[s.freq] != s:
+		res = "no_station"
+	case s.host == l.id:
+		res = "self"
+	case s.reported[l.id]:
+		res = "already"
+	case now.Sub(l.heardSince) < h.opt.ReportAfter:
+		res = "listen_more"
+	case len(recent) >= reportsPerHour:
+		res = "rate_limited"
+	default:
+		s.reported[l.id] = true
+		recent = append(recent, now)
+	}
+	if len(recent) == 0 {
+		delete(h.reportTimes, l.id)
+	} else {
+		h.reportTimes[l.id] = recent
+	}
+	h.mu.Unlock()
+	if res != "" {
+		return res
+	}
+
+	res, err := h.opt.Mod.Report(s.host, l.id, moderation.Air)
+	if err != nil && res == "" {
+		h.mu.Lock()
+		delete(s.reported, l.id) // жалоба не дошла — можно повторить
+		h.mu.Unlock()
+		return "error"
+	}
+	switch res {
+	case moderation.ResultBanned:
+		h.kick(s)
+	case moderation.ResultYellow:
+		s.sayHost(map[string]string{"card": "yellow"})
+	}
+	return res
 }

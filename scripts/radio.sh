@@ -9,6 +9,9 @@
 #   MONITORING=1 bash scripts/radio.sh  # плюс Prometheus и Grafana — дашборд «Открытое радио»
 #                                       # (Docker или без него — сам выберет monitoring/stack.sh)
 #
+# Модерация: своя база data/radio/bans.json (жалобы слушателей, бан эфира). Общая с рулеткой —
+# когда радио идёт под /radio/ станции: ./scripts/run.sh или ./scripts/cluster-tunnel.sh.
+#
 # Мониторинг: скрипт всегда пишет monitoring/prometheus/targets/radio.json с портом этого
 # запуска, и уже работающий стек monitoring/ видит радио сам. Радио на телефоне (Termux,
 # без Docker) — Prometheus на компьютере забирает метрики через туннель:
@@ -69,7 +72,7 @@ trap 'reload=1' USR1
 echo $$ >"$STATE/run.pid"
 
 start_server() {
-  ./bin/radio -http "127.0.0.1:$port" &
+  ./bin/radio -http "127.0.0.1:$port" -bans "$STATE/bans.json" &
   srv=$!
   started=$(date +%s)
   for _ in $(seq 40); do curl -fsS "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && return 0; sleep 0.25; done
