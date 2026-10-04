@@ -8,8 +8,8 @@
 #   HTTPS=:8443 ./scripts/run.sh     # плюс https с самоподписанным сертификатом (микрофон с телефона в локалке)
 #
 # Логи сервисов идут в консоль с префиксами [web] [signal] [media] [radio]. Ctrl+C останавливает всё.
-# Цели Prometheus (signal, media, радио) пишутся в monitoring/prometheus/targets/*-run.json с
-# портами этого запуска и убираются при выходе: тревога «станция не отвечает» горит, только
+# Цели Prometheus (signal, media, радио) пишутся в monitoring/prometheus/targets/<сервис>-run-<порт>.json
+# с портами этого запуска (два стенда рядом друг другу не мешают) и убираются при выходе: тревога «станция не отвечает» горит, только
 # пока стенд должен работать.
 #
 # Telegram-бот (cmd/notify): если в .env есть TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID — тревоги,
@@ -29,7 +29,7 @@ RADIO_ADMIN="${RADIO_ADMIN:-8093}" # /metrics радио
 HTTPS="${HTTPS:-}"
 SIP_UDP="${SIP_UDP:-}"
 IP="${IP:-}"
-RTP="${RTP:-10000-10200}"
+RTP="${RTP:-10000-11000}" # UDP RTP софтфонов: нога занимает чётный порт — 500 ног; браузер портов не берёт
 CONFIG="${CONFIG:-config/kontakt.json}"
 BANS="${BANS:-data/bans.json}"
 
@@ -45,12 +45,13 @@ TARGETS=monitoring/prometheus/targets
 cleanup() {
   kill "${pids[@]}" 2>/dev/null || true
   wait 2>/dev/null || true
-  rm -f "$TARGETS"/{signal,media,radio}-run.json
+  rm -f "$TARGETS/signal-run-$SIGNAL_ADMIN.json" "$TARGETS/media-run-$MEDIA_WS.json" "$TARGETS/radio-run-$RADIO_ADMIN.json"
 }
 trap cleanup EXIT INT TERM
 
 notify=""
-if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+# NOTIFY=0 — без бота: второй стенд рядом (Telegram отдаёт обновления только одному боту с токеном)
+if [ "${NOTIFY:-1}" != 0 ] && [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
   ./bin/notify -http "127.0.0.1:$NOTIFY_HTTP" -admin "http://127.0.0.1:$SIGNAL_ADMIN" \
                -prometheus "http://127.0.0.1:${PROMETHEUS_PORT:-9092}" &
   pids+=($!)
@@ -70,7 +71,7 @@ pids+=($!) core+=($!)
 pids+=($!) core+=($!)
 mkdir -p "$TARGETS"
 for t in "signal:$SIGNAL_ADMIN" "media:$MEDIA_WS" "radio:$RADIO_ADMIN"; do
-  printf '[{"targets":["127.0.0.1:%s"],"labels":{"instance":"%s-run"}}]\n' "${t#*:}" "${t%%:*}" >"$TARGETS/${t%%:*}-run.json"
+  printf '[{"targets":["127.0.0.1:%s"],"labels":{"instance":"%s-run"}}]\n' "${t#*:}" "${t%%:*}" >"$TARGETS/${t%%:*}-run-${t#*:}.json"
 done
 
 echo
@@ -78,6 +79,6 @@ echo "Контакт запущен: http://localhost:${HTTP##*:}, радио: h
 echo "  конфиг:  $CONFIG (правьте на лету — применится через apply_delay_ms)"
 echo "  админка: curl -s localhost:$SIGNAL_ADMIN/admin/stats | jq"
 echo "  модерация (и радио): curl -s localhost:$SIGNAL_ADMIN/admin/journal | jq; бан — POST /admin/ban?key=…&zone=calls|air|all"
-echo "  Telegram-бот: ${notify:-выключен (нет TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID в .env)}"
+echo "  Telegram-бот: ${notify:-выключен (NOTIFY=0 или нет TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID в .env)}"
 echo
 wait -n "${core[@]}" # упал любой сервис станции — гасим всё; бот сюда не входит
