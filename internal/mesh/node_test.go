@@ -117,13 +117,18 @@ func TestMeshEndToEnd(t *testing.T) {
 		}
 		return true
 	})
-	for _, w := range ws {
-		for id := range w.Peers() {
-			if w.Trust.State(id) != Connected {
-				t.Fatalf("%s → %s: %s", w.ID, id, w.Trust.State(id))
+	// Только что добавленный сосед ещё KNOWN: до CONNECTED — рукопожатие, на занятой машине
+	// (CI с -race) оно не успевало к мгновенной проверке.
+	waitFor(t, "все соседи CONNECTED", 5*time.Second, func() bool {
+		for _, w := range ws {
+			for id := range w.Peers() {
+				if w.Trust.State(id) != Connected {
+					return false
+				}
 			}
 		}
-	}
+		return true
+	})
 
 	// Маршрут W1→W3 идёт в обход потерь, через ретранслятор, а не напрямую.
 	var r *Route
@@ -177,8 +182,17 @@ func TestMeshEndToEnd(t *testing.T) {
 			t.Fatalf("после отказа Master'а у %s соседей %d", w.ID, len(w.Peers()))
 		}
 	}
-	if r2, _ := w1.Route(w3.ID); r2 == nil {
-		t.Fatalf("после отказа Master'а маршрута нет; рёбра:\n%s", dumpLinks(w1))
+	// Маршрут обязан остаться без Master'а; на занятой машине его пересчёт после отказа идёт
+	// не мгновенно, поэтому ждём, а не проверяем в ту же миллисекунду.
+	routed := false
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if r2, _ := w1.Route(w3.ID); r2 != nil {
+			routed = true
+			break
+		}
+	}
+	if !routed {
+		t.Fatalf("после отказа Master'а маршрута нет 3 с; рёбра:\n%s", dumpLinks(w1))
 	}
 
 	// 2. Отказ Worker'а-ретранслятора — автоматический failover (§48.2). Ретранслятор
