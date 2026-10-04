@@ -30,7 +30,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: build
-        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/loadgen ./cmd/kontakt-node ./cmd/radio
+        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/loadgen ./cmd/kontakt-node ./cmd/radio ./cmd/notify
       - name: kontakt-node for OpenWrt
         # узел mesh обязан собираться для роутеров (docs/MESH.md, фаза 5): MIPS без FPU,
         # ARM. Собирается здесь, чтобы зависимость с cgo или без softfloat не пришла молча.
@@ -47,11 +47,11 @@ jobs:
           paths: internal/webapp/static internal/radio/static
       - name: prometheus config and alert rules
         # promtool из того же образа, что в monitoring/docker-compose.yml; тесты правил гоняют
-        # тревоги радио на синтетических рядах
+        # тревоги радио и станции на синтетических рядах
         uses: Dmitry-Fedotov-Dev/ci/actions/promtool@v1
         with:
           dir: monitoring/prometheus
-          rule-tests: tests/radio_test.yml
+          rule-tests: tests/radio_test.yml tests/station_test.yml
       - name: dashboards match generators
         uses: Dmitry-Fedotov-Dev/ci/actions/dashboards-sync@v1
         with:

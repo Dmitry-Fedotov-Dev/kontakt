@@ -14,6 +14,7 @@ import (
 	"kontakt/internal/mediaapi"
 	"kontakt/internal/moderation"
 	"kontakt/internal/netutil"
+	"kontakt/internal/notify"
 	sigsvc "kontakt/internal/signal"
 )
 
@@ -24,6 +25,7 @@ func main() {
 	ip := flag.String("ip", "", "IP для Via/Contact у UDP-софтфонов (по умолчанию — определить)")
 	mediaAddr := flag.String("media", "127.0.0.1:7002", "адрес gRPC медиа-сервиса")
 	cfgPath := flag.String("config", "config/kontakt.json", "конфиг поведения (перечитывается на лету)")
+	notifyURL := flag.String("notify", "", "Telegram-бот (cmd/notify), куда слать карточки и баны: http://127.0.0.1:27640")
 	bansPath := flag.String("bans", "data/bans.json", "база модерации (хеши кук, баны, карточки); рядом — журнал действий *-journal.jsonl")
 	flag.Parse()
 	log.SetPrefix("[signal] ")
@@ -38,6 +40,9 @@ func main() {
 	mod, err := moderation.Open(*bansPath)
 	if err != nil {
 		log.Fatalf("баны: %v", err)
+	}
+	if *notifyURL != "" {
+		mod.OnEntry(notify.PostEntry(*notifyURL))
 	}
 	mc, err := mediaapi.Dial(*mediaAddr)
 	if err != nil {

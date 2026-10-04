@@ -71,12 +71,13 @@ pick MEDIA_GRPC $((PORT_BASE + 22))
 pick RADIO_HTTP $((PORT_BASE + 3))
 pick RADIO_ADMIN $((PORT_BASE + 13))
 pick CF_METRICS $((PORT_BASE + 40))
+pick NOTIFY_HTTP $((PORT_BASE + 60))
 if [ -n "${MONITORING:-}" ]; then
   pick GRAFANA_PORT $((PORT_BASE + 50))
   pick PROMETHEUS_PORT $((PORT_BASE + 51))
   export GRAFANA_PORT PROMETHEUS_PORT
 fi
-export HTTP="127.0.0.1:$WEB_PORT" SIGNAL_HTTP SIGNAL_ADMIN MEDIA_WS MEDIA_GRPC RADIO_HTTP RADIO_ADMIN RTP
+export HTTP="127.0.0.1:$WEB_PORT" SIGNAL_HTTP SIGNAL_ADMIN MEDIA_WS MEDIA_GRPC RADIO_HTTP RADIO_ADMIN NOTIFY_HTTP RTP
 
 pids=()
 TARGETS=monitoring/prometheus/targets
@@ -84,7 +85,7 @@ cleanup() {
   # только свои процессы — чужие cloudflared и сервисы не трогаем
   kill "${pids[@]}" 2>/dev/null || true
   wait 2>/dev/null || true
-  rm -f "$TARGETS"/{signal,media,cloudflared}-cluster-tunnel.json
+  rm -f "$TARGETS"/cloudflared-cluster-tunnel.json
   if [ -n "${MONITORING:-}" ]; then monitoring/stack.sh down; fi
 }
 trap cleanup EXIT INT TERM
@@ -143,7 +144,8 @@ fi
 # Цели для Prometheus: порты подобраны здесь, в prometheus.yml их нет. Файл подхватывается
 # сам (file_sd) — и общим стеком мониторинга, если он уже запущен.
 mkdir -p "$TARGETS"
-for t in "signal:$SIGNAL_ADMIN" "media:$MEDIA_WS" "cloudflared:$CF_METRICS"; do
+# signal, media и радио run.sh пишет сам (*-run.json)
+for t in "cloudflared:$CF_METRICS"; do
   printf '[{"targets": ["127.0.0.1:%s"], "labels": {"source": "cluster-tunnel"}}]\n' "${t#*:}" >"$TARGETS/${t%%:*}-cluster-tunnel.json"
 done
 echo

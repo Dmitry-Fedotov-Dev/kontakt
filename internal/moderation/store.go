@@ -112,6 +112,15 @@ type Store struct {
 	mu      sync.Mutex
 	recs    map[string]*record
 	journal []Entry
+	onEntry func(Entry) // под mu; вызывается в своей горутине
+}
+
+// OnEntry — f получает каждую новую строку журнала (карточка, бан, разбан): так signal
+// пересылает их в Telegram. f вызывается в отдельной горутине и не держит базу.
+func (s *Store) OnEntry(f func(Entry)) {
+	s.mu.Lock()
+	s.onEntry = f
+	s.mu.Unlock()
 }
 
 // Open загружает базу; пустой path — только в памяти (для тестов). Журнал действий лежит
@@ -348,6 +357,11 @@ func (s *Store) commitLocked(entries ...Entry) error {
 		entries[i].Day = s.day()
 	}
 	s.journal = append(s.journal, entries...)
+	if s.onEntry != nil {
+		for _, e := range entries {
+			go s.onEntry(e)
+		}
+	}
 	if len(s.journal) > 2*journalKeep {
 		s.journal = slices.Clone(s.journal[len(s.journal)-journalKeep:])
 	}

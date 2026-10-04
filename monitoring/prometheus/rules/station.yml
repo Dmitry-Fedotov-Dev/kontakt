@@ -1,0 +1,21 @@
+# Тревоги станции (рулетка): signal и media. Цели есть, только пока стенд запущен
+# (scripts/run.sh пишет targets/*-run.json и убирает при выходе), поэтому «не отвечает» —
+# это упавший сервис, а не выключенный стенд.
+groups:
+  - name: station
+    rules:
+      - alert: StationDown
+        expr: up{job=~"signal|media"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Станция не отвечает: {{ $labels.job }} ({{ $labels.instance }})"
+          description: "Prometheus не может забрать /metrics больше минуты: сервис упал или завис. Звонки не идут."
+
+      - alert: StationMediaErrors
+        # мост или конечная точка в media не создаются — люди снимают трубку и слышат тишину
+        expr: sum(increase(kontakt_signal_calls_total{result="media-error"}[5m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Звонки падают на media: {{ $value | humanize }} за 5 минут"
+          description: "signal не смог создать конечную точку в media — абонент получил 503. Смотрите журнал [media]."

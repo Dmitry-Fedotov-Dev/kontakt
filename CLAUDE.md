@@ -31,7 +31,7 @@ bin/k6 run k6/functional/pair.js                  # звонки — тольк�
 ./scripts/cluster-tunnel.sh                       # то же за временным туннелем; MONITORING=1 — плюс Grafana
 TUNNEL=1 bash scripts/radio.sh                    # радио; обновить, не меняя ссылку: bash scripts/radio.sh update
 monitoring/stack.sh up | down                     # мониторинг: Docker / Docker Desktop / без Docker — сам
-promtool test rules monitoring/prometheus/tests/radio_test.yml   # тесты тревог (в CI — образом Prometheus)
+promtool test rules monitoring/prometheus/tests/{radio,station}_test.yml   # тесты тревог (в CI — образом Prometheus)
 bin/kontakt-node -role master …                   # узел mesh, см. шапку cmd/kontakt-node
 ```
 

@@ -1,0 +1,42 @@
+# Проверка тревог станции на синтетических рядах:
+#   promtool test rules monitoring/prometheus/tests/station_test.yml
+rule_files:
+  - ../rules/station.yml
+evaluation_interval: 15s
+
+tests:
+  - name: signal упал
+    interval: 15s
+    input_series:
+      - series: 'up{job="signal",instance="signal-run"}'
+        values: '1 1 0x8'
+      - series: 'up{job="media",instance="media-run"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: StationDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: StationDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: signal, instance: signal-run }
+            exp_annotations:
+              summary: "Станция не отвечает: signal (signal-run)"
+              description: "Prometheus не может забрать /metrics больше минуты: сервис упал или завис. Звонки не идут."
+
+  - name: отказы media
+    interval: 1m
+    input_series:
+      - series: 'kontakt_signal_calls_total{result="media-error"}'
+        values: '0 0 2 2'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: StationMediaErrors
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: StationMediaErrors
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Звонки падают на media: 2 за 5 минут"
+              description: "signal не смог создать конечную точку в media — абонент получил 503. Смотрите журнал [media]."

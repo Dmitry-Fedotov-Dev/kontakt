@@ -622,6 +622,12 @@ func TestRadioSharedModeration(t *testing.T) {
 		t.Fatalf("ссылка на волну за web: %d, og без /radio:\n%.400s", resp.StatusCode, page)
 	}
 
+	if tr, err := http.Get(st.web.URL + "/radio/terms.html"); err != nil || tr.StatusCode != 200 {
+		t.Fatalf("правила радио за web: %v %v", err, tr)
+	} else {
+		tr.Body.Close()
+	}
+
 	host := radioWS(t, st, "/ws/host?f=1017&name=BAD", bad)
 	host.WriteMessage(websocket.BinaryMessage, make([]byte, radio.FrameBytes))
 	waitFor(t, func() bool { return len(st.radio.Stations()) == 1 })

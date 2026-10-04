@@ -252,7 +252,7 @@ const handset = $("handset"), lamp = $("lamp"), stateEl = $("state"), sub = $("s
 const LINE = "32";
 let cfg = { ban_reporters: 2, report_window_sec: 120 };
 let me = { banned: false, cards: 0 };
-const TERMS_VERSION = "1";
+const TERMS_VERSION = "2"; // редакция правил: новая — согласие спрашивается заново
 let termsOk = false;
 try { termsOk = localStorage.getItem("kontakt-terms") === TERMS_VERSION; } catch {}
 
