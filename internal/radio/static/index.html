@@ -115,6 +115,32 @@ button, input { font: inherit; color: inherit; }
 .hint.warn { color: #FF9A8A; }
 .rules { text-align: center; font-size: 12px; color: #9C86BC; margin-top: 14px; }
 .rules a { color: inherit; }
+/* Поддержка — клавиша старого приёмника с лампочкой: утапливается со щелчком, лампа загорается. */
+.donate { display: grid; justify-items: center; gap: 8px; margin-top: 16px; }
+.donate[hidden] { display: none; }
+.donateBtn {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 600; letter-spacing: .08em; color: var(--ink);
+  background: linear-gradient(#FFF6E2, var(--cream) 55%, #E6CC9C); border: 0; padding: 9px 18px 9px 12px;
+  box-shadow: 0 0 0 3px var(--ink), inset 0 -3px 0 #C9A86A, 0 6px 0 3px #3A2A12, 0 6px 0 6px var(--ink);
+  transition: transform .07s, box-shadow .07s;
+}
+.donateBtn:hover { transform: translateY(-1px); }
+.donateBtn:active, .donate.go .donateBtn { transform: translateY(5px); box-shadow: 0 0 0 3px var(--ink), inset 0 3px 0 #C9A86A, 0 1px 0 3px #3A2A12, 0 1px 0 6px var(--ink); }
+.donate.go .donateBtn { animation: keyUp .35s .25s forwards; }
+@keyframes keyUp { to { transform: none; box-shadow: 0 0 0 3px var(--ink), inset 0 -3px 0 #C9A86A, 0 6px 0 3px #3A2A12, 0 6px 0 6px var(--ink); } }
+.donateBtn:focus-visible { outline: 3px solid var(--amber); outline-offset: 8px; }
+.donateBtn .bulb { width: 10px; height: 10px; background: #5A3E14; box-shadow: 0 0 0 2px var(--ink); }
+.donateBtn:hover .bulb { animation: flicker 1.2s steps(2) infinite; }
+@keyframes flicker { 50% { background: #9A6A1E; } }
+.donate.go .bulb { animation: glow 1.6s forwards; }
+@keyframes glow { 0%, 60% { background: var(--amber); box-shadow: 0 0 0 2px var(--ink), 0 0 12px 3px var(--amber); } 100% { background: #5A3E14; } }
+.donateMenu { display: grid; gap: 4px; background: var(--cream); padding: 6px; box-shadow: 0 0 0 3px var(--ink); }
+.donateMenu[hidden] { display: none; }
+.donateMenu a { color: var(--ink); text-decoration: none; padding: 6px 12px; font-size: 13px; }
+.donateMenu a:hover, .donateMenu a:focus-visible { background: var(--amber); outline: none; }
+@media (prefers-reduced-motion: reduce) { .donateBtn:hover .bulb, .donate.go .bulb, .donate.go .donateBtn { animation: none; } }
+.langSwitch { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 
 .desk { display: flex; align-items: flex-end; justify-content: center; gap: 22px; flex-wrap: wrap; }
 .micbtn { background: none; border: 0; padding: 0; cursor: pointer; text-align: center; color: var(--cream); }
@@ -174,74 +200,78 @@ button, input { font: inherit; color: inherit; }
 </head>
 <body>
 <div class="wrap">
-  <nav class="tabs" aria-label="Режим">
-    <button class="tab on" id="tabRx" aria-pressed="true">LISTEN</button>
-    <button class="tab" id="tabTx" aria-pressed="false">BROADCAST</button>
+  <nav class="tabs" aria-label="Режим" data-i-aria="modeAria">
+    <button class="tab on" id="tabRx" aria-pressed="true" data-i="listen">LISTEN</button>
+    <button class="tab" id="tabTx" aria-pressed="false" data-i="broadcast">BROADCAST</button>
   </nav>
 
   <!-- Приёмник: радио и ручка, больше ничего -->
   <section id="rxView">
     <div class="stage">
       <canvas id="radio" width="128" height="88" tabindex="0" role="slider"
-              aria-label="Ручка настройки: крутите, чтобы переключать станции"
+              aria-label="Ручка настройки: крутите, чтобы переключать станции" data-i-aria="knobAria"
               aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
-    <div class="sticker" id="sticker" aria-live="polite"><b id="st1">крутни ручку</b><span id="st2">&nbsp;</span></div>
+    <div class="sticker" id="sticker" aria-live="polite"><b id="st1" data-i="stickerIdle">крутни ручку</b><span id="st2">&nbsp;</span></div>
     <div class="rxbtns">
-      <button class="btn share" id="shareRx" hidden>SHARE ↗</button>
+      <button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button>
     </div>
-    <div class="rules"><a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила радио</a><span class="donateWrap" hidden> · <a class="donateLink" target="_blank" rel="noopener noreferrer">поддержать ♥</a></span><span class="donateRuWrap" hidden> · <a class="donateRuLink" target="_blank" rel="noopener noreferrer">из России ₽</a></span></div>
-    <div class="rules"><button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию">REPORT</button></div>
+    <div class="rules"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></div>
+    <div class="donate" id="donate" hidden>
+      <button type="button" class="donateBtn" aria-haspopup="true" aria-expanded="false"><i class="bulb"></i><span data-i="support">SUPPORT</span></button>
+      <div class="donateMenu" hidden></div>
+    </div>
+    <div class="rules"><button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию" data-i-aria="reportAria" data-i="report">REPORT</button></div>
   </section>
 
   <!-- Ведущий: табличка эфира, микрофон, три громкости, очередь -->
   <section id="txView" class="studio" hidden>
     <div class="box">
       <div class="sign-row">
-        <button class="arrow" id="fDown" aria-label="Частота ниже">◀</button>
-        <button class="sign" id="onair" aria-pressed="false"><span class="lamp">ON AIR</span><span class="freq" id="hostFreq">— MHz</span></button>
-        <button class="arrow" id="fUp" aria-label="Частота выше">▶</button>
+        <button class="arrow" id="fDown" aria-label="Частота ниже" data-i-aria="freqDown">◀</button>
+        <button class="sign" id="onair" aria-pressed="false"><span class="lamp" data-i="onAir">ON AIR</span><span class="freq" id="hostFreq">—</span></button>
+        <button class="arrow" id="fUp" aria-label="Частота выше" data-i-aria="freqUp">▶</button>
       </div>
-      <input class="name" id="name" maxlength="24" placeholder="название станции" autocomplete="off" aria-label="Название станции">
+      <input class="name" id="name" maxlength="24" placeholder="название станции" autocomplete="off" aria-label="Название станции" data-i-ph="namePh" data-i-aria="nameAria">
       <div class="hint" id="hostHint">&nbsp;</div>
-      <div class="rules">выходя в эфир, ты подтверждаешь, что тебе 18+, и принимаешь <a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила</a></div>
-      <button class="btn share" id="shareTx" hidden>SHARE ↗</button>
+      <div class="rules" data-i-html="consentHtml">выходя в эфир, ты подтверждаешь, что тебе 18+, и принимаешь <a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила</a></div>
+      <button class="btn share" id="shareTx" hidden data-i="share">SHARE ↗</button>
     </div>
 
     <div class="box desk">
-      <button class="micbtn" id="micBtn" aria-pressed="false" aria-label="Микрофон">
+      <button class="micbtn" id="micBtn" aria-pressed="false" aria-label="Микрофон" data-i-aria="micAria">
         <canvas id="mic" width="56" height="56"></canvas>
-        <span class="cap" id="micCap">MIC OFF</span>
+        <span class="cap" id="micCap" data-i="micOff">MIC OFF</span>
       </button>
       <div class="mixer">
-        <div class="fader" id="fMic" tabindex="0" role="slider" aria-label="Громкость микрофона"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl">MIC</span><span class="val"></span></div>
-        <div class="fader" id="fMusic" tabindex="0" role="slider" aria-label="Громкость музыки"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl">MUSIC</span><span class="val"></span></div>
-        <div class="fader" id="fAir" tabindex="0" role="slider" aria-label="Громкость эфира"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl">AIR</span><span class="val"></span></div>
-        <div class="vu" aria-hidden="true"><div class="track"><i id="vu"></i></div><span class="lbl">OUT</span></div>
+        <div class="fader" id="fMic" tabindex="0" role="slider" aria-label="Громкость микрофона" data-i-aria="fMicAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fMic">MIC</span><span class="val"></span></div>
+        <div class="fader" id="fMusic" tabindex="0" role="slider" aria-label="Громкость музыки" data-i-aria="fMusicAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fMusic">MUSIC</span><span class="val"></span></div>
+        <div class="fader" id="fAir" tabindex="0" role="slider" aria-label="Громкость эфира" data-i-aria="fAirAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fAir">AIR</span><span class="val"></span></div>
+        <div class="vu" aria-hidden="true"><div class="track"><i id="vu"></i></div><span class="lbl" data-i="fOut">OUT</span></div>
       </div>
     </div>
 
     <div class="box">
       <div class="qhead">
-        <h2>QUEUE</h2>
+        <h2 data-i="queue">QUEUE</h2>
         <div class="row">
-          <button class="btn" id="addFiles">+ FILES</button>
-          <button class="btn" id="addDir">+ FOLDER</button>
+          <button class="btn" id="addFiles" data-i="addFiles">+ FILES</button>
+          <button class="btn" id="addDir" data-i="addDir">+ FOLDER</button>
         </div>
       </div>
-      <div class="drop" id="drop">кинь сюда mp3 или целую папку</div>
+      <div class="drop" id="drop" data-i="drop">кинь сюда mp3 или целую папку</div>
       <div id="libBox" hidden>
-        <input class="search" id="search" type="search" placeholder="поиск по найденному…" aria-label="Поиск mp3 в выбранной папке" autocomplete="off">
+        <input class="search" id="search" type="search" placeholder="поиск по найденному…" aria-label="Поиск mp3 в выбранной папке" data-i-ph="searchPh" data-i-aria="searchAria" autocomplete="off">
         <ol class="lib" id="lib"></ol>
-        <div class="libfoot"><span id="libCount"></span><button class="btn" id="libAll">ADD ALL</button></div>
+        <div class="libfoot"><span id="libCount"></span><button class="btn" id="libAll" data-i="addAll">ADD ALL</button></div>
       </div>
       <div class="now">
         <span class="t" id="now">—</span>
         <div class="prog"><i id="prog"></i></div>
       </div>
       <div class="row" style="margin-top:10px">
-        <button class="btn" id="play">PLAY</button>
-        <button class="btn" id="skip">SKIP</button>
+        <button class="btn" id="play" data-i="play">PLAY</button>
+        <button class="btn" id="skip" data-i="skip">SKIP</button>
       </div>
       <ol class="queue" id="queue"></ol>
       <input type="file" id="files" accept="audio/mpeg,.mp3" multiple hidden>
@@ -249,13 +279,150 @@ button, input { font: inherit; color: inherit; }
     </div>
   </section>
 
-  <p class="foot">Файлы не загружаются на сервер: играют из твоего браузера, в эфир уходит только звук — G.711, 64 кбит/с.</p>
+  <p class="foot" data-i="foot">Файлы не загружаются на сервер: играют из твоего браузера, в эфир уходит только звук — G.711, 64 кбит/с.</p>
 </div>
 
 <script>
 "use strict";
 const MIN = 87.5, MAX = 108.0, SPAN = MAX - MIN + 0.1; // шкала замкнута в кольцо: после 108.0 снова 87.5
 const $ = id => document.getElementById(id);
+// ---------- язык ----------
+// Весь текст радио — здесь, на двух языках. Язык общий с трубкой (localStorage kontakt-lang),
+// по умолчанию — по браузеру: русский для ru, uk, be, kk, ky.
+const I18N = {
+  ru: {
+    title: "Открытое радио", other: "English", terms: "terms.html",
+    support: "ПОДДЕРЖАТЬ", anyCard: "картой любой страны ♥", ruCard: "картой из России ₽",
+    description: "Крути ручку — между станциями шорох. Или займи свою волну: микрофон, музыка.",
+    modeAria: "Режим", listen: "СЛУШАТЬ", broadcast: "ВЕЩАТЬ",
+    knobAria: "Ручка настройки: крутите, чтобы переключать станции",
+    stickerIdle: "крутни ручку", share: "ПОДЕЛИТЬСЯ ↗",
+    rules: "правила радио", report: "ЖАЛОБА", sure: "ТОЧНО?", reportAria: "Пожаловаться на станцию",
+    freqDown: "Частота ниже", freqUp: "Частота выше", onAir: "В ЭФИРЕ", mhz: "МГц",
+    namePh: "название станции", nameAria: "Название станции",
+    consentHtml: 'выходя в эфир, ты подтверждаешь, что тебе 18+, и принимаешь <a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила</a>',
+    micAria: "Микрофон", micOn: "МИКР ВКЛ", micOff: "МИКР ВЫКЛ",
+    fMic: "МИКР", fMusic: "МУЗЫКА", fAir: "ЭФИР", fOut: "ВЫХОД",
+    fMicAria: "Громкость микрофона", fMusicAria: "Громкость музыки", fAirAria: "Громкость эфира",
+    queue: "ОЧЕРЕДЬ", addFiles: "+ ФАЙЛЫ", addDir: "+ ПАПКА", addAll: "ДОБАВИТЬ ВСЁ", play: "ИГРАТЬ", pause: "ПАУЗА", skip: "ДАЛЬШЕ",
+    drop: "кинь сюда mp3 или целую папку",
+    searchPh: "поиск по найденному…", searchAria: "Поиск mp3 в выбранной папке",
+    foot: "Файлы не загружаются на сервер: играют из твоего браузера, в эфир уходит только звук — G.711, 64 кбит/с.",
+    canvasName: "РАДИО", band: "УКВ",
+    freq: f => fmt(f) + " МГц",
+    errNoWebAudio: "браузер без Web Audio — открой в Chrome или Firefox",
+    errNoWorklet: "браузер без AudioWorklet — открой в Chrome или Firefox",
+    errWorkletTimeout: "звуковой модуль не загрузился за 10 с",
+    errNoSound: e => "звук не включился: " + e,
+    betweenStations: "между станциями", reportFail: "жалоба не дошла — попробуй ещё раз",
+    noSound: "нет звука", static: "· · · шшшш · · ·",
+    sharedSticker: track => (track ? "♪ играло: " + track + " · " : "") + "коснись, чтобы слушать",
+    connecting: "подключаюсь к эфиру…",
+    reconnecting: "связь с сервером прервалась — возвращаюсь в эфир…",
+    suspended: "браузер приостановил звук — коснись экрана",
+    noTx: "звук в эфир не идёт — коснись экрана; не помогло — обнови страницу",
+    airZeroOn: "ЭФИР на нуле — в эфире тишина, подними фейдер ЭФИР",
+    silence: "в эфире тишина — нажми ИГРАТЬ или микрофон", onAirHint: "в эфире",
+    listening: n => " · слушают: " + n,
+    waveTaken: "эта волна занята — стрелками на соседнюю",
+    airZeroOff: "ЭФИР на нуле — подними фейдер, иначе в эфире будет тишина",
+    waveFree: "волна свободна — нажми на табличку «В ЭФИРЕ»",
+    noMic: "браузер не дал микрофон — нужен https или localhost",
+    waveTakenBy: f => "волну " + fmt(f) + " уже заняли — стрелками на соседнюю",
+    yellowCard: "на станцию пожаловались — жёлтая карточка. Ещё жалобы — и эфир закроется",
+    backFail: "не удалось вернуться в эфир — нажми «В ЭФИРЕ» ещё раз",
+    refused: code => "сервер не пустил в эфир (код " + code + "): волну заняли раньше, эфир переполнен или нет связи",
+    queueEmpty: "дальше ничего — добавь mp3", up: "Выше", remove: "Убрать из очереди", silenceNow: "— тишина —",
+    unreadable: n => "не читается: " + n, toQueue: p => "В очередь: " + p,
+    found: (n, all) => "найдено mp3: " + n + (n > 100 ? " (показаны первые 100)" : "") + " из " + all,
+    noMp3: "в папке нет mp3",
+    shareText: (f, track) => track ? "♪ " + track : "Слушай " + fmt(f) + " МГц",
+    copied: "ссылка скопирована", copyPrompt: "Скопируй ссылку:",
+    banned: "эфир для тебя закрыт: на станцию жаловались слушатели",
+    reports: {
+      yellow: "станции выдана жёлтая карточка", banned: "станция снята с эфира", noted: "жалоба принята",
+      already: "на эту станцию твоя жалоба уже есть", listen_more: "послушай чуть дольше — потом можно пожаловаться",
+      no_station: "жаловаться не на кого", self: "это твоя станция", rate_limited: "слишком много жалоб за час",
+    },
+    noConn: "нет связи — попробуй ещё раз",
+    slowUplink: "связь с сервером тормозит — слушатели слышат обрывы; Wi-Fi надёжнее мобильного интернета",
+  },
+  en: {
+    title: "Open Radio", other: "Русский", terms: "terms-en.html",
+    support: "SUPPORT", anyCard: "any card ♥", ruCard: "Russian card ₽",
+    description: "Turn the knob — static between stations. Or take your own frequency: mic and music.",
+    modeAria: "Mode", listen: "LISTEN", broadcast: "BROADCAST",
+    knobAria: "Tuning knob: turn it to change stations",
+    stickerIdle: "turn the knob", share: "SHARE ↗",
+    rules: "radio rules", report: "REPORT", sure: "SURE?", reportAria: "Report this station",
+    freqDown: "Lower frequency", freqUp: "Higher frequency", onAir: "ON AIR", mhz: "MHz",
+    namePh: "station name", nameAria: "Station name",
+    consentHtml: 'by going on air you confirm you are 18+ and accept the <a class="termsLink" href="terms-en.html" target="_blank" rel="noopener">rules</a>',
+    micAria: "Microphone", micOn: "MIC ON", micOff: "MIC OFF",
+    fMic: "MIC", fMusic: "MUSIC", fAir: "AIR", fOut: "OUT",
+    fMicAria: "Microphone volume", fMusicAria: "Music volume", fAirAria: "On-air volume",
+    queue: "QUEUE", addFiles: "+ FILES", addDir: "+ FOLDER", addAll: "ADD ALL", play: "PLAY", pause: "PAUSE", skip: "SKIP",
+    drop: "drop mp3 files or a whole folder here",
+    searchPh: "search the files found…", searchAria: "Search mp3 in the chosen folder",
+    foot: "Files are not uploaded: they play from your browser, only the sound goes on air — G.711, 64 kbit/s.",
+    canvasName: "OPEN RADIO", band: "FM",
+    freq: f => fmt(f) + " FM",
+    errNoWebAudio: "this browser has no Web Audio — open in Chrome or Firefox",
+    errNoWorklet: "this browser has no AudioWorklet — open in Chrome or Firefox",
+    errWorkletTimeout: "the audio module didn't load in 10 s",
+    errNoSound: e => "sound didn't start: " + e,
+    betweenStations: "between stations", reportFail: "the report didn't go through — try again",
+    noSound: "no sound", static: "· · · shhhh · · ·",
+    sharedSticker: track => (track ? "♪ was playing: " + track + " · " : "") + "tap to listen",
+    connecting: "connecting to the air…",
+    reconnecting: "lost the server — getting back on air…",
+    suspended: "the browser paused the sound — tap the screen",
+    noTx: "no sound is going out — tap the screen; if that doesn't help, reload the page",
+    airZeroOn: "AIR is at zero — silence on air, raise the AIR fader",
+    silence: "silence on air — press PLAY or the mic", onAirHint: "on air",
+    listening: n => " · listeners: " + n,
+    waveTaken: "this frequency is taken — use the arrows to pick another",
+    airZeroOff: "AIR is at zero — raise the fader or the air will be silent",
+    waveFree: "the frequency is free — press the ON AIR sign",
+    noMic: "the browser refused the mic — HTTPS or localhost needed",
+    waveTakenBy: f => fmt(f) + " is already taken — use the arrows to pick another",
+    yellowCard: "your station was reported — yellow card. More reports and the air closes",
+    backFail: "couldn't get back on air — press ON AIR again",
+    refused: code => "the server refused (code " + code + "): the frequency was taken first, the air is full or there's no connection",
+    queueEmpty: "nothing next — add mp3", up: "Move up", remove: "Remove from queue", silenceNow: "— silence —",
+    unreadable: n => "can't read: " + n, toQueue: p => "Add to queue: " + p,
+    found: (n, all) => "mp3 found: " + n + (n > 100 ? " (first 100 shown)" : "") + " of " + all,
+    noMp3: "no mp3 in the folder",
+    shareText: (f, track) => track ? "♪ " + track : "Listen to " + fmt(f) + " FM",
+    copied: "link copied", copyPrompt: "Copy the link:",
+    banned: "the air is closed for you: listeners reported your station",
+    reports: {
+      yellow: "the station got a yellow card", banned: "the station was taken off air", noted: "report accepted",
+      already: "you already reported this station", listen_more: "listen a bit longer — then you can report",
+      no_station: "there's nothing to report", self: "that's your own station", rate_limited: "too many reports this hour",
+    },
+    noConn: "no connection — try again",
+    slowUplink: "your connection to the server is lagging — listeners hear dropouts; Wi-Fi is more reliable than mobile data",
+  },
+};
+const LANG_KEY = "kontakt-lang";
+function pickLang() {
+  try { const v = localStorage.getItem(LANG_KEY); if (v === "ru" || v === "en") return v; } catch (_) {}
+  const list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || "en"];
+  return list.some(l => /^(ru|uk|be|kk|ky)\b/i.test(l)) ? "ru" : "en";
+}
+const LANG = pickLang(), TXT = I18N[LANG];
+document.documentElement.lang = LANG;
+document.title = TXT.title;
+document.querySelector('meta[name="description"]').content = TXT.description;
+document.querySelectorAll("[data-i]").forEach(el => { el.textContent = TXT[el.dataset.i]; });
+document.querySelectorAll("[data-i-html]").forEach(el => { el.innerHTML = TXT[el.dataset.iHtml]; });
+document.querySelectorAll("[data-i-aria]").forEach(el => { el.setAttribute("aria-label", TXT[el.dataset.iAria]); });
+document.querySelectorAll("[data-i-ph]").forEach(el => { el.placeholder = TXT[el.dataset.iPh]; });
+document.querySelectorAll(".langSwitch").forEach(b => b.addEventListener("click", () => {
+  try { localStorage.setItem(LANG_KEY, LANG === "ru" ? "en" : "ru"); } catch (_) {}
+  location.reload();
+}));
 const wrapF = f => MIN + (((f - MIN) % SPAN) + SPAN) % SPAN;
 const snap = f => Math.round(f * 10) / 10;
 
@@ -287,11 +454,11 @@ function ulawEncode(f32) {
 // шорох, треск, свист биений при неточной настройке, замирания, заикание и огрубление звука.
 // tx — передатчик: смесь → 8 кГц кадрами по 160 отсчётов (20 мс).
 const WORKLETS = `
-const L = 16384, H = 16384;
+const L = 32768, H = 16384; // L — 4 с: принять догоняющую пачку после замершей связи
 // Запас приёмника в отсчётах 8 кГц: TARGET держится подстройкой скорости воспроизведения, START —
 // сколько накопить перед звуком, MAXN — потолок: сверх него (долгий рывок сети) лишнее выкидывается.
 // 400 мс переживают рывки туннеля и Wi-Fi; было 200 мс, и звук на них обрывался щелчком.
-const TARGET = 3200, START = 3200, MAXN = 12000;
+const TARGET = 3200, START = 3200, MAXN = 20000; // потолок 2,5 с: сервер держит для слушателя до 3 с
 class RX extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -409,23 +576,23 @@ function ensureAudio() {
   if (audioReady) return audioReady;
   audioReady = (async () => {
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) throw new Error("браузер без Web Audio — откройте в Chrome или Firefox");
+    if (!AC) throw new Error(TXT.errNoWebAudio);
     ctx = ctx || new AC({ latencyHint: "playback" });
-    if (!ctx.audioWorklet) throw new Error("браузер без AudioWorklet — откройте в Chrome или Firefox");
+    if (!ctx.audioWorklet) throw new Error(TXT.errNoWorklet);
     ctx.onstatechange = () => renderHost();
     // resume() НЕ ждём: без касания пользователя его промис висит вечно, и вместе с ним
     // зависали бы табличка ON AIR и очередь. Звук продолжится от следующего касания экрана.
     ctx.resume().catch(() => { /* разрешат при следующем касании — см. обработчик ниже */ });
     if (!rx) {
       const url = URL.createObjectURL(new Blob([WORKLETS], { type: "text/javascript" }));
-      try { await withTimeout(ctx.audioWorklet.addModule(url), 10000, "звуковой модуль не загрузился за 10 с"); }
+      try { await withTimeout(ctx.audioWorklet.addModule(url), 10000, TXT.errWorkletTimeout); }
       finally { URL.revokeObjectURL(url); }
       rx = new AudioWorkletNode(ctx, "rx", { numberOfInputs: 0, outputChannelCount: [2] });
       routeRx();
       rxAn = ctx.createAnalyser(); rxAn.fftSize = 512; rx.connect(rxAn); // радио «пляшет» под звук
     }
   })();
-  audioReady.catch(err => { audioReady = null; showError("звук не включился: " + (err && err.message || err)); });
+  audioReady.catch(err => { audioReady = null; showError(TXT.errNoSound(err && err.message || err)); });
   return audioReady;
 }
 // Приёмник играет через <audio>, а не прямо из Web Audio: так Android считает вкладку
@@ -447,8 +614,8 @@ function mediaSession(s) {
   if (key === msKey) return;
   msKey = key;
   navigator.mediaSession.metadata = new MediaMetadata(s
-    ? { title: s.t || s.n, artist: s.n + " · " + fmt(s.f) + " FM", album: "Открытое радио" }
-    : { title: "между станциями", album: "Открытое радио" });
+    ? { title: s.t || s.n, artist: s.n + " · " + TXT.freq(s.f), album: TXT.title }
+    : { title: TXT.betweenStations, album: TXT.title });
   navigator.mediaSession.playbackState = "playing";
 }
 // Ведущему экран не гаснет, пока он в эфире: с погашенным экраном Android притормаживает
@@ -503,15 +670,59 @@ const WAVE = /^\/r\/[0-9A-Za-z]+$/.test(location.pathname)
 const HERE = WAVE || location;
 const BASE = HERE.pathname.replace(/\/(w\/[^/]*)?$/, "");
 // ссылка на правила — от BASE: со страницы /w/101.7 относительная ушла бы в /w/terms.html
-document.querySelectorAll(".termsLink").forEach(a => { a.href = BASE + "/terms.html"; });
-// Ссылка поддержки — из конфига станции (/api/config на том же домене). Радио, запущенное
-// отдельно, конфига станции не знает — тогда ссылки нет.
+document.querySelectorAll(".termsLink").forEach(a => { a.href = BASE + "/" + TXT.terms; });
+// ---------- поддержка ----------
+// Кнопка видна, если в конфиге станции есть хоть одна ссылка. Одна — нажатие сразу её открывает
+// (window.open прямо в обработчике клика, иначе браузер примет за всплывающее окно); две —
+// табличка выбора. Звук нажатия — свой маленький AudioContext, эфир и звонок не трогает.
+let sfx = null;
+function sfxCtx() {
+  try { sfx = sfx || new (window.AudioContext || window.webkitAudioContext)(); sfx.resume().catch(() => {}); } catch (_) { sfx = null; }
+  return sfx;
+}
+function ping(c, t, f, len, vol) {
+  const o = c.createOscillator(), g = c.createGain();
+  o.frequency.value = f; o.connect(g); g.connect(c.destination);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.start(t); o.stop(t + len);
+}
+function setupDonate(root, links, sound) {
+  const urls = links.filter(l => /^https:\/\//.test(l.url || ""));
+  if (!urls.length) return;
+  const btn = root.querySelector(".donateBtn"), menu = root.querySelector(".donateMenu");
+  menu.replaceChildren(...urls.map(l => {
+    const a = document.createElement("a");
+    a.href = l.url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = l.label;
+    a.addEventListener("click", () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); });
+    return a;
+  }));
+  root.hidden = false;
+  btn.addEventListener("click", () => {
+    sound();
+    root.classList.remove("go"); void root.offsetWidth; root.classList.add("go"); // анимация с начала
+    if (urls.length === 1) { window.open(urls[0].url, "_blank", "noopener"); return; }
+    menu.hidden = !menu.hidden;
+    btn.setAttribute("aria-expanded", String(!menu.hidden));
+  });
+  document.addEventListener("click", e => {
+    if (!menu.hidden && !root.contains(e.target)) { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+  });
+}
+
+function keyClick() { // клавиша щёлкнула: короткий шум и глухой удар корпуса
+  const c = sfxCtx(); if (!c) return;
+  const t = c.currentTime, n = c.createBuffer(1, 400, c.sampleRate), d = n.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 3;
+  const src = c.createBufferSource(), g = c.createGain();
+  src.buffer = n; g.gain.value = 0.25; src.connect(g); g.connect(c.destination); src.start(t);
+  ping(c, t, 140, 0.08, 0.12);
+}
+
+// Ссылки поддержки — из конфига станции (/api/config на том же домене). Радио, запущенное
+// отдельно, конфига станции не знает — тогда кнопки нет.
 fetch("/api/config", { cache: "no-store" }).then(r => r.ok ? r.json() : {}).then(c => {
-  for (const [k, cls] of [["donate_url", "donate"], ["donate_ru_url", "donateRu"]]) {
-    if (!/^https:\/\//.test(c[k] || "")) continue;
-    document.querySelectorAll("." + cls + "Link").forEach(a => { a.href = c[k]; });
-    document.querySelectorAll("." + cls + "Wrap").forEach(s => { s.hidden = false; });
-  }
+  const donate = [{ url: c.donate_url, label: TXT.anyCard }, { url: c.donate_ru_url, label: TXT.ruCard }];
+  setupDonate($("donate"), LANG === "ru" ? donate.reverse() : donate, keyClick); // в России — своя первой
 }).catch(() => {});
 const wsURL = path => (location.protocol === "https:" ? "wss://" : "ws://") + location.host + BASE + path;
 function connectListen() {
@@ -524,7 +735,7 @@ function connectListen() {
         const m = JSON.parse(e.data);
         if (m.stations) st.stations = m.stations;
         if (m.title) { const x = st.stations.find(s => s.f === m.title.f); if (x) x.t = m.title.t; }
-        if (m.report) return toast(REPORT_TEXT[m.report] || "жалоба не дошла — попробуй ещё раз");
+        if (m.report) return toast(TXT.reports[m.report] || TXT.reportFail);
       }
       catch (_) { /* битый список: следующий придёт через секунду */ }
       retune();
@@ -579,13 +790,16 @@ const FONT = {
   M: "101111111101101", N: "110101101101101", O: "010101101101010", P: "110101110100100",
   R: "110101110101101", S: "011100010001110", T: "111010010010010", U: "101101101101111",
   W: "101101111111101", Z: "111001010100111",
+  // кириллица для «РАДИО» и «УКВ»; Д и И — по 4 пикселя в ширину (ширина = длина / 5)
+  "Р": "110101110100100", "А": "010101111101101", "О": "010101101101010", "У": "101101011001110",
+  "К": "101110100110101", "В": "110101110101110", "Д": "01100110011011111001", "И": "10011011110110011001",
 };
 function text(g, s, x, y, color, k = 1) {
   g.fillStyle = color;
   for (const ch of s.toUpperCase()) {
-    const gl = FONT[ch] || FONT[" "];
-    for (let i = 0; i < 15; i++) if (gl[i] === "1") g.fillRect(x + (i % 3) * k, y + (i / 3 | 0) * k, k, k);
-    x += 4 * k;
+    const gl = FONT[ch] || FONT[" "], w = gl.length / 5;
+    for (let i = 0; i < gl.length; i++) if (gl[i] === "1") g.fillRect(x + (i % w) * k, y + (i / w | 0) * k, k, k);
+    x += (w + 1) * k;
   }
 }
 // Скруглённый прямоугольник и круг «по пикселям» — никакого сглаживания.
@@ -624,7 +838,7 @@ const base = document.createElement("canvas"); base.width = 128; base.height = 8
   rrect(b, 6, 21, 116, 56, 7, P.body);
   b.fillStyle = P.hi; b.fillRect(13, 23, 96, 2); b.fillRect(8, 30, 2, 30);
   b.fillStyle = P.lo; b.fillRect(14, 73, 100, 2); b.fillRect(118, 32, 2, 34);
-  text(b, "OPEN RADIO", 13, 27, P.cream);
+  text(b, TXT.canvasName, 13, 27, P.cream);
   disc(b, 34, 54, 18, P.ink); disc(b, 34, 54, 16, P.cream2); disc(b, 34, 54, 14, P.ink); disc(b, 34, 54, 13, P.spk);
   b.fillStyle = P.spk2;                                     // сетка динамика
   for (let y = -12; y <= 12; y++) for (let x = -12; x <= 12; x++) if (x * x + y * y <= 140 && (x + 30) % 3 === 0 && (y + 30) % 3 === 0) b.fillRect(34 + x, 54 + y, 1, 1);
@@ -671,7 +885,7 @@ function drawRadio() {
     for (let i = 0; i < 5; i++) { rg.fillStyle = i < bars ? P.amber : P.amberDim; rg.fillRect(107 + i * 2, 39 - (i * 2 + 2), 1, i * 2 + 2); }
     const status = st.strength > 0.95 ? "TUNED" : st.strength > 0 ? "SIGNAL" : "STATIC";
     text(rg, status, 65, 41, st.strength > 0 ? P.amber : P.amberDim);
-    text(rg, "FM", 108, 41, P.amberDim);
+    text(rg, TXT.band, 108, 41, P.amberDim);
     const noise = (1 - st.strength) * 0.6 + st.scratchVis; // снег и разрывы строк в окошке
     if (noise > 0.02) {
       rg.fillStyle = P.amberDim;
@@ -768,14 +982,14 @@ function setSticker(a, b, glitch) {
   sticker.classList.toggle("glitch", !!glitch);
 }
 function drawSticker() {
-  if (performance.now() < errUntil) return setSticker("нет звука", errText);
+  if (performance.now() < errUntil) return setSticker(TXT.noSound, errText);
   if (!st.power) {
-    if (shared) return setSticker(shared.name || fmt(shared.f) + " FM", (shared.track ? "♪ играло: " + shared.track + " · " : "") + "коснись, чтобы слушать");
-    return setSticker("крутни ручку", "");
+    if (shared) return setSticker(shared.name || TXT.freq(shared.f), TXT.sharedSticker(shared.track));
+    return setSticker(TXT.stickerIdle, "");
   }
   const { s, d } = nearest(st.dial);
   if (s && d < CATCH) setSticker(s.n, s.t || "", st.strength < 0.7);
-  else setSticker("· · · шшшш · · ·", "");
+  else setSticker(TXT.static, "");
 }
 
 // ---------- вкладки ----------
@@ -806,28 +1020,28 @@ function pickFree() { // случайная волна подальше от ч�
 }
 const fmt = f => (f / 10).toFixed(1);
 function hostHint(msg, warn) { const h = $("hostHint"); h.textContent = msg || " "; h.classList.toggle("warn", !!warn); }
-let hintHold = 0;
+let hintHold = 0, slowWarnUntil = 0;
 let connecting = false, lastTxAt = 0;
 function renderHost() {
   holdScreen(st.onAir);
-  $("hostFreq").textContent = st.hostFreq ? fmt(st.hostFreq) + " MHz" : "— MHz";
+  $("hostFreq").textContent = (st.hostFreq ? fmt(st.hostFreq) : "—") + " " + TXT.mhz;
   $("fDown").disabled = $("fUp").disabled = st.onAir;
   $("onair").classList.toggle("live", st.onAir);
   $("onair").setAttribute("aria-pressed", String(st.onAir));
   if (performance.now() < hintHold) return;
-  if (connecting) return hostHint("подключаюсь к эфиру…");
-  if (reconnecting) return hostHint("связь с сервером прервалась — возвращаюсь в эфир…", true);
-  if (ctx && ctx.state !== "running" && (st.onAir || current)) return hostHint("браузер приостановил звук — коснись экрана", true);
-  if (st.onAir && performance.now() - lastTxAt > 3000) return hostHint("звук в эфир не идёт — коснись экрана; не помогло — обнови страницу", true);
+  if (connecting) return hostHint(TXT.connecting);
+  if (reconnecting) return hostHint(TXT.reconnecting, true);
+  if (ctx && ctx.state !== "running" && (st.onAir || current)) return hostHint(TXT.suspended, true);
+  if (st.onAir && performance.now() - lastTxAt > 3000) return hostHint(TXT.noTx, true);
   // Тишина в эфире не выглядит как ошибка — поэтому о ней говорим прямо.
   if (st.onAir) {
     const me = st.stations.find(s => s.f === st.hostFreq);
-    if (vol.air === 0) hostHint("AIR на нуле — в эфире тишина, подними фейдер AIR", true);
-    else if (!nowTitle()) hostHint("в эфире тишина — нажми PLAY или микрофон" + (me ? " · слушают: " + st.hostListeners : ""), true);
-    else hostHint("в эфире" + (me ? " · слушают: " + st.hostListeners : "") + " · " + nowTitle());
-  } else if (taken(st.hostFreq)) hostHint("эта волна занята — стрелками на соседнюю", true);
-  else if (vol.air === 0) hostHint("AIR на нуле — подними фейдер, иначе в эфире будет тишина", true);
-  else hostHint("волна свободна — нажми на табличку ON AIR");
+    if (vol.air === 0) hostHint(TXT.airZeroOn, true);
+    else if (!nowTitle()) hostHint(TXT.silence + (me ? TXT.listening(st.hostListeners) : ""), true);
+    else hostHint(TXT.onAirHint + (me ? TXT.listening(st.hostListeners) : "") + " · " + nowTitle());
+  } else if (taken(st.hostFreq)) hostHint(TXT.waveTaken, true);
+  else if (vol.air === 0) hostHint(TXT.airZeroOff, true);
+  else hostHint(TXT.waveFree);
 }
 function stepFreq(d) {
   if (st.onAir) return;
@@ -864,6 +1078,12 @@ async function ensureTx() {
     const { f, p } = e.data;
     vu(p);
     if (hws && hws.readyState === 1 && hws.bufferedAmount < 16000) { hws.send(ulawEncode(f)); st.framesTx = (st.framesTx || 0) + 1; lastTxAt = performance.now(); }
+    // Неотправленного больше секунды — связь ведущего с сервером тормозит (часто мобильный
+    // интернет): слушатели слышат обрывы, а пачка опоздавших кадров потом отбрасывается.
+    if (hws && hws.bufferedAmount > 8000 && performance.now() > slowWarnUntil) {
+      slowWarnUntil = performance.now() + 10000;
+      hintHold = performance.now() + 4000; hostHint(TXT.slowUplink, true);
+    }
   };
   tx = { mix, air, music, monitor, mic, node };
   applyGains();
@@ -955,14 +1175,14 @@ $("micBtn").onclick = async () => {
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-    } catch (_) { hintHold = performance.now() + 3000; hostHint("браузер не дал микрофон — нужен https или localhost", true); return; }
+    } catch (_) { hintHold = performance.now() + 3000; hostHint(TXT.noMic, true); return; }
     micSrc = ctx.createMediaStreamSource(stream);
     micSrc.connect(tx.mic);
   }
   micOn = !micOn;
   applyGains();
   $("micBtn").setAttribute("aria-pressed", String(micOn));
-  $("micCap").textContent = micOn ? "MIC ON" : "MIC OFF";
+  $("micCap").textContent = micOn ? TXT.micOn : TXT.micOff;
   sendTitle(); renderHost();
 };
 
@@ -977,7 +1197,7 @@ $("onair").onclick = async () => {
   }
   if (connecting) return;
   if (me.banned) { shake($("onair")); showError(BANNED_TEXT); return; }
-  if (taken(st.hostFreq)) { shake($("onair")); hintHold = performance.now() + 2500; hostHint("волну " + fmt(st.hostFreq) + " уже заняли — стрелками на соседнюю", true); return; }
+  if (taken(st.hostFreq)) { shake($("onair")); hintHold = performance.now() + 2500; hostHint(TXT.waveTakenBy(st.hostFreq), true); return; }
   connecting = true; hintHold = 0; renderHost(); // табличка отвечает сразу, а не после запуска звука
   try { await ensureTx(); } catch (_) { connecting = false; return; } // причина уже на экране
   connecting = false;
@@ -997,7 +1217,7 @@ function connectHost() {
     if (typeof e.data !== "string") return;
     try {
       const m = JSON.parse(e.data);
-      if (m.card === "yellow") showError("на станцию пожаловались — жёлтая карточка. Ещё жалобы — и эфир закроется");
+      if (m.card === "yellow") showError(TXT.yellowCard);
       if (typeof m.listeners === "number") { st.hostListeners = m.listeners; renderHost(); }
     } catch (_) {}
   };
@@ -1019,8 +1239,7 @@ function connectHost() {
     wantAir = false; reconnecting = false; st.onAir = false; $("name").disabled = false;
     if (!opened) {
       shake($("onair"));
-      showError(wasReconnecting ? "не удалось вернуться в эфир — нажми ON AIR ещё раз"
-        : "сервер не пустил в эфир (код " + e.code + "): волну заняли раньше, эфир переполнен или нет связи");
+      showError(wasReconnecting ? TXT.backFail : TXT.refused(e.code));
     }
     renderHost();
   };
@@ -1050,19 +1269,19 @@ function sendTitle() { if (hws && hws.readyState === 1) hws.send(JSON.stringify(
 function renderQueue() {
   const list = $("queue");
   list.textContent = "";
-  if (!queue.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = "дальше ничего — добавь mp3"; list.append(li); }
+  if (!queue.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = TXT.queueEmpty; list.append(li); }
   queue.forEach((q, i) => {
     const li = document.createElement("li");
     const n = document.createElement("span"); n.textContent = (i + 1) + ". " + q.name; n.title = q.name;
-    const up = document.createElement("button"); up.textContent = "▲"; up.setAttribute("aria-label", "Выше"); up.disabled = i === 0;
+    const up = document.createElement("button"); up.textContent = "▲"; up.setAttribute("aria-label", TXT.up); up.disabled = i === 0;
     up.onclick = () => { [queue[i - 1], queue[i]] = [queue[i], queue[i - 1]]; renderQueue(); };
-    const rm = document.createElement("button"); rm.textContent = "✕"; rm.setAttribute("aria-label", "Убрать из очереди");
+    const rm = document.createElement("button"); rm.textContent = "✕"; rm.setAttribute("aria-label", TXT.remove);
     rm.onclick = () => { queue.splice(i, 1); renderQueue(); };
     li.append(n, up, rm);
     list.append(li);
   });
-  $("now").textContent = current ? (playing ? "▶ " : "❚❚ ") + current.name : "— тишина —";
-  $("play").textContent = playing ? "PAUSE" : "PLAY";
+  $("now").textContent = current ? (playing ? "▶ " : "❚❚ ") + current.name : TXT.silenceNow;
+  $("play").textContent = playing ? TXT.pause : TXT.play;
 }
 function stopCurrent() {
   if (!current) return;
@@ -1081,7 +1300,7 @@ async function next() {
   const src = ctx.createMediaElementSource(el);
   src.connect(tx.music); src.connect(tx.monitor);
   el.onended = () => next();
-  el.onerror = () => { hintHold = performance.now() + 2500; hostHint("не читается: " + q.name, true); next(); };
+  el.onerror = () => { hintHold = performance.now() + 2500; hostHint(TXT.unreadable(q.name), true); next(); };
   current = { name: q.name, el, src };
   playing = true;
   try { await el.play(); } catch (_) { playing = false; } // браузер не дал автозапуск — ждём PLAY
@@ -1124,13 +1343,13 @@ function renderLib() {
     b.append(t.name);
     const dir = t.path.includes("/") ? t.path.slice(0, t.path.lastIndexOf("/")) : "";
     if (dir) { const s = document.createElement("small"); s.textContent = "  " + dir; b.append(s); }
-    b.title = "В очередь: " + t.path;
+    b.title = TXT.toQueue(t.path);
     b.onclick = () => { enqueue([t.file]); };
     li.append(b); ol.append(li);
   }
   $("libCount").textContent = library.length
-    ? "найдено mp3: " + found.length + (found.length > 100 ? " (показаны первые 100)" : "") + " из " + library.length
-    : "в папке нет mp3";
+    ? TXT.found(found.length, library.length)
+    : TXT.noMp3;
   $("libAll").disabled = !found.length;
 }
 $("search").oninput = renderLib;
@@ -1192,6 +1411,7 @@ function shareURL(f, name, track) {
   const q = new URLSearchParams();
   if (name) q.set("n", name);
   if (track) q.set("t", track);
+  if (LANG === "en") q.set("l", "en"); // карточка ссылки — на языке того, кто делится
   const qs = q.toString();
   return location.origin + BASE + "/w/" + fmt(f) + (qs ? "?" + qs : "");
 }
@@ -1203,7 +1423,7 @@ function shortFor(f, name, track) {
   if (shortCache.has(key)) return shortCache.get(key);
   shortCache.set(key, "");
   fetch(BASE + "/api/short", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ f, n: name, t: track }) })
+    body: JSON.stringify({ f, n: name, t: track, l: LANG }) })
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(j => { if (/^https?:\/\//.test(j.url || "")) shortCache.set(key, j.url); })
     .catch(() => { /* остаётся длинная ссылка */ });
@@ -1219,14 +1439,14 @@ function toast(msg) {
 }
 async function share(f, name, track) {
   const url = shortFor(f, name, track) || shareURL(f, name, track);
-  const title = (name || fmt(f) + " FM") + " · Открытое радио";
-  const text = track ? "♪ " + track : "Слушай " + fmt(f) + " FM";
+  const title = (name || TXT.freq(f)) + " · " + TXT.title;
+  const text = TXT.shareText(f, track);
   if (navigator.share) { // телефон: системное меню — Telegram, WhatsApp…
     try { await navigator.share({ title, text, url }); return; }
     catch (e) { if (e && e.name === "AbortError") return; /* иначе — копируем ссылку ниже */ }
   }
-  try { await navigator.clipboard.writeText(url); toast("ссылка скопирована"); }
-  catch (_) { window.prompt("Скопируй ссылку:", url); } // буфер обмена недоступен (http, старый браузер)
+  try { await navigator.clipboard.writeText(url); toast(TXT.copied); }
+  catch (_) { window.prompt(TXT.copyPrompt, url); } // буфер обмена недоступен (http, старый браузер)
 }
 $("shareRx").onclick = () => {
   const { s, d } = nearest(st.dial);
@@ -1247,25 +1467,20 @@ setInterval(() => {
 // Модерация общая с рулеткой: на станцию жалуются слушатели, бан закрывает эфир (слушать можно).
 let me = { moderation: false, banned: false, cards: 0 };
 fetch(BASE + "/api/me", { cache: "no-store" }).then(r => r.json()).then(m => { me = m; }).catch(() => {});
-const BANNED_TEXT = "эфир для тебя закрыт: на станцию жаловались слушатели";
-const REPORT_TEXT = {
-  yellow: "станции выдана жёлтая карточка", banned: "станция снята с эфира", noted: "жалоба принята",
-  already: "на эту станцию твоя жалоба уже есть", listen_more: "послушай чуть дольше — потом можно пожаловаться",
-  no_station: "жаловаться не на кого", self: "это твоя станция", rate_limited: "слишком много жалоб за час",
-};
+const BANNED_TEXT = TXT.banned;
 let reportArm = null;
 $("reportRx").onclick = () => {
   const b = $("reportRx");
   if (!b.classList.contains("armed")) { // второе нажатие в течение 3 с — жалоба
-    b.classList.add("armed"); b.textContent = "SURE?";
+    b.classList.add("armed"); b.textContent = TXT.sure;
     clearTimeout(reportArm);
-    reportArm = setTimeout(() => { b.classList.remove("armed"); b.textContent = "REPORT"; }, 3000);
+    reportArm = setTimeout(() => { b.classList.remove("armed"); b.textContent = TXT.report; }, 3000);
     return;
   }
   clearTimeout(reportArm);
-  b.classList.remove("armed"); b.textContent = "REPORT";
+  b.classList.remove("armed"); b.textContent = TXT.report;
   if (lws && lws.readyState === 1) lws.send(JSON.stringify({ report: true }));
-  else toast("нет связи — попробуй ещё раз");
+  else toast(TXT.noConn);
 };
 
 // Открыли по ссылке на волну: стрелка сразу стоит на ней, звук — после первого касания.

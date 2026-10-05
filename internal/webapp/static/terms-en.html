@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kontakt rules</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root { --wall: #D5DBD6; --ink: #24282B; --soft: #545B5F; --bake: #A3201C; }
+@media (prefers-color-scheme: dark) { :root { --wall: #1D2321; --ink: #E3E7E4; --soft: #A3ABA7; --bake: #E2614F; } }
+body { margin: 0; background: var(--wall); color: var(--ink); font: 17px/1.6 "PT Sans", system-ui, sans-serif; padding: 32px 16px 48px; }
+main { max-width: 64ch; margin: 0 auto; }
+h1 { font: 600 34px/1.1 "Pixelify Sans", monospace; margin: 0 0 6px; color: var(--bake); }
+h2 { font: 600 21px/1.2 "Pixelify Sans", monospace; margin: 28px 0 6px; }
+p, li { margin: 0 0 10px; }
+.note { color: var(--soft); font-size: 15px; }
+a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kontakt rules</h1>
+  <p class="note"><a href="terms.html" lang="ru">Русский</a> · Draft, revision 2. A lawyer for the country where the service runs must review it before publication.</p>
+
+  <h2>What this is</h2>
+  <p>Kontakt connects two random people by voice. No video, text or files. The service is free and provided “as is”, with no guarantee of availability or call quality.</p>
+
+  <h2>Who can use it</h2>
+  <p>Only people aged 18 or older. By entering you confirm your age and accept these rules.</p>
+
+  <h2>Not allowed</h2>
+  <ul>
+    <li>threats, harassment, insults based on nationality, religion, gender and the like;</li>
+    <li>sexual talk with someone who did not want it, and any such talk with minors;</li>
+    <li>calls to violence, selling illegal goods, recruiting, fraud, fishing for personal data;</li>
+    <li>recording the other person without their consent and publishing recordings;</li>
+    <li>advertising, spam, bots and autodialers.</li>
+  </ul>
+
+  <h2>Responsibility</h2>
+  <p>Everyone is responsible for what they say and what they pass on to the other person. The owner of the service does not listen to, moderate or record calls and is not responsible for their content to the extent permitted by applicable law.</p>
+
+  <h2>Reports and bans</h2>
+  <p>During a call and right after it you can press “report”. The call ends, and you will never be connected with that person again. The offender gets a yellow card. When two different people report them within a week, calls are closed for them for good. Reports from brand-new visitors are accepted but do not count — so one person can't ban anyone from several windows.</p>
+  <p>Kontakt and <a href="radio/">Open Radio</a> are one service: a ban from calls does not close the air, and vice versa, but the owner can close both at once. A ban is tied to the browser through a persistent cookie. Evading a ban is not allowed.</p>
+  <p>If you were banned by mistake, write to the owner of the service. Say which browser you used.</p>
+
+  <h2>What data the service has</h2>
+  <ul>
+    <li><b>Voice</b> goes live and is not stored anywhere.</li>
+    <li><b>The kontakt_id cookie</b>: a random browser number. It is needed only for bans. It can't tell anyone who you are.</li>
+    <li><b>The moderation database</b> keeps a hash of that cookie, where a ban applies, reports (not who reported — only a fingerprint that can't be linked to the reporter) and dates without time. So that newcomers' reports don't count, it counts calls longer than 30 seconds — only the number, until there are three. Nothing else.</li>
+    <li>The service does not log IP addresses or call times. Hosting and network providers see IP addresses under their own rules.</li>
+  </ul>
+
+  <h2>If something happened</h2>
+  <p>If you are threatened or know about a crime, contact the police. If you are having a hard time, call a helpline in your country.</p>
+
+  <p class="note"><a href="./">← Back to the phone</a></p>
+</main>
+</body>
+</html>

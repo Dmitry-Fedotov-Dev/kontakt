@@ -35,11 +35,11 @@ func TestSharePageOpenGraph(t *testing.T) {
 		t.Fatalf("код %d", code)
 	}
 	for _, want := range []string{
-		`<meta property="og:title" content="Пират · 101.7 FM">`,
+		`<meta property="og:title" content="Пират · 101.7 МГц">`,
 		`♪ Играло: Кино — Кукушка.`,
 		`<meta property="og:image" content="https://abc.trycloudflare.com/og/1017.png?n=`,
 		`<meta name="twitter:card" content="summary_large_image">`,
-		`<title>Пират · 101.7 FM</title>`,
+		`<title>Пират · 101.7 МГц</title>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("нет %q", want)
@@ -106,7 +106,7 @@ func TestShareUsesLiveName(t *testing.T) {
 	hub := NewHub(Options{})
 	hub.st[1017] = &station{freq: 1017, name: "Живая", title: "сейчас играет"}
 	_, body, _ := get(t, hub.Handler(), "/w/101.7", nil)
-	if !strings.Contains(body, "Живая · 101.7 FM") || strings.Contains(body, "сейчас играет") {
+	if !strings.Contains(body, "Живая · 101.7 МГц") || strings.Contains(body, "сейчас играет") {
 		t.Fatal("имя живой станции не подставилось или подставился трек")
 	}
 }
@@ -133,5 +133,39 @@ func TestFontCoversAlphabets(t *testing.T) {
 		if _, ok := glyph(r); !ok {
 			t.Errorf("нет глифа %q", r)
 		}
+	}
+}
+
+// Карточка — на языке того, кто поделился (l=en), главная — по Accept-Language.
+func TestShareLanguage(t *testing.T) {
+	h := NewHub(Options{}).Handler()
+	_, body, _ := get(t, h, "/w/101.7?n=Pirate&t=Song&l=en", nil)
+	for _, want := range []string{
+		`<meta property="og:title" content="Pirate · 101.7 FM">`,
+		`♪ Was playing: Song.`,
+		`<meta property="og:site_name" content="Open Radio">`,
+		`/og/1017.png?l=en&amp;n=Pirate&amp;t=Song`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("en: нет %q", want)
+		}
+	}
+	for hdr, want := range map[string]string{
+		"en-US,en;q=0.9":        `content="Open Radio"`,
+		"ky-KG,ky;q=0.9,en":     `content="Открытое радио"`,
+		"de-DE,ru;q=0.8":        `content="Open Radio"`,
+		"":                      `content="Открытое радио"`,
+		"uk-UA,uk;q=0.9,en;q=0": `content="Открытое радио"`,
+	} {
+		_, body, _ := get(t, h, "/", map[string]string{"Accept-Language": hdr})
+		if !strings.Contains(body, `<meta property="og:title" `+want) {
+			t.Errorf("Accept-Language %q: ждали %s", hdr, want)
+		}
+	}
+	// английская и русская картинка — разные
+	_, ru, _ := get(t, h, "/og/1017.png?n=Pirate", nil)
+	_, en, _ := get(t, h, "/og/1017.png?n=Pirate&l=en", nil)
+	if ru == en {
+		t.Error("картинки на двух языках одинаковые")
 	}
 }

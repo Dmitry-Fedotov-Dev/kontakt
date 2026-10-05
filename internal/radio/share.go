@@ -2,6 +2,7 @@ package radio
 
 import (
 	"encoding/json"
+	"fmt"
 	"html"
 	"io"
 	"net/http"
@@ -18,6 +19,62 @@ import (
 //
 // Что играло, сервер не хранит: истории эфира нет вовсе. Название трека едет в самой ссылке —
 // поэтому карточка показывает ровно ту песню, что звучала в момент копирования.
+//
+// Язык карточки — язык того, кто поделился: l=en в ссылке (нет — русский, как у старых ссылок).
+// Главная страница радио — по Accept-Language. Сама страница потом говорит на языке открывшего.
+
+// ogText — тексты карточки на двух языках.
+type ogText struct {
+	Site, Desc, Live, Silent, Played, Freq string
+}
+
+var ogTexts = map[string]ogText{
+	"ru": {
+		Site:   "Открытое радио",
+		Desc:   "Займи свою волну и вещай: музыка и микрофон. Или крути ручку и слушай, что в эфире.",
+		Live:   "Открой и докрути ручку — эфир идёт прямо сейчас.",
+		Silent: "Сейчас станция молчит — загляни позже или покрути ручку.",
+		Played: "♪ Играло: %s. ",
+		Freq:   " МГц",
+	},
+	"en": {
+		Site:   "Open Radio",
+		Desc:   "Take your own frequency and broadcast music and voice. Or turn the knob and listen to what's on air.",
+		Live:   "Open it and tune in — it's on air right now.",
+		Silent: "The station is silent now — come back later or turn the knob.",
+		Played: "♪ Was playing: %s. ",
+		Freq:   " FM",
+	},
+}
+
+// langParam — язык ссылки: только en или ru, остальное — ru.
+func langParam(v string) string {
+	if v == "en" {
+		return "en"
+	}
+	return "ru"
+}
+
+// acceptLang — язык по заголовку браузера: русский для ru, uk, be, kk, ky (там русский понимают
+// лучше английского), иначе английский. Без заголовка (так ходят мессенджеры) — русский.
+func acceptLang(r *http.Request) string {
+	h := r.Header.Get("Accept-Language")
+	if strings.TrimSpace(h) == "" {
+		return "ru"
+	}
+	for _, part := range strings.Split(h, ",") {
+		tag := strings.ToLower(strings.TrimSpace(strings.SplitN(part, ";", 2)[0]))
+		if tag == "" || tag == "*" {
+			continue
+		}
+		switch strings.SplitN(tag, "-", 2)[0] {
+		case "ru", "uk", "be", "kk", "ky":
+			return "ru"
+		}
+		return "en"
+	}
+	return "ru"
+}
 
 const ogPlaceholder = "<!--OG-->"
 
@@ -71,38 +128,43 @@ func (h *Hub) liveStation(f int) (name, title string, ok bool) {
 
 // shareParams — частота из пути, имя и трек из запроса; пустое имя берётся у станции в эфире.
 // Трек у живой станции НЕ подставляется: ссылка — про то, что играло, когда ею поделились.
-func (h *Hub) shareParams(r *http.Request) (f int, name, track string, ok bool) {
+func (h *Hub) shareParams(r *http.Request) (f int, name, track, lang string, ok bool) {
 	f, ok = ParseFreq(strings.TrimSuffix(r.PathValue("freq"), ".png"))
 	if !ok {
-		return 0, "", "", false
+		return 0, "", "", "", false
 	}
 	q := r.URL.Query()
-	name, track = clean(q.Get("n"), nameRunes), clean(q.Get("t"), titleRunes)
+	name, track, lang = clean(q.Get("n"), nameRunes), clean(q.Get("t"), titleRunes), langParam(q.Get("l"))
 	if name == "" {
 		name, _, _ = h.liveStation(f)
 	}
-	return f, name, track, true
+	return f, name, track, lang, true
 }
 
 func (h *Hub) serveIndex(w http.ResponseWriter, r *http.Request) {
-	base := baseURL(r)
-	meta := ogMeta(map[string]string{
-		"og:title":       "Открытое радио",
-		"og:description": "Займи свою волну и вещай: музыка и микрофон. Или крути ручку и слушай, что в эфире.",
+	base, lang := baseURL(r), acceptLang(r)
+	t := ogTexts[lang]
+	img := base + "/og/radio.png"
+	if lang == "en" {
+		img += "?l=en"
+	}
+	meta := ogMeta(lang, map[string]string{
+		"og:title":       t.Site,
+		"og:description": t.Desc,
 		"og:url":         base + "/",
-		"og:image":       base + "/og/radio.png",
+		"og:image":       img,
 	})
 	writePage(w, strings.Replace(indexHTML, ogPlaceholder, meta, 1))
 }
 
 func (h *Hub) serveShare(w http.ResponseWriter, r *http.Request) {
-	f, name, track, ok := h.shareParams(r)
+	f, name, track, lang, ok := h.shareParams(r)
 	if !ok {
-		http.Error(w, "частота вне диапазона 87.5–108.0", http.StatusNotFound)
+		http.Error(w, "frequency out of range 87.5–108.0", http.StatusNotFound)
 		return
 	}
 	h.shares.Inc("page")
-	h.writeShare(w, r, f, name, track)
+	h.writeShare(w, r, f, name, track, lang)
 }
 
 // serveShort — короткая ссылка /r/{code}: та же страница волны с той же карточкой превью, без
@@ -115,24 +177,24 @@ func (h *Hub) serveShort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.shares.Inc("short")
-	h.writeShare(w, r, l.Freq, l.Name, l.Track)
+	h.writeShare(w, r, l.Freq, l.Name, l.Track, langParam(l.Lang))
 }
 
-// serveShortNew — POST /api/short {"f":1017,"n":"…","t":"…"} → {"url":"https://…/r/k7Qx2"}.
+// serveShortNew — POST /api/short {"f":1017,"n":"…","t":"…","l":"en"} → {"url":"https://…/r/k7Qx2"}.
 func (h *Hub) serveShortNew(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		F    int `json:"f"`
-		N, T string
+		F       int `json:"f"`
+		N, T, L string
 	}
 	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req) != nil || req.F < MinFreq || req.F > MaxFreq {
-		http.Error(w, `{"f":1017,"n":"станция","t":"трек"}`, http.StatusBadRequest)
+		http.Error(w, `{"f":1017,"n":"station","t":"track","l":"en"}`, http.StatusBadRequest)
 		return
 	}
 	if !h.shortRate.allow() {
-		http.Error(w, "слишком часто", http.StatusTooManyRequests)
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
-	code, err := h.links.Code(req.F, clean(req.N, nameRunes), clean(req.T, titleRunes))
+	code, err := h.links.Code(req.F, clean(req.N, nameRunes), clean(req.T, titleRunes), langParam(req.L))
 	if code == "" {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -142,8 +204,8 @@ func (h *Hub) serveShortNew(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"url": hostURL(r) + "/r/" + code})
 }
 
-func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, f int, name, track string) {
-	base := baseURL(r)
+func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, f int, name, track, lang string) {
+	base, t := baseURL(r), ogTexts[lang]
 	q := url.Values{}
 	if name != "" {
 		q.Set("n", name)
@@ -151,22 +213,22 @@ func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, f int, name, tr
 	if track != "" {
 		q.Set("t", track)
 	}
+	if lang == "en" {
+		q.Set("l", "en")
+	}
 	qs := ""
 	if len(q) > 0 {
 		qs = "?" + q.Encode()
 	}
-	desc := "Открой и докрути ручку — эфир идёт прямо сейчас."
-	if track != "" {
-		desc = "♪ Играло: " + track + ". " + desc
-	}
+	desc := t.Live
 	if _, _, live := h.liveStation(f); !live {
-		desc = "Сейчас станция молчит — загляни позже или покрути ручку."
-		if track != "" {
-			desc = "♪ Играло: " + track + ". " + desc
-		}
+		desc = t.Silent
 	}
-	title := ogTitle(f, name)
-	meta := ogMeta(map[string]string{
+	if track != "" {
+		desc = fmt.Sprintf(t.Played, track) + desc
+	}
+	title := ogTitle(f, name, lang)
+	meta := ogMeta(lang, map[string]string{
 		"og:title":       title,
 		"og:description": desc,
 		"og:url":         base + "/w/" + FormatFreq(f) + qs,
@@ -183,13 +245,18 @@ func writePage(w http.ResponseWriter, page string) {
 	w.Write([]byte(page))
 }
 
-func ogMeta(m map[string]string) string {
+func ogMeta(lang string, m map[string]string) string {
 	var b strings.Builder
 	for _, k := range []string{"og:title", "og:description", "og:url", "og:image"} {
 		b.WriteString(`<meta property="` + k + `" content="` + html.EscapeString(m[k]) + `">` + "\n")
 	}
 	b.WriteString(`<meta property="og:type" content="website">` + "\n")
-	b.WriteString(`<meta property="og:site_name" content="Открытое радио">` + "\n")
+	b.WriteString(`<meta property="og:site_name" content="` + html.EscapeString(ogTexts[lang].Site) + `">` + "\n")
+	if lang == "en" {
+		b.WriteString(`<meta property="og:locale" content="en_US">` + "\n")
+	} else {
+		b.WriteString(`<meta property="og:locale" content="ru_RU">` + "\n")
+	}
 	b.WriteString(`<meta property="og:image:type" content="image/png">` + "\n")
 	b.WriteString(`<meta property="og:image:width" content="` + strconv.Itoa(OGWidth) + `">` + "\n")
 	b.WriteString(`<meta property="og:image:height" content="` + strconv.Itoa(OGHeight) + `">` + "\n")
@@ -226,18 +293,20 @@ func (c *ogCache) get(key string, make func() []byte) []byte {
 func (h *Hub) serveOG(w http.ResponseWriter, r *http.Request) {
 	var img []byte
 	if r.PathValue("freq") == "radio.png" {
-		img = h.og.get("", func() []byte { h.ogRenders.Inc(); return OGImage(0, "", "") })
+		lang := langParam(r.URL.Query().Get("l"))
+		img = h.og.get(lang, func() []byte { h.ogRenders.Inc(); return OGImage(0, "", "", lang) })
 	} else {
-		f, name, track, ok := h.shareParams(r)
+		f, name, track, lang, ok := h.shareParams(r)
 		if !ok || !strings.HasSuffix(r.PathValue("freq"), ".png") {
 			http.NotFound(w, r)
 			return
 		}
 		h.shares.Inc("image")
-		img = h.og.get(strconv.Itoa(f)+"\x00"+name+"\x00"+track, func() []byte { h.ogRenders.Inc(); return OGImage(f, name, track) })
+		key := strconv.Itoa(f) + "\x00" + name + "\x00" + track + "\x00" + lang
+		img = h.og.get(key, func() []byte { h.ogRenders.Inc(); return OGImage(f, name, track, lang) })
 	}
 	if img == nil {
-		http.Error(w, "картинка не собралась", http.StatusInternalServerError)
+		http.Error(w, "image failed", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")

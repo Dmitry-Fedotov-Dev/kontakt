@@ -25,6 +25,7 @@ type shortLink struct {
 	Freq  int    `json:"f"`
 	Name  string `json:"n,omitempty"`
 	Track string `json:"t,omitempty"`
+	Lang  string `json:"l,omitempty"` // язык карточки: "en"; пусто — русский
 	Day   string `json:"d"`
 }
 
@@ -70,16 +71,24 @@ func candidate(sum [32]byte, n int) string {
 	return string(b)
 }
 
-// Code — код для ссылки (создаёт, если её ещё нет).
-func (s *shortLinks) Code(f int, name, track string) (string, error) {
-	sum := sha256.Sum256([]byte(strconv.Itoa(f) + "\x00" + name + "\x00" + track))
+// Code — код для ссылки (создаёт, если её ещё нет). Русский язык в хеш не входит — у старых
+// ссылок коды прежние.
+func (s *shortLinks) Code(f int, name, track, lang string) (string, error) {
+	if lang != "en" {
+		lang = ""
+	}
+	key := strconv.Itoa(f) + "\x00" + name + "\x00" + track
+	if lang != "" {
+		key += "\x00" + lang
+	}
+	sum := sha256.Sum256([]byte(key))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for n := shortCodeLen; n <= len(sum); n++ {
 		c := candidate(sum, n)
 		l := s.byKey[c]
 		if l == nil {
-			l = &shortLink{Code: c, Freq: f, Name: name, Track: track, Day: time.Now().UTC().Format(time.DateOnly)}
+			l = &shortLink{Code: c, Freq: f, Name: name, Track: track, Lang: lang, Day: time.Now().UTC().Format(time.DateOnly)}
 			s.byKey[c] = l
 			s.order = append(s.order, c)
 			for len(s.order) > s.max {
@@ -88,7 +97,7 @@ func (s *shortLinks) Code(f int, name, track string) (string, error) {
 			}
 			return c, s.saveLocked()
 		}
-		if l.Freq == f && l.Name == name && l.Track == track {
+		if l.Freq == f && l.Name == name && l.Track == track && l.Lang == lang {
 			return c, nil
 		}
 	}

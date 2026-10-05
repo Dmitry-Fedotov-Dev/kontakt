@@ -134,7 +134,7 @@ func (c canvas) text(s string, x, y, k int, ci uint8) int {
 }
 
 // drawRadio — то же радио, что на странице, со смещением (ox, oy); на шкале — частота.
-func (c canvas) drawRadio(ox, oy, freq int) {
+func (c canvas) drawRadio(ox, oy, freq int, lang string) {
 	// антенна и волны эфира от неё
 	c.line(ox+100, oy+19, ox+116, oy+4, 2, cInk)
 	c.rrect(ox+96, oy+16, 10, 5, 1, cInk)
@@ -181,9 +181,9 @@ func (c canvas) drawRadio(ox, oy, freq int) {
 			h := i*2 + 2
 			c.rect(ox+107+i*2, oy+37-h, 1, h, cAmber)
 		}
-		c.text("ON AIR", ox+66, oy+39, 1, cRed)
+		c.text(ogWords[lang].onAir, ox+66, oy+39, 1, cRed)
 	} else {
-		c.text("FM", ox+66, oy+30, 1, cAmber)
+		c.text(ogWords[lang].band, ox+66, oy+30, 1, cAmber)
 	}
 	// ручка: риска показывает частоту
 	kx, ky, kr := ox+90, oy+63, 13
@@ -230,32 +230,50 @@ func (c canvas) drawRadio(ox, oy, freq int) {
 	}
 }
 
-// OGImage — PNG превью: радио, частота, название станции и что играло.
+// ogWords — надписи картинки. На шкале нарисованного приёмника места на 6 знаков до столбиков
+// сигнала: «ЭФИР», а не «В ЭФИРЕ».
+var ogWords = map[string]struct {
+	brand, big1, big2, codec, freq, played, live, open, onAir, band string
+	pitch                                                           []string
+}{
+	"ru": {"ОТКРЫТОЕ РАДИО", "ОТКРЫТОЕ", "РАДИО", "G.711 · 64 КБИТ/С", " МГЦ", "♪ ИГРАЛО:", "В ЭФИРЕ ПРЯМО СЕЙЧАС",
+		"> ОТКРОЙ И СЛУШАЙ", "ЭФИР", "УКВ",
+		[]string{"СВОЯ ВОЛНА — ВЕЩАЙ", "МУЗЫКУ И ГОЛОС.", "ИЛИ КРУТИ РУЧКУ", "И СЛУШАЙ."}},
+	"en": {"OPEN RADIO", "OPEN", "RADIO", "G.711 · 64 KBIT/S", " FM", "♪ WAS PLAYING:", "ON AIR RIGHT NOW",
+		"> OPEN AND LISTEN", "ON AIR", "FM",
+		[]string{"YOUR OWN FREQUENCY —", "BROADCAST MUSIC", "AND VOICE. OR TURN", "THE KNOB AND LISTEN."}},
+}
+
+// OGImage — PNG превью: радио, частота, название станции и что играло; lang — "ru" или "en".
 // freq == 0 — общая картинка сайта.
-func OGImage(freq int, name, track string) []byte {
+func OGImage(freq int, name, track, lang string) []byte {
+	wd, ok := ogWords[lang]
+	if !ok {
+		lang, wd = "ru", ogWords["ru"]
+	}
 	c := canvas{image.NewPaletted(image.Rect(0, 0, OGWidth, OGHeight), ogPalette)}
 	for y := 2; y < ogH; y += 4 {
 		for x := 2; x < ogW; x += 4 {
 			c.px(x, y, cSkyDot)
 		}
 	}
-	c.drawRadio(8, 38, freq)
+	c.drawRadio(8, 38, freq, lang)
 
 	const tx, cols = 146, 24 // справа от радио: 24 знака по 6 пикселей
-	c.text("OPEN RADIO", tx, 12, 1, cLilac)
+	c.text(wd.brand, tx, 12, 1, cLilac)
 	if freq == 0 {
-		c.text("ОТКРЫТОЕ", tx, 32, 2, cAmber)
-		c.text("РАДИО", tx, 50, 2, cAmber)
+		c.text(wd.big1, tx, 32, 2, cAmber)
+		c.text(wd.big2, tx, 50, 2, cAmber)
 		y := 76
-		for _, l := range []string{"СВОЯ ВОЛНА — ВЕЩАЙ", "МУЗЫКУ И ГОЛОС.", "ИЛИ КРУТИ РУЧКУ", "И СЛУШАЙ."} {
+		for _, l := range wd.pitch {
 			c.text(l, tx, y, 1, cCream)
 			y += 10
 		}
-		c.text("G.711 · 64 КБИТ/С", tx, 140, 1, cLilacDim)
+		c.text(wd.codec, tx, 140, 1, cLilacDim)
 		return encodePNG(c.img)
 	}
 
-	c.text(FormatFreq(freq)+" FM", tx, 26, 3, cAmber)
+	c.text(FormatFreq(freq)+wd.freq, tx, 26, 3, cAmber)
 	y := 56
 	if name == "" {
 		name = "RADIO " + FormatFreq(freq)
@@ -271,16 +289,16 @@ func OGImage(freq int, name, track string) []byte {
 		y += 4
 	}
 	if track != "" {
-		c.text("♪ ИГРАЛО:", tx, y, 1, cAmber)
+		c.text(wd.played, tx, y, 1, cAmber)
 		y += 11
 		for _, l := range wrapText(track, cols, max(1, (132-y)/10)) {
 			c.text(l, tx, y, 1, cCream)
 			y += 10
 		}
 	} else {
-		c.text("В ЭФИРЕ ПРЯМО СЕЙЧАС", tx, y, 1, cAmber)
+		c.text(wd.live, tx, y, 1, cAmber)
 	}
-	c.text("> ОТКРОЙ И СЛУШАЙ", tx, 142, 1, cLilacDim)
+	c.text(wd.open, tx, 142, 1, cLilacDim)
 	return encodePNG(c.img)
 }
 
@@ -294,9 +312,10 @@ func encodePNG(img image.Image) []byte {
 }
 
 // ogTitle — заголовок карточки ссылки.
-func ogTitle(freq int, name string) string {
+func ogTitle(freq int, name, lang string) string {
+	t := ogTexts[lang]
 	if name == "" {
-		return FormatFreq(freq) + " FM · Открытое радио"
+		return FormatFreq(freq) + t.Freq + " · " + t.Site
 	}
-	return strings.TrimSpace(name) + " · " + FormatFreq(freq) + " FM"
+	return strings.TrimSpace(name) + " · " + FormatFreq(freq) + t.Freq
 }

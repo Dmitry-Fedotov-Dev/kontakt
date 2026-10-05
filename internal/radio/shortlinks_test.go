@@ -12,9 +12,9 @@ import (
 func TestShortLinksStableAndPersistent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "links.json")
 	s, _ := openShortLinks(path, 100)
-	a, _ := s.Code(1017, "Mobile", "Смысловые Галлюцинации — Вечно молодой")
-	b, _ := s.Code(1017, "Mobile", "Смысловые Галлюцинации — Вечно молодой")
-	c, _ := s.Code(1017, "Mobile", "другой трек")
+	a, _ := s.Code(1017, "Mobile", "Смысловые Галлюцинации — Вечно молодой", "")
+	b, _ := s.Code(1017, "Mobile", "Смысловые Галлюцинации — Вечно молодой", "")
+	c, _ := s.Code(1017, "Mobile", "другой трек", "")
 	if a != b || a == c || len(a) != shortCodeLen {
 		t.Fatalf("коды: %q %q %q", a, b, c)
 	}
@@ -29,9 +29,9 @@ func TestShortLinksStableAndPersistent(t *testing.T) {
 
 func TestShortLinksEvictOldest(t *testing.T) {
 	s, _ := openShortLinks("", 3)
-	first, _ := s.Code(900, "", "1")
+	first, _ := s.Code(900, "", "1", "")
 	for i := 0; i < 3; i++ {
-		s.Code(900, "", strings.Repeat("x", i+2))
+		s.Code(900, "", strings.Repeat("x", i+2), "")
 	}
 	if _, ok := s.Get(first); ok || s.Len() != 3 {
 		t.Fatalf("старейшая не вытеснена: len %d", s.Len())
@@ -95,5 +95,19 @@ func TestShortLinkSamePreview(t *testing.T) {
 	}
 	if c, _ := get(srv.URL + "/r/nosuch"); c != http.StatusFound {
 		t.Fatalf("неизвестный код: %d, ждали перенаправление на радио", c)
+	}
+}
+
+// Язык — часть ссылки: английская карточка — свой код; у русской код прежний (lang в хеш не входит).
+func TestShortLinksLang(t *testing.T) {
+	s, _ := openShortLinks("", 10)
+	ru, _ := s.Code(1017, "Mobile", "x", "")
+	ru2, _ := s.Code(1017, "Mobile", "x", "ru")
+	en, _ := s.Code(1017, "Mobile", "x", "en")
+	if ru != ru2 || ru == en {
+		t.Fatalf("коды: ru %q, ru2 %q, en %q", ru, ru2, en)
+	}
+	if l, _ := s.Get(en); l.Lang != "en" {
+		t.Fatalf("язык не сохранён: %+v", l)
 	}
 }

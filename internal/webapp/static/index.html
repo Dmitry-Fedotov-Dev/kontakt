@@ -41,10 +41,12 @@ body {
 .handset {
   position: relative;
   height: min(calc(100dvh - 24px - 2.2em), 860px); /* 2.2em — строка ссылок под трубкой */
+  /* с кнопкой поддержки под трубкой — ещё 3.4em, иначе строка ссылок уходит за край экрана */
   aspect-ratio: 40 / 88;
   max-width: calc(100vw - 24px);
   container-type: size;
 }
+body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6em - 10px), 860px); }
 @supports not (aspect-ratio: 1) { .handset { width: 320px; height: 704px; } }
 .handset canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
 .handset.ring { animation: ring .09s steps(2) 6; }
@@ -64,7 +66,7 @@ body {
 .lcd {
   background: #1B2014; color: var(--green);
   border: .25em solid var(--ink); box-shadow: inset 0 0 0 .2em #2E3624;
-  padding: .55em .5em .5em; min-height: 5.6em;
+  padding: .55em .5em .5em; min-height: 5.6em; flex-shrink: 0; /* текст не вылезает за рамку */
   display: flex; flex-direction: column; justify-content: center; gap: .25em;
   image-rendering: pixelated;
 }
@@ -98,6 +100,39 @@ body {
 .check input { width: 1.1em; height: 1.1em; margin: .1em 0 0; flex: none; accent-color: var(--lamp); }
 .gate a, .foot a { color: var(--cream); }
 .foot { font-size: .8em; color: var(--cream-dim); margin: 0; text-align: center; }
+/* Поддержка — монетка таксофона: при наведении поблёскивает, по нажатию падает в щель со звоном. */
+.donate { display: grid; justify-items: center; gap: 6px; position: relative; }
+.donate[hidden] { display: none; }
+.donateBtn {
+  display: flex; align-items: center; gap: .55em; cursor: pointer;
+  font: 600 1.05em/1 "Pixelify Sans", ui-monospace, monospace; color: var(--cream); letter-spacing: .04em;
+  background: var(--bake); border: 0; padding: .45em 1em .45em .5em;
+  box-shadow: 0 0 0 .18em var(--ink), inset -.2em -.2em 0 var(--bake-deep), inset .2em .2em 0 #C9443A, 0 .3em 0 .18em var(--ink);
+  transition: transform .08s, box-shadow .08s;
+}
+.donateBtn span { text-shadow: 0 .09em 0 var(--bake-deep); }
+.donateBtn:hover { transform: translateY(-.08em); }
+.donateBtn:active { transform: translateY(.22em); box-shadow: 0 0 0 .18em var(--ink), inset .2em .2em 0 var(--bake-deep), 0 .08em 0 .18em var(--ink); }
+.donateBtn:focus-visible { outline: .2em solid var(--focus); outline-offset: .35em; }
+.slot { width: 2.1em; height: 2.1em; position: relative; overflow: hidden; display: grid; place-items: center; }
+.slot::after { content: ""; position: absolute; left: .15em; right: .15em; bottom: .05em; height: .22em; background: var(--ink); } /* щель */
+.coin { width: 1.7em; height: 1.7em; image-rendering: pixelated; display: block; }
+.donateBtn:hover .coin { animation: spin 1s steps(8) infinite; }
+@keyframes spin { 0%, 100% { transform: scaleX(1); } 25% { transform: scaleX(.35); } 50% { transform: scaleX(-1); } 75% { transform: scaleX(-.35); } }
+.donate.go .coin { animation: drop 1.3s steps(14); }
+/* подпрыгнула, упала в щель, следующая съехала сверху на её место */
+@keyframes drop { 0% { transform: translateY(0); } 12% { transform: translateY(-.35em); } 40% { transform: translateY(2.2em); }
+  41%, 70% { transform: translateY(-2.2em); } 100% { transform: translateY(0); } }
+.donateMenu { /* над кнопкой, поверх трубки: снизу на телефоне её не видно без прокрутки */
+  position: absolute; bottom: calc(100% + .6em); left: 50%; transform: translateX(-50%); white-space: nowrap; z-index: 2;
+  display: grid; gap: 4px; background: var(--cream); padding: 6px;
+  box-shadow: 0 0 0 .18em var(--ink), 0 .3em 0 .18em var(--ink);
+}
+.donateMenu[hidden] { display: none; }
+.donateMenu a { color: var(--ink); text-decoration: none; padding: .35em .7em; font-size: .95em; }
+.donateMenu a:hover, .donateMenu a:focus-visible { background: var(--lamp); outline: none; }
+@media (prefers-reduced-motion: reduce) { .donateBtn:hover .coin, .donate.go .coin { animation: none; } }
+.foot .lang { font: inherit; color: var(--cream); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 [hidden] { display: none !important; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
@@ -112,31 +147,35 @@ body {
   <canvas id="art" width="40" height="88" aria-hidden="true"></canvas>
 
   <section class="panel">
-    <h1 class="brand">Контакт</h1>
+    <h1 class="brand" data-i="brand">Контакт</h1>
 
     <!-- вход: правила и выбор линии -->
     <form class="gate" id="gate" hidden>
-      <label class="check"><input type="checkbox" id="c-age"> <span>Мне есть 18 лет</span></label>
-      <label class="check"><input type="checkbox" id="c-terms"> <span>Принимаю <a href="terms.html" target="_blank" rel="noopener">правила</a> и сам(а) отвечаю за свои слова</span></label>
+      <label class="check"><input type="checkbox" id="c-age"> <span data-i="age">Мне есть 18 лет</span></label>
+      <label class="check"><input type="checkbox" id="c-terms"> <span data-i-html="acceptHtml">Принимаю <a href="terms.html" target="_blank" rel="noopener">правила</a> и сам(а) отвечаю за свои слова</span></label>
     </form>
 
     <div class="lcd" id="lcd" role="status" aria-live="polite">
-      <div class="state"><span class="lamp" id="lamp"></span><span id="state">Трубка лежит</span></div>
+      <div class="state"><span class="lamp" id="lamp"></span><span id="state" data-i="idle">Трубка лежит</span></div>
       <div class="sub" id="sub"></div>
     </div>
 
     <div class="actions">
-      <button class="rbtn" id="main-btn" type="button" aria-label="pick up"><img alt=""><span>pick up</span></button>
+      <button class="rbtn" id="main-btn" type="button" aria-label="pick up" data-i-aria="pickUp"><img alt=""><span data-i="pickUp">pick up</span></button>
       <div class="row2" id="call-btns" hidden>
-        <button class="rbtn" id="report-btn" type="button" aria-label="ban"><img alt=""><span>ban</span></button>
-        <button class="rbtn" id="hangup-btn" type="button" aria-label="bye"><img alt=""><span>bye</span></button>
+        <button class="rbtn" id="report-btn" type="button" aria-label="ban" data-i-aria="ban"><img alt=""><span data-i="ban">ban</span></button>
+        <button class="rbtn" id="hangup-btn" type="button" aria-label="bye" data-i-aria="bye"><img alt=""><span data-i="bye">bye</span></button>
       </div>
       <p class="online" id="online">&nbsp;</p>
     </div>
   </section>
 </main>
 <!-- под трубкой: внутри у панели фиксированная высота, и строка там обрезалась -->
-<p class="foot"><a href="terms.html" target="_blank" rel="noopener">rules</a><span id="donate-wrap" hidden> · <a id="donate" target="_blank" rel="noopener noreferrer">support ♥</a></span><span id="donate-ru-wrap" hidden> · <a id="donate-ru" target="_blank" rel="noopener noreferrer">support from Russia ₽</a></span></p>
+<div class="donate" id="donate" hidden>
+  <button type="button" class="donateBtn" aria-haspopup="true" aria-expanded="false"><span class="slot"><canvas class="coin" id="coin" width="13" height="13"></canvas></span><span data-i="support">support</span></button>
+  <div class="donateMenu" hidden></div>
+</div>
+<p class="foot"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">rules</a> · <button type="button" class="lang" id="lang" data-i="other">English</button></p>
 
 <script>
 "use strict";
@@ -246,6 +285,101 @@ function showButtons(group) {
 
 // ================= интерфейс =================
 const $ = id => document.getElementById(id);
+// ---------- язык ----------
+// Весь текст страницы — здесь, на двух языках. Язык — по браузеру (русский для ru, uk, be, kk,
+// ky — там русский понимают лучше английского), переключатель внизу; выбор общий с радио.
+const I18N = {
+  ru: {
+    brand: "Контакт",
+    description: "Снимите трубку — и говорите со случайным человеком. Только голос, звук старой линии.",
+    age: "Мне есть 18 лет",
+    acceptHtml: 'Принимаю <a href="terms.html" target="_blank" rel="noopener">правила</a> и сам(а) отвечаю за свои слова',
+    terms: "terms.html",
+    rules: "правила", support: "поддержать", other: "English",
+    anyCard: "картой любой страны ♥", ruCard: "картой из России ₽",
+    pickUp: "снять", ban: "жалоба", bye: "положить", sure: "точно?",
+    idle: "Трубка лежит",
+    hintIdle: "Снимите трубку — вас соединят со случайным человеком на станции.",
+    hintGate: "Случайный собеседник, только голос. Ничего не записывается.",
+    banTitle: "Вход закрыт", banHint: "На вас пожаловались собеседники. С этого браузера войти больше нельзя.",
+    maint: "Станция на обслуживании", maintHint: "Попробуйте снять трубку чуть позже.",
+    yellowSub: "У вас жёлтая карточка: ещё жалобы — и вход закроется навсегда.",
+    online: (n, t) => `На станции: ${n}, говорят: ${t}`, nobody: "На станции пока никого",
+    noAnswer: "Станция не отвечает", retry: "Попробуйте снять трубку ещё раз.",
+    yellowTitle: "Жёлтая карточка", yellowHint: "На вас пожаловались. Ещё жалобы — и вход закроется навсегда.",
+    timeUp: "Время вышло", timeUpHint: "Снимите трубку, чтобы продолжить.",
+    stationHung: "Станция положила трубку",
+    onLine: "На линии",
+    peerLeft: "Собеседник ушёл", reportAccepted: "Жалоба принята",
+    searching: "Ищем собеседника", afterHint: "Слушаем эфир… сейчас найдём следующего.",
+    ringHint: "Гудки — значит, ищем. Не кладите трубку.",
+    needHttps: "Нужен https", needHttpsHint: "Браузер даёт микрофон только по https или на localhost.",
+    pickingUp: "Снимаю трубку…", allowMic: "Разрешите доступ к микрофону.",
+    noMic: "Нет микрофона", noMicHint: "Разрешите микрофон в настройках браузера и попробуйте снова.",
+    lost: "Связь со станцией потеряна", lostHint: "Снимите трубку ещё раз.",
+    report: {
+      yellow: "Собеседнику выдана жёлтая карточка.", banned: "Собеседник заблокирован навсегда.",
+      noted: "Жалоба принята, больше вас не соединят.",
+      already: "На этого собеседника вы уже жаловались.", no_recent_call: "Жаловаться не на кого.",
+      rate_limited: "Слишком много жалоб за час.",
+    },
+    reportFail: "Жалоба не дошла, попробуйте ещё раз.",
+  },
+  en: {
+    brand: "Kontakt",
+    description: "Pick up the phone and talk to a random person. Voice only, the sound of an old line.",
+    age: "I'm 18 or older",
+    acceptHtml: 'I accept the <a href="terms-en.html" target="_blank" rel="noopener">rules</a> and answer for my own words',
+    terms: "terms-en.html",
+    rules: "rules", support: "support", other: "Русский",
+    anyCard: "any card ♥", ruCard: "Russian card ₽",
+    pickUp: "pick up", ban: "report", bye: "hang up", sure: "sure?",
+    idle: "On the hook",
+    hintIdle: "Pick up and you'll be connected with a random person on the station.",
+    hintGate: "A random stranger, voice only. Nothing is recorded.",
+    banTitle: "Access closed", banHint: "People you talked to reported you. You can't enter from this browser anymore.",
+    maint: "Station under maintenance", maintHint: "Try picking up a little later.",
+    yellowSub: "You have a yellow card: more reports and access closes for good.",
+    online: (n, t) => `On the station: ${n}, talking: ${t}`, nobody: "Nobody on the station yet",
+    noAnswer: "The station isn't answering", retry: "Try picking up again.",
+    yellowTitle: "Yellow card", yellowHint: "You were reported. More reports and access closes for good.",
+    timeUp: "Time's up", timeUpHint: "Pick up to continue.",
+    stationHung: "The station hung up",
+    onLine: "On the line",
+    peerLeft: "They hung up", reportAccepted: "Report accepted",
+    searching: "Finding someone", afterHint: "Listening to the static… finding the next one.",
+    ringHint: "Ringing means we're searching. Stay on the line.",
+    needHttps: "HTTPS needed", needHttpsHint: "Browsers allow the microphone only over HTTPS or on localhost.",
+    pickingUp: "Picking up…", allowMic: "Allow access to the microphone.",
+    noMic: "No microphone", noMicHint: "Allow the microphone in your browser settings and try again.",
+    lost: "Lost connection to the station", lostHint: "Pick up again.",
+    report: {
+      yellow: "They got a yellow card.", banned: "They're banned for good.",
+      noted: "Report accepted — you won't be connected again.",
+      already: "You already reported this person.", no_recent_call: "There's no one to report.",
+      rate_limited: "Too many reports this hour.",
+    },
+    reportFail: "The report didn't go through, try again.",
+  },
+};
+const LANG_KEY = "kontakt-lang";
+function pickLang() {
+  try { const v = localStorage.getItem(LANG_KEY); if (v === "ru" || v === "en") return v; } catch {}
+  const list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || "en"];
+  return list.some(l => /^(ru|uk|be|kk|ky)\b/i.test(l)) ? "ru" : "en";
+}
+const LANG = pickLang(), T = I18N[LANG];
+document.documentElement.lang = LANG;
+document.title = T.brand;
+document.querySelector('meta[name="description"]').content = T.description;
+document.querySelectorAll("[data-i]").forEach(el => { el.textContent = T[el.dataset.i]; });
+document.querySelectorAll("[data-i-html]").forEach(el => { el.innerHTML = T[el.dataset.iHtml]; });
+document.querySelectorAll("[data-i-aria]").forEach(el => { el.setAttribute("aria-label", T[el.dataset.iAria]); });
+document.querySelectorAll("a.termsLink").forEach(a => { a.href = T.terms; });
+$("lang").addEventListener("click", () => {
+  try { localStorage.setItem(LANG_KEY, LANG === "ru" ? "en" : "ru"); } catch {}
+  location.reload();
+});
 const handset = $("handset"), lamp = $("lamp"), stateEl = $("state"), sub = $("sub"),
       mainBtn = $("main-btn"), callBtns = $("call-btns"), reportBtn = $("report-btn"), reportLabel = $("report-btn").querySelector("span"),
       hangupBtn = $("hangup-btn"), gate = $("gate"), cAge = $("c-age"), cTerms = $("c-terms");
@@ -270,7 +404,7 @@ function setIdle(kind, text, hint) {
   gate.hidden = termsOk;
   handset.classList.toggle("entry", !termsOk);
   syncMain();
-  lcd(kind || "", text || "Трубка лежит", hint || (termsOk ? "Снимите трубку — вас соединят со случайным человеком на станции." : "Случайный собеседник, только голос. Ничего не записывается."));
+  lcd(kind || "", text || T.idle, hint || (termsOk ? T.hintIdle : T.hintGate));
 }
 function syncMain() {
   if (me.banned) { mainBtn.hidden = true; return; }
@@ -281,25 +415,83 @@ cAge.onchange = cTerms.onchange = syncMain;
 function showBanned() {
   me.banned = true;
   showButtons("none"); gate.hidden = true;
-  lcd("bad", "Вход закрыт", "На вас пожаловались собеседники. С этого браузера войти больше нельзя.");
+  lcd("bad", T.banTitle, T.banHint);
+}
+
+
+// ---------- поддержка ----------
+// Кнопка видна, если в конфиге станции есть хоть одна ссылка. Одна — нажатие сразу её открывает
+// (window.open прямо в обработчике клика, иначе браузер примет за всплывающее окно); две —
+// табличка выбора. Звук нажатия — свой маленький AudioContext, эфир и звонок не трогает.
+let sfx = null;
+function sfxCtx() {
+  try { sfx = sfx || new (window.AudioContext || window.webkitAudioContext)(); sfx.resume().catch(() => {}); } catch (_) { sfx = null; }
+  return sfx;
+}
+function ping(c, t, f, len, vol) {
+  const o = c.createOscillator(), g = c.createGain();
+  o.frequency.value = f; o.connect(g); g.connect(c.destination);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.start(t); o.stop(t + len);
+}
+function setupDonate(root, links, sound) {
+  const urls = links.filter(l => /^https:\/\//.test(l.url || ""));
+  if (!urls.length) return;
+  const btn = root.querySelector(".donateBtn"), menu = root.querySelector(".donateMenu");
+  menu.replaceChildren(...urls.map(l => {
+    const a = document.createElement("a");
+    a.href = l.url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = l.label;
+    a.addEventListener("click", () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); });
+    return a;
+  }));
+  root.hidden = false;
+  btn.addEventListener("click", () => {
+    sound();
+    root.classList.remove("go"); void root.offsetWidth; root.classList.add("go"); // анимация с начала
+    if (urls.length === 1) { window.open(urls[0].url, "_blank", "noopener"); return; }
+    menu.hidden = !menu.hidden;
+    btn.setAttribute("aria-expanded", String(!menu.hidden));
+  });
+  document.addEventListener("click", e => {
+    if (!menu.hidden && !root.contains(e.target)) { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+  });
+}
+
+// Монетка 13 × 13: латунь с тёмным ободком и бликом сверху-слева, на ней сердце.
+(function drawCoin() {
+  const g = $("coin").getContext("2d");
+  const heart = ["..hh.hh..", ".hhhhhhh.", ".hhhhhhh.", "..hhhhh..", "...hhh...", "....h...."];
+  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
+    const d = Math.hypot(x - 6, y - 6);
+    if (d > 6.4) continue;
+    const h = heart[y - 4] && heart[y - 4][x - 2] === "h";
+    g.fillStyle = d > 5.3 ? "#6E4A0E" : h ? "#A3201C" : (x + y < 8 && d > 3.2) ? "#FFF0B0" : "#E2B23A";
+    g.fillRect(x, y, 1, 1);
+  }
+})();
+function clink() { // монетка звякнула и упала в щель
+  const c = sfxCtx(); if (!c) return;
+  const t = c.currentTime;
+  ping(c, t + 0.20, 2637, 0.25, 0.08); ping(c, t + 0.20, 3951, 0.18, 0.05);
+  ping(c, t + 0.31, 2093, 0.30, 0.06);
 }
 
 async function loadState() {
   try { cfg = Object.assign(cfg, await (await fetch("api/config", { cache: "no-store" })).json()); } catch {}
-  for (const [k, id] of [["donate_url", "donate"], ["donate_ru_url", "donate-ru"]]) {
-    if (/^https:\/\//.test(cfg[k] || "")) { $(id).href = cfg[k]; $(id + "-wrap").hidden = false; }
-  }
+  // в России — своя ссылка первой: зарубежные карты там не работают
+  const donate = [{ url: cfg.donate_url, label: T.anyCard }, { url: cfg.donate_ru_url, label: T.ruCard }];
+  setupDonate($("donate"), LANG === "ru" ? donate.reverse() : donate, clink);
   try { me = await (await fetch("api/me", { cache: "no-store" })).json(); } catch {}
   if (me.banned) return showBanned();
-  if (cfg.maintenance) return setIdle("bad", "Станция на обслуживании", "Попробуйте снять трубку чуть позже.");
+  if (cfg.maintenance) return setIdle("bad", T.maint, T.maintHint);
   setIdle();
-  if (me.cards > 0) sub.textContent = "У вас жёлтая карточка: ещё жалобы — и вход закроется навсегда.";
+  if (me.cards > 0) sub.textContent = T.yellowSub;
 }
 
 async function pollStats() {
   try {
     const s = await (await fetch("api/stats", { cache: "no-store" })).json();
-    $("online").textContent = s.online ? `На станции: ${s.online}, говорят: ${s.talking}` : "На станции пока никого";
+    $("online").textContent = s.online ? T.online(s.online, s.talking) : T.nobody;
   } catch {}
 }
 
@@ -471,8 +663,8 @@ function onSIP(text) {
     sendRaw(build(`ACK ${call.ruri} SIP/2.0`, hdrs("ACK", 1, (/;tag=([^;>\s]+)/.exec(m.h.to[0]) || [])[1])));
     teardown(false);
     if (why === "banned") return showBanned();
-    if (m.status === 503 && why === "maintenance") return setIdle("bad", "Станция на обслуживании", "Попробуйте снять трубку чуть позже.");
-    return setIdle("bad", "Станция не отвечает", "Попробуйте снять трубку ещё раз.");
+    if (m.status === 503 && why === "maintenance") return setIdle("bad", T.maint, T.maintHint);
+    return setIdle("bad", T.noAnswer, T.retry);
   }
   if (m.method === "INFO") {
     reply200(m);
@@ -483,9 +675,9 @@ function onSIP(text) {
     const why = reasonText(m);
     teardown(false);
     if (why === "banned") return showBanned();
-    if (why === "yellow-card") { me.cards = (me.cards || 0) + 1; return setIdle("bad", "Жёлтая карточка", "На вас пожаловались. Ещё жалобы — и вход закроется навсегда."); }
-    if (why === "time-limit") return setIdle("", "Время вышло", "Снимите трубку, чтобы продолжить.");
-    setIdle("bad", "Станция положила трубку", "Попробуйте снять трубку ещё раз.");
+    if (why === "yellow-card") { me.cards = (me.cards || 0) + 1; return setIdle("bad", T.yellowTitle, T.yellowHint); }
+    if (why === "time-limit") return setIdle("", T.timeUp, T.timeUpHint);
+    setIdle("bad", T.stationHung, T.retry);
   } else if (m.method === "OPTIONS") reply200(m);
 }
 
@@ -494,13 +686,13 @@ function onStation(state, reason) {
     call.state = "talking"; marker = true;
     talkStart = Date.now(); clearInterval(talkTimer);
     talkTimer = setInterval(tick, 1000);
-    lcd("talk", "На линии", "00:00");
+    lcd("talk", T.onLine, "00:00");
     handset.classList.remove("ring"); void handset.offsetWidth; handset.classList.add("ring");
   } else if (state === "searching") {
     if (call.state === "talking") lastTalkEnd = Date.now();
     call.state = "searching"; clearInterval(talkTimer);
-    const text = { "peer-left": "Собеседник ушёл", "report-accepted": "Жалоба принята", "time-limit": "Время вышло" }[reason];
-    lcd("search", text || "Ищем собеседника", text ? "Слушаем эфир… сейчас найдём следующего." : "Гудки — значит, ищем. Не кладите трубку.");
+    const text = { "peer-left": T.peerLeft, "report-accepted": T.reportAccepted, "time-limit": T.timeUp }[reason];
+    lcd("search", text || T.searching, text ? T.afterHint : T.ringHint);
   }
   syncReport();
 }
@@ -524,11 +716,11 @@ async function pickUp() {
     gate.hidden = true;
     handset.classList.remove("entry");
   }
-  if (!window.isSecureContext) return setIdle("bad", "Нужен https", "Браузер даёт микрофон только по https или на localhost.");
+  if (!window.isSecureContext) return setIdle("bad", T.needHttps, T.needHttpsHint);
   showButtons("call");
-  lcd("search", "Снимаю трубку…", "Разрешите доступ к микрофону.");
+  lcd("search", T.pickingUp, T.allowMic);
   try { await startAudio(); }
-  catch { return setIdle("bad", "Нет микрофона", "Разрешите микрофон в настройках браузера и попробуйте снова."); }
+  catch { return setIdle("bad", T.noMic, T.noMicHint); }
 
   call.state = "dialing";
   call.id = rnd(10); call.fromTag = rnd(4); call.cseq = 1; call.toTag = null;
@@ -546,7 +738,7 @@ async function pickUp() {
       "Content-Type: application/sdp"], sdp));
   };
   ws.onmessage = e => typeof e.data === "string" && onSIP(e.data);
-  ws.onclose = () => { if (call.state !== "idle") { teardown(false); setIdle("bad", "Связь со станцией потеряна", "Снимите трубку ещё раз."); } };
+  ws.onclose = () => { if (call.state !== "idle") { teardown(false); setIdle("bad", T.lost, T.lostHint); } };
 }
 
 function teardown(sendBye) {
@@ -569,20 +761,15 @@ function syncReport() {
 reportBtn.onclick = async () => {
   if (!reportBtn.classList.contains("armed")) {
     reportBtn.classList.add("armed");
-    reportLabel.textContent = "sure?";
+    reportLabel.textContent = T.sure;
     clearTimeout(armTimer);
-    armTimer = setTimeout(() => { reportBtn.classList.remove("armed"); reportLabel.textContent = "ban"; }, 3000);
+    armTimer = setTimeout(() => { reportBtn.classList.remove("armed"); reportLabel.textContent = T.ban; }, 3000);
     return;
   }
   clearTimeout(armTimer);
-  reportBtn.classList.remove("armed"); reportLabel.textContent = "ban";
+  reportBtn.classList.remove("armed"); reportLabel.textContent = T.ban;
   const r = await sendInfo({ report: true });
-  const text = {
-    yellow: "Собеседнику выдана жёлтая карточка.", banned: "Собеседник заблокирован навсегда.",
-    noted: "Жалоба принята, больше вас не соединят.",
-    already: "На этого собеседника вы уже жаловались.", no_recent_call: "Жаловаться не на кого.",
-    rate_limited: "Слишком много жалоб за час."
-  }[r && r.result] || "Жалоба не дошла, попробуйте ещё раз.";
+  const text = T.report[r && r.result] || T.reportFail;
   lastTalkEnd = 0; syncReport();
   setTimeout(() => { if (call.state === "searching") sub.textContent = text; }, 50);
 };
