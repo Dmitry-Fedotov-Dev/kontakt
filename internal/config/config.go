@@ -42,7 +42,8 @@ type Config struct {
 	// Жетоны таксофона: столько их у человека, когда он полон; жетон уходит, когда он кладёт
 	// трубку посреди разговора, и возвращается по одному раз в token_refill_sec. Без жетонов
 	// снять трубку нельзя, положить — можно всегда. 0 — без жетонов. Только веб-трубка:
-	// SIP-телефоны (стенд, xk6-sip) не считаются.
+	// SIP-телефоны (стенд, xk6-sip) не считаются. Выключены: в трубке пока нет их интерфейса,
+	// а без него отказ «no-tokens» выглядит как «станция не отвечает».
 	Tokens         int `json:"tokens"`
 	TokenRefillSec int `json:"token_refill_sec"`
 	// Техработы: новые звонки получают 503, идущие продолжаются.
@@ -58,7 +59,7 @@ type Config struct {
 
 func Default() Config {
 	return Config{DefaultLine: "32", AllowedLines: []string{"64", "32", "16", "8"}, BanReporters: 2, BanWindowDays: 7,
-		TrustTalks: 3, ReportWindowSec: 120, MaxReportsPerHour: 10, Tokens: 3, TokenRefillSec: 120, ApplyDelayMs: 1000}
+		TrustTalks: 3, ReportWindowSec: 120, MaxReportsPerHour: 10, Tokens: 0, TokenRefillSec: 120, ApplyDelayMs: 1000}
 }
 
 func (c Config) Validate() error {
