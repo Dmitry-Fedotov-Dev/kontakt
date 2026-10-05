@@ -32,7 +32,7 @@ body {
   background-image: repeating-linear-gradient(0deg, transparent 0 3px, var(--wall-line) 3px 4px);
   font: 400 15px/1.3 "Pixelify Sans", ui-monospace, monospace;
   color: var(--cream);
-  display: grid; place-items: center;
+  display: grid; place-items: center; align-content: center; gap: 10px;
   min-height: 100dvh; padding: 12px;
   -webkit-font-smoothing: none;
 }
@@ -40,7 +40,7 @@ body {
 /* Трубка 40 × 88 «пикселей». Всё приложение — внутри неё. */
 .handset {
   position: relative;
-  height: min(calc(100dvh - 24px), 860px);
+  height: min(calc(100dvh - 24px - 2.2em), 860px); /* 2.2em — строка ссылок под трубкой */
   aspect-ratio: 40 / 88;
   max-width: calc(100vw - 24px);
   container-type: size;
@@ -97,7 +97,7 @@ body {
 .check { display: flex; gap: .5em; align-items: flex-start; cursor: pointer; font-size: .9em; }
 .check input { width: 1.1em; height: 1.1em; margin: .1em 0 0; flex: none; accent-color: var(--lamp); }
 .gate a, .foot a { color: var(--cream); }
-.foot { font-size: .72em; color: var(--cream-dim); margin: 0; }
+.foot { font-size: .8em; color: var(--cream-dim); margin: 0; text-align: center; }
 [hidden] { display: none !important; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
@@ -132,10 +132,11 @@ body {
         <button class="rbtn" id="hangup-btn" type="button" aria-label="bye"><img alt=""><span>bye</span></button>
       </div>
       <p class="online" id="online">&nbsp;</p>
-      <p class="foot"><a href="terms.html" target="_blank" rel="noopener">rules</a><span id="donate-wrap" hidden> · <a id="donate" target="_blank" rel="noopener noreferrer">support ♥</a></span></p>
     </div>
   </section>
 </main>
+<!-- под трубкой: внутри у панели фиксированная высота, и строка там обрезалась -->
+<p class="foot"><a href="terms.html" target="_blank" rel="noopener">rules</a><span id="donate-wrap" hidden> · <a id="donate" target="_blank" rel="noopener noreferrer">support ♥</a></span><span id="donate-ru-wrap" hidden> · <a id="donate-ru" target="_blank" rel="noopener noreferrer">support from Russia ₽</a></span></p>
 
 <script>
 "use strict";
@@ -285,7 +286,9 @@ function showBanned() {
 
 async function loadState() {
   try { cfg = Object.assign(cfg, await (await fetch("api/config", { cache: "no-store" })).json()); } catch {}
-  if (/^https:\/\//.test(cfg.donate_url || "")) { $("donate").href = cfg.donate_url; $("donate-wrap").hidden = false; }
+  for (const [k, id] of [["donate_url", "donate"], ["donate_ru_url", "donate-ru"]]) {
+    if (/^https:\/\//.test(cfg[k] || "")) { $(id).href = cfg[k]; $(id + "-wrap").hidden = false; }
+  }
   try { me = await (await fetch("api/me", { cache: "no-store" })).json(); } catch {}
   if (me.banned) return showBanned();
   if (cfg.maintenance) return setIdle("bad", "Станция на обслуживании", "Попробуйте снять трубку чуть позже.");

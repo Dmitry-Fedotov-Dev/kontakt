@@ -41,8 +41,11 @@ type Config struct {
 	MaxCallMinutes int `json:"max_call_minutes"`
 	// Техработы: новые звонки получают 503, идущие продолжаются.
 	Maintenance bool `json:"maintenance"`
-	// Страница поддержки (Патреон и т.п.) — ссылка «support» в трубке и радио; пусто — ссылки нет.
+	// Страница поддержки для всего мира (Buy Me a Coffee, Патреон) — ссылка «support ♥» в трубке
+	// и радио; пусто — ссылки нет.
 	DonateURL string `json:"donate_url"`
+	// То же для России (CloudTips и т.п.: российские карты за рубежом не работают) — «₽».
+	DonateRUURL string `json:"donate_ru_url"`
 	// Через сколько миллисекунд после объявления применять новый конфиг.
 	ApplyDelayMs int `json:"apply_delay_ms"`
 }
@@ -68,8 +71,10 @@ func (c Config) Validate() error {
 	if c.BanReporters < 1 || c.BanWindowDays < 1 {
 		return fmt.Errorf("ban_reporters и ban_window_days — от 1")
 	}
-	if c.DonateURL != "" && !strings.HasPrefix(c.DonateURL, "https://") {
-		return fmt.Errorf("donate_url: только https://…, а не %q", c.DonateURL)
+	for k, u := range map[string]string{"donate_url": c.DonateURL, "donate_ru_url": c.DonateRUURL} {
+		if u != "" && !strings.HasPrefix(u, "https://") {
+			return fmt.Errorf("%s: только https://…, а не %q", k, u)
+		}
 	}
 	if c.TrustTalks < 0 || c.ReportWindowSec < 0 || c.MaxReportsPerHour < 0 || c.MaxCallMinutes < 0 || c.ApplyDelayMs < 0 {
 		return fmt.Errorf("отрицательные числа не допускаются")

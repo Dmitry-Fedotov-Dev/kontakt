@@ -190,7 +190,7 @@ button, input { font: inherit; color: inherit; }
     <div class="rxbtns">
       <button class="btn share" id="shareRx" hidden>SHARE ↗</button>
     </div>
-    <div class="rules"><a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила радио</a><span class="donateWrap" hidden> · <a class="donateLink" target="_blank" rel="noopener noreferrer">поддержать ♥</a></span></div>
+    <div class="rules"><a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила радио</a><span class="donateWrap" hidden> · <a class="donateLink" target="_blank" rel="noopener noreferrer">поддержать ♥</a></span><span class="donateRuWrap" hidden> · <a class="donateRuLink" target="_blank" rel="noopener noreferrer">из России ₽</a></span></div>
     <div class="rules"><button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию">REPORT</button></div>
   </section>
 
@@ -507,9 +507,11 @@ document.querySelectorAll(".termsLink").forEach(a => { a.href = BASE + "/terms.h
 // Ссылка поддержки — из конфига станции (/api/config на том же домене). Радио, запущенное
 // отдельно, конфига станции не знает — тогда ссылки нет.
 fetch("/api/config", { cache: "no-store" }).then(r => r.ok ? r.json() : {}).then(c => {
-  if (!/^https:\/\//.test(c.donate_url || "")) return;
-  document.querySelectorAll(".donateLink").forEach(a => { a.href = c.donate_url; });
-  document.querySelectorAll(".donateWrap").forEach(s => { s.hidden = false; });
+  for (const [k, cls] of [["donate_url", "donate"], ["donate_ru_url", "donateRu"]]) {
+    if (!/^https:\/\//.test(c[k] || "")) continue;
+    document.querySelectorAll("." + cls + "Link").forEach(a => { a.href = c[k]; });
+    document.querySelectorAll("." + cls + "Wrap").forEach(s => { s.hidden = false; });
+  }
 }).catch(() => {});
 const wsURL = path => (location.protocol === "https:" ? "wss://" : "ws://") + location.host + BASE + path;
 function connectListen() {

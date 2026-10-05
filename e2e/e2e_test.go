@@ -855,11 +855,15 @@ func TestMetricsReflectCall(t *testing.T) {
 // Ссылка поддержки из конфига доходит до страниц (трубка и радио берут её из /api/config);
 // не https — конфиг не принимается.
 func TestDonateURL(t *testing.T) {
-	st := newStack(t, func(c *config.Config) { c.DonateURL = "https://www.patreon.com/example" })
-	if c := getJSON(t, st.web.URL+"/api/config", identity.New()); c["donate_url"] != "https://www.patreon.com/example" {
+	st := newStack(t, func(c *config.Config) {
+		c.DonateURL = "https://www.patreon.com/example"
+		c.DonateRUURL = "https://pay.cloudtips.ru/p/example"
+	})
+	if c := getJSON(t, st.web.URL+"/api/config", identity.New()); c["donate_url"] != "https://www.patreon.com/example" ||
+		c["donate_ru_url"] != "https://pay.cloudtips.ru/p/example" {
 		t.Fatalf("/api/config: %v", c)
 	}
-	if _, err := config.Parse([]byte(`{"donate_url":"http://example.com"}`)); err == nil {
+	if _, err := config.Parse([]byte(`{"donate_ru_url":"http://example.com"}`)); err == nil {
 		t.Fatal("ссылка не по https принята")
 	}
 	if c := getJSON(t, newStack(t, nil).web.URL+"/api/config", identity.New()); c["donate_url"] != "" {
