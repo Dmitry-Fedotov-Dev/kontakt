@@ -39,6 +39,12 @@ type Config struct {
 	MaxReportsPerHour int `json:"max_reports_per_hour"`
 	// Ограничение длины разговора в минутах, 0 — без ограничения.
 	MaxCallMinutes int `json:"max_call_minutes"`
+	// Жетоны таксофона: столько их у человека, когда он полон; жетон уходит, когда он кладёт
+	// трубку посреди разговора, и возвращается по одному раз в token_refill_sec. Без жетонов
+	// снять трубку нельзя, положить — можно всегда. 0 — без жетонов. Только веб-трубка:
+	// SIP-телефоны (стенд, xk6-sip) не считаются.
+	Tokens         int `json:"tokens"`
+	TokenRefillSec int `json:"token_refill_sec"`
 	// Техработы: новые звонки получают 503, идущие продолжаются.
 	Maintenance bool `json:"maintenance"`
 	// Страница поддержки для всего мира (Buy Me a Coffee, Патреон) — ссылка «support ♥» в трубке
@@ -52,7 +58,7 @@ type Config struct {
 
 func Default() Config {
 	return Config{DefaultLine: "32", AllowedLines: []string{"64", "32", "16", "8"}, BanReporters: 2, BanWindowDays: 7,
-		TrustTalks: 3, ReportWindowSec: 120, MaxReportsPerHour: 10, ApplyDelayMs: 1000}
+		TrustTalks: 3, ReportWindowSec: 120, MaxReportsPerHour: 10, Tokens: 3, TokenRefillSec: 120, ApplyDelayMs: 1000}
 }
 
 func (c Config) Validate() error {
@@ -76,7 +82,8 @@ func (c Config) Validate() error {
 			return fmt.Errorf("%s: только https://…, а не %q", k, u)
 		}
 	}
-	if c.TrustTalks < 0 || c.ReportWindowSec < 0 || c.MaxReportsPerHour < 0 || c.MaxCallMinutes < 0 || c.ApplyDelayMs < 0 {
+	if c.TrustTalks < 0 || c.ReportWindowSec < 0 || c.MaxReportsPerHour < 0 || c.MaxCallMinutes < 0 || c.ApplyDelayMs < 0 ||
+		c.Tokens < 0 || c.TokenRefillSec < 0 || (c.Tokens > 0 && c.TokenRefillSec == 0) {
 		return fmt.Errorf("отрицательные числа не допускаются")
 	}
 	return nil

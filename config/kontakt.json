@@ -10,6 +10,8 @@
   "max_reports_per_hour": 10,
   "max_call_minutes": 0,
   "maintenance": false,
+  "tokens": 3,
+  "token_refill_sec": 120,
   "donate_url": "",
   "donate_ru_url": "",
   "apply_delay_ms": 1000

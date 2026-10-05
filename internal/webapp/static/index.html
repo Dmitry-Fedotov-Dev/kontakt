@@ -37,40 +37,54 @@ body {
   -webkit-font-smoothing: none;
 }
 
-/* Трубка 40 × 88 «пикселей». Всё приложение — внутри неё. */
-.handset {
+/* Сцена — таксофон 60 × 92 «пикселя» (--u — один пиксель сцены). Справа стальной корпус — он и
+   есть интерфейс: табличка, экран, жетоны, кнопки. Слева на рычаге висит трубка 14 × 40, шнур петлёй
+   уходит в корпус; снял трубку — она снята с рычага, положил — вернулась. */
+.scene {
   position: relative;
-  height: min(calc(100dvh - 24px - 2.2em), 860px); /* 2.2em — строка ссылок под трубкой */
-  /* с кнопкой поддержки под трубкой — ещё 3.4em, иначе строка ссылок уходит за край экрана */
-  aspect-ratio: 40 / 88;
-  max-width: calc(100vw - 24px);
+  /* ширина — меньшее из «во весь экран» и «во всю высоту»; высоту даёт пропорция. Высоту с
+     max-width задавать нельзя: упрёмся в край — пропорция ломается, и пиксели сцены плывут. */
+  --h: min(calc(100dvh - 24px - 2.2em), 860px); /* 2.2em — строка ссылок под сценой */
+  width: min(calc(100vw - 24px), calc(var(--h) * 60 / 92));
+  aspect-ratio: 60 / 92;
   container-type: size;
+  --u: calc(100cqw / 60);
 }
-body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6em - 10px), 860px); }
-@supports not (aspect-ratio: 1) { .handset { width: 320px; height: 704px; } }
-.handset canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+/* с кнопкой поддержки под сценой — ещё 3.4em, иначе строка ссылок уходит за край экрана */
+body:has(#donate:not([hidden])) .scene { --h: min(calc(100dvh - 24px - 5.6em - 10px), 860px); }
+@supports not (aspect-ratio: 1) { .scene { width: 420px; height: 644px; } }
+.scene > canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.u { position: absolute; }
+.handset {
+  left: 0; top: calc(var(--u) * 14); width: calc(var(--u) * 14); height: calc(var(--u) * 40); z-index: 2;
+  transform-origin: 85% 8%; transition: transform .32s steps(4);
+}
+.handset canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.handset.lifted { transform: translateY(calc(var(--u) * -6)) rotate(4deg); }
 .handset.ring { animation: ring .09s steps(2) 6; }
-@keyframes ring { 50% { transform: rotate(1.4deg) translateX(1px); } }
+.handset.lifted.ring { animation: ringUp .09s steps(2) 6; }
+@keyframes ring { 50% { transform: rotate(2deg) translateX(1px); } }
+@keyframes ringUp { 0%, 100% { transform: translateY(calc(var(--u) * -6)) rotate(4deg); } 50% { transform: translateY(calc(var(--u) * -6)) rotate(7deg); } }
 
-/* Ручка трубки: колонки 5–34, строки 25–63 */
+/* Лицевая панель корпуса: колонка 18–56, всё по сетке сцены */
 .panel {
-  position: absolute;
-  left: calc(6 / 40 * 100%); width: calc(28 / 40 * 100%);
-  top: calc(25.5 / 88 * 100%); height: calc(37.5 / 88 * 100%);
-  display: flex; flex-direction: column; align-items: stretch; gap: 1.6cqh;
-  font-size: clamp(11px, 2.05cqh, 17px);
+  left: calc(var(--u) * 18.5); width: calc(var(--u) * 37.5); top: 0; height: 100%;
+  font-size: clamp(10.5px, calc(var(--u) * 1.95), 17px);
   text-align: center;
-  overflow: hidden;
 }
-.brand { font-weight: 600; font-size: 1.9em; line-height: 1; margin: .1em 0 0; color: var(--cream); text-shadow: 0 .09em 0 var(--bake-deep); letter-spacing: .02em; }
+.panel > * { position: absolute; left: 0; right: 0; margin: 0; }
+.brand {
+  top: calc(var(--u) * 3); height: calc(var(--u) * 7); display: grid; place-items: center;
+  font-weight: 600; font-size: calc(var(--u) * 3.3); line-height: 1; letter-spacing: .05em;
+  color: #262B30; text-shadow: 0 calc(var(--u) * .3) 0 #F2F6F7;
+}
 .lcd {
   background: #1B2014; color: var(--green);
-  border: .25em solid var(--ink); box-shadow: inset 0 0 0 .2em #2E3624;
-  padding: .55em .5em .5em; min-height: 5.6em; flex-shrink: 0; /* текст не вылезает за рамку */
+  border: .25em solid #14181B; box-shadow: inset 0 0 0 .2em #2E3624;
+  padding: .55em .5em .5em; top: calc(var(--u) * 12); height: calc(var(--u) * 16.5); overflow: hidden;
   display: flex; flex-direction: column; justify-content: center; gap: .25em;
   image-rendering: pixelated;
 }
-.lcd { order: 0; }
 .lcd .state { font-weight: 600; font-size: 1.12em; display: flex; align-items: center; justify-content: center; gap: .45em; }
 .lcd .sub { color: #B9E39C; font-size: .9em; min-height: 1.3em; }
 .lamp { width: .62em; height: .62em; background: #39421F; flex: none; }
@@ -90,16 +104,51 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 .rbtn span { font-size: 1em; letter-spacing: .04em; text-shadow: 0 .09em 0 var(--bake-deep); }
 .rbtn:disabled { opacity: .45; cursor: not-allowed; }
 .rbtn:focus-visible { outline: .2em solid var(--focus); outline-offset: .1em; }
-.actions { display: grid; gap: .6em; margin-top: auto; padding-bottom: .4em; justify-items: center; }
+.actions { top: calc(var(--u) * 56); bottom: calc(var(--u) * 6); display: grid; gap: .6em; justify-items: center; align-content: center; }
+.scene:not(.entry) .actions { top: calc(var(--u) * 44); }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2em; justify-items: center; }
 
-.online { font-size: .8em; color: var(--cream-dim); margin: 0; }
-.gate { display: flex; flex-direction: column; gap: .45em; text-align: left; }
+.online { font-size: .8em; color: var(--cream-dim); margin: 0; text-shadow: 0 1px 0 #1B1F22; }
+.gate { top: calc(var(--u) * 44); display: flex; flex-direction: column; gap: .45em; text-align: left; color: var(--cream); }
 .gate p { margin: 0; font-size: .92em; }
 .check { display: flex; gap: .5em; align-items: flex-start; cursor: pointer; font-size: .9em; }
 .check input { width: 1.1em; height: 1.1em; margin: .1em 0 0; flex: none; accent-color: var(--lamp); }
 .gate a, .foot a { color: var(--cream); }
 .foot { font-size: .8em; color: var(--cream-dim); margin: 0; text-align: center; }
+/* Жетоны: щель монетоприёмника, окошко со стопкой, табло отсчёта. Ряд — по сетке сцены (30–42). */
+.tokens { top: calc(var(--u) * 30); height: calc(var(--u) * 12.5); }
+.tokens > * { position: absolute; }
+.slotPlate {
+  left: 0; top: 0; width: calc(var(--u) * 7); height: calc(var(--u) * 7.5); background: #B8C2C7;
+  box-shadow: inset var(--u) var(--u) 0 #E1E8EB, inset calc(var(--u) * -1) calc(var(--u) * -1) 0 #7D878C, 0 0 0 calc(var(--u) * .6) #14181B;
+}
+.slotPlate i { position: absolute; display: block; }
+.slotHole { left: calc(var(--u) * 2.5); top: calc(var(--u) * 1.5); width: calc(var(--u) * 2); height: calc(var(--u) * 3.5); background: #0B0E10; box-shadow: inset calc(var(--u) * -.5) 0 0 #3A4146; }
+.plateLamp { left: calc(var(--u) * 2.5); top: calc(var(--u) * 5.6); width: calc(var(--u) * 2); height: var(--u); background: #3E6B2A; }
+.scene.has .plateLamp { background: #8FD16A; box-shadow: 0 0 calc(var(--u) * .8) #8FD16A; }
+.scene.empty .plateLamp { background: #FF5A3C; box-shadow: 0 0 var(--u) #FF5A3C; animation: blink 1s steps(1) infinite; }
+.scene.nudge .slotPlate, .scene.nudge .tube { animation: nudge .3s steps(3); }
+@keyframes nudge { 33% { transform: translateX(calc(var(--u) * -.6)); } 66% { transform: translateX(calc(var(--u) * .6)); } }
+.tube {
+  left: calc(var(--u) * 9); top: calc(var(--u) * .7); width: calc(var(--u) * 28.5); height: calc(var(--u) * 9); overflow: hidden;
+  background: #18232A; box-shadow: inset var(--u) 0 0 #2E4652, 0 0 0 calc(var(--u) * .6) #14181B, 0 0 0 calc(var(--u) * 1.1) #7D878C;
+}
+.tube img, .flyToken { position: absolute; width: calc(var(--u) * 7); height: calc(var(--u) * 7); image-rendering: pixelated; }
+.tube img { top: var(--u); }
+.flyToken { z-index: 3; pointer-events: none; }
+.tokensLabel {
+  left: calc(var(--u) * 9); width: calc(var(--u) * 28.5); top: calc(var(--u) * 10.7);
+  font-weight: 600; font-size: calc(var(--u) * 1.5); line-height: 1; letter-spacing: .12em;
+  color: #E1E8EB; text-shadow: 0 calc(var(--u) * .25) 0 #14181B;
+}
+.tokenWait {
+  left: 0; width: calc(var(--u) * 7); top: calc(var(--u) * 8.4); height: calc(var(--u) * 3.8);
+  background: #2A1A08; box-shadow: 0 0 0 calc(var(--u) * .6) #14181B, inset 0 0 0 calc(var(--u) * .4) #3A260C;
+  font-weight: 600; font-size: calc(var(--u) * 1.8); line-height: calc(var(--u) * 3.8); color: #FFB648;
+  text-shadow: 0 0 calc(var(--u) * .6) rgba(255, 182, 72, .55); letter-spacing: .04em;
+}
+.tokenWait.full { color: #6B4A1C; text-shadow: none; }
+.tokens[hidden] { display: none; }
 /* Поддержка — монетка таксофона: при наведении поблёскивает, по нажатию падает в щель со звоном. */
 .donate { display: grid; justify-items: center; gap: 6px; position: relative; }
 .donate[hidden] { display: none; }
@@ -137,16 +186,19 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 @media (prefers-reduced-motion: reduce) {
-  .handset.ring { animation: none; }
+  .handset.ring, .handset.lifted.ring { animation: none; }
+  .handset { transition: none; }
+  .scene.empty .plateLamp, .scene.nudge .slotPlate, .scene.nudge .tube { animation: none; }
   .lamp.blink { animation: none; }
 }
 </style>
 </head>
 <body>
-<main class="handset" id="handset">
-  <canvas id="art" width="40" height="88" aria-hidden="true"></canvas>
+<main class="scene" id="scene">
+  <canvas id="booth" width="60" height="92" aria-hidden="true"></canvas>
+  <div class="u handset" id="handset"><canvas id="art" width="14" height="40" aria-hidden="true"></canvas></div>
 
-  <section class="panel">
+  <section class="u panel">
     <h1 class="brand" data-i="brand">Контакт</h1>
 
     <!-- вход: правила и выбор линии -->
@@ -154,6 +206,15 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
       <label class="check"><input type="checkbox" id="c-age"> <span data-i="age">Мне есть 18 лет</span></label>
       <label class="check"><input type="checkbox" id="c-terms"> <span data-i-html="acceptHtml">Принимаю <a href="terms.html" target="_blank" rel="noopener">правила</a> и сам(а) отвечаю за свои слова</span></label>
     </form>
+
+    <!-- жетоны: щель, окошко со стопкой, табло отсчёта до следующего -->
+    <div class="tokens" id="tokens" hidden>
+      <div class="slotPlate" aria-hidden="true"><i class="slotHole"></i><i class="plateLamp"></i></div>
+      <div class="tube" id="tube" role="img" aria-label=""></div>
+      <div class="tokensLabel" aria-hidden="true" data-i="tokensLabel">ЖЕТОНЫ</div>
+      <div class="tokenWait" id="tokenWait" aria-hidden="true"></div>
+      <img class="flyToken" id="flyToken" alt="" hidden>
+    </div>
 
     <div class="lcd" id="lcd" role="status" aria-live="polite">
       <div class="state"><span class="lamp" id="lamp"></span><span id="state" data-i="idle">Трубка лежит</span></div>
@@ -179,48 +240,84 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 
 <script>
 "use strict";
-// ================= пиксельная трубка =================
+// ================= таксофон =================
+// Корпус 60 × 92: сталь, свет сверху-слева; табличка (3–9), утопленная панель кнопок, лоток внизу,
+// рычаг слева (на нём висит трубка) и шнур из трубки в корпус. Экран, жетоны и кнопки — разметка
+// поверх, по той же сетке. lifted — трубка снята: шнур тянется к её новому месту.
+const BOOTH = { out: "#14181B", base: "#59636B", hi: "#76828A", hi2: "#8E9AA1", lo: "#444C52", lo2: "#343A3F",
+  chr: "#B8C2C7", chrHi: "#E1E8EB", chrLo: "#7D878C", hole: "#0B0E10", panel: "#4E575E" };
+function drawBooth(lifted) {
+  const g = document.getElementById("booth").getContext("2d"), C = BOOTH;
+  g.clearRect(0, 0, 60, 92);
+  const px = (x, y, c) => { g.fillStyle = c; g.fillRect(x, y, 1, 1); };
+  const rect = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+  const x0 = 15, x1 = 59, y0 = 1, y1 = 90; // корпус, углы срезаны на 2
+  for (let y = y0; y <= y1; y++) {
+    const cut = y - y0 < 2 ? 2 - (y - y0) : y1 - y < 2 ? 2 - (y1 - y) : 0;
+    for (let x = x0 + cut; x <= x1 - cut; x++) {
+      let c = C.base;
+      if (x === x0 + cut || x === x1 - cut || y === y0 || y === y1) c = C.out;
+      else if (y === y0 + 1 || x === x0 + cut + 1) c = C.hi2;
+      else if (y === y0 + 2 || x === x0 + cut + 2) c = C.hi;
+      else if (x === x1 - cut - 1 || y === y1 - 1) c = C.lo2;
+      else if (x === x1 - cut - 2 || y === y1 - 2) c = C.lo;
+      px(x, y, c);
+    }
+  }
+  for (const [x, y] of [[18, 4], [55, 4], [18, 86], [55, 86]]) { px(x, y, C.chrHi); px(x + 1, y + 1, C.lo2); } // заклёпки
+  // табличка: хром с фаской
+  rect(20, 3, 35, 7, C.out); rect(21, 4, 33, 5, C.chr); rect(21, 4, 33, 1, C.chrHi); rect(21, 4, 1, 5, C.chrHi);
+  rect(53, 4, 1, 5, C.chrLo); rect(21, 8, 33, 1, C.chrLo);
+  // утопленная панель под экраном, жетонами и кнопками
+  rect(17, 11, 41, 72, C.lo2); rect(18, 12, 39, 70, C.panel); rect(18, 81, 39, 1, C.hi); rect(56, 12, 1, 70, C.hi);
+  // лоток возврата
+  rect(30, 84, 15, 5, C.out); rect(31, 85, 13, 3, C.hole); rect(31, 84, 13, 1, C.chrLo); rect(30, 88, 15, 1, C.chr);
+  // рычаг: хромовая скоба, на ней висит трубка
+  rect(11, 16, 5, 3, C.out); rect(12, 17, 4, 1, C.chr); px(12, 16, C.chrHi);
+  // шнур звеньями: из низа трубки в левый бок корпуса, петлёй вниз
+  const a = lifted ? [5, 48] : [7, 54], d = [15, 76]; // низ трубки: висит / снята
+  const b = [a[0] - 2, a[1] + 16], c = [d[0] - 9, d[1] + 10];
+  let prev = null;
+  for (let t = 0, i = 0; t <= 1.0001; t += 0.01, i++) {
+    const q = 1 - t;
+    const x = Math.round(q * q * q * a[0] + 3 * q * q * t * b[0] + 3 * q * t * t * c[0] + t * t * t * d[0]);
+    const y = Math.round(q * q * q * a[1] + 3 * q * q * t * b[1] + 3 * q * t * t * c[1] + t * t * t * d[1]);
+    if (prev && prev[0] === x && prev[1] === y) continue;
+    prev = [x, y];
+    px(x, y, (x + y) % 3 === 0 ? C.chrHi : (x + y) % 3 === 1 ? C.chr : C.chrLo);
+  }
+  rect(14, 75, 2, 3, C.chr); px(14, 75, C.chrHi); // втулка шнура
+}
+// Трубка 14 × 40 — та же красная, что была во весь экран, только висит на рычаге.
 (function drawHandset() {
-  const W = 40, H = 88, cv = document.getElementById("art"), g = cv.getContext("2d");
-  const C = { out: "#2A0806", base: "#A3201C", hi: "#CF3A2E", hi2: "#E2614F", lo: "#7E1512", lo2: "#5C0D0A", hole: "#2A0806", holeHi: "#4A0F0B" };
-  // ширина корпуса на каждой строке: [левая, правая] (включительно)
+  const W = 14, H = 40, g = document.getElementById("art").getContext("2d");
+  const C = { out: "#2A0806", base: "#A3201C", hi: "#CF3A2E", hi2: "#E2614F", lo: "#7E1512", lo2: "#5C0D0A", hole: "#2A0806" };
   function span(y) {
-    const cup = (y0, y1, x0, x1, rTop, rBot) => { // «чашка», скруглённая сверху и снизу своими радиусами
+    const cup = (y0, y1, x0, x1, rTop, rBot) => {
       const top = y - y0 < rTop, r = top ? rTop : rBot, dy = top ? y - y0 : y1 - y;
       const cut = dy < r ? Math.round(r - Math.sqrt(r * r - (r - dy) * (r - dy))) : 0;
       return [x0 + cut, x1 - cut];
     };
-    if (y <= 21) return cup(0, 21, 0, 39, 7, 2);                    // ушная чашка
-    if (y <= 25) { const k = (y - 21) / 4; return [Math.round(k * 5), 39 - Math.round(k * 5)]; } // шейка
-    if (y <= 62) return [5, 34];                                   // ручка
-    if (y <= 66) { const k = (66 - y) / 4; return [Math.round(k * 5), 39 - Math.round(k * 5)]; }
-    return cup(66, 87, 0, 39, 2, 7);                                  // микрофонная чашка
+    if (y <= 8) return cup(0, 8, 0, 13, 3, 1);        // ушная чашка
+    if (y <= 10) return y === 9 ? [1, 12] : [2, 11]; // шейка
+    if (y <= 29) return [3, 10];                     // ручка
+    if (y <= 31) return y === 30 ? [2, 11] : [1, 12];
+    return cup(32, 39, 0, 13, 1, 3);                 // микрофонная чашка
   }
   for (let y = 0; y < H; y++) {
     const [l, r] = span(y), [pl, pr] = y > 0 ? span(y - 1) : [99, -1], [nl, nr] = y < H - 1 ? span(y + 1) : [99, -1];
     for (let x = l; x <= r; x++) {
       const edge = x === l || x === r || x < pl || x > pr || x < nl || x > nr;
       const t = (x - l) / Math.max(1, r - l);
-      let c = C.base;
-      if (edge) c = C.out;
-      else if (t < .1) c = C.hi2; else if (t < .22) c = C.hi;
-      else if (t > .9) c = C.lo2; else if (t > .78) c = C.lo;
-      g.fillStyle = c; g.fillRect(x, y, 1, 1);
+      g.fillStyle = edge ? C.out : t < .15 ? C.hi2 : t < .3 ? C.hi : t > .85 ? C.lo2 : t > .7 ? C.lo : C.base;
+      g.fillRect(x, y, 1, 1);
     }
   }
-  // решётка динамика: сетка отверстий
-  for (let y = 6; y <= 15; y += 3) for (let x = 11; x <= 28; x += 3) {
-    const dx = x - 19.5, dy = (y - 10.5) * 1.3; if (dx * dx + dy * dy > 85) continue;
-    g.fillStyle = C.hole; g.fillRect(x, y, 2, 2); g.fillStyle = C.holeHi; g.fillRect(x + 1, y + 1, 1, 1);
-  }
-  // микрофон, «стандартный телефонный»: центр + два кольца отверстий
-  const cx = 19.5, cy = 77;
-  g.fillStyle = C.lo; for (let a = 0; a < 360; a += 4) g.fillRect(Math.round(cx + 9.5 * Math.cos(a * Math.PI / 180)), Math.round(cy + 7.5 * Math.sin(a * Math.PI / 180)), 1, 1);
-  const hole = (x, y) => { g.fillStyle = C.hole; g.fillRect(x, y, 2, 2); };
-  hole(19, 76);
-  for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; hole(Math.round(cx - 1 + 3.6 * Math.cos(a)), Math.round(cy - 1 + 3 * Math.sin(a))); }
-  for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 + .3; hole(Math.round(cx - 1 + 6.6 * Math.cos(a)), Math.round(cy - 1 + 5.2 * Math.sin(a))); }
+  g.fillStyle = C.hole; // решётка динамика и микрофон
+  for (const [x, y] of [[4, 3], [6, 3], [8, 3], [5, 5], [7, 5], [9, 5], [6, 7]]) g.fillRect(x, y, 1, 1);
+  for (const [x, y] of [[5, 34], [7, 34], [6, 36], [8, 36], [4, 36], [5, 38 - 0], [7, 38 - 0]]) g.fillRect(x, y, 1, 1);
 })();
+drawBooth(false);
 
 // ================= круглые пиксельные кнопки =================
 // Спрайт 24×24: круг с обводкой, объём светом сверху-слева (выпуклая) или наоборот
@@ -324,6 +421,10 @@ const I18N = {
       rate_limited: "Слишком много жалоб за час.",
     },
     reportFail: "Жалоба не дошла, попробуйте ещё раз.",
+    tokensLabel: "ЖЕТОНЫ",
+    noTokens: "Жетоны кончились", tokenIn: t => `Новый жетон через ${t}.`,
+    tokensLeft: (n, max) => `Жетон опущен. Осталось ${n} из ${max}.`,
+    tubeAria: (n, max) => `Жетонов: ${n} из ${max}`,
   },
   en: {
     brand: "Kontakt",
@@ -360,6 +461,10 @@ const I18N = {
       rate_limited: "Too many reports this hour.",
     },
     reportFail: "The report didn't go through, try again.",
+    tokensLabel: "TOKENS",
+    noTokens: "Out of tokens", tokenIn: t => `Next token in ${t}.`,
+    tokensLeft: (n, max) => `Token dropped. ${n} of ${max} left.`,
+    tubeAria: (n, max) => `Tokens: ${n} of ${max}`,
   },
 };
 const LANG_KEY = "kontakt-lang";
@@ -402,8 +507,10 @@ function setIdle(kind, text, hint) {
   call.state = "idle";
   showButtons("main");
   gate.hidden = termsOk;
-  handset.classList.toggle("entry", !termsOk);
+  scene.classList.toggle("entry", !termsOk);
+  lift(false);
   syncMain();
+  if (!text && tokens.n === 0 && termsOk) { kind = "bad"; text = T.noTokens; hint = T.tokenIn(mmss(tokenLeft())); }
   lcd(kind || "", text || T.idle, hint || (termsOk ? T.hintIdle : T.hintGate));
 }
 function syncMain() {
@@ -414,10 +521,130 @@ cAge.onchange = cTerms.onchange = syncMain;
 
 function showBanned() {
   me.banned = true;
-  showButtons("none"); gate.hidden = true;
+  showButtons("none"); gate.hidden = true; lift(false);
   lcd("bad", T.banTitle, T.banHint);
 }
 
+
+// ---------- жетоны ----------
+// Сервер считает жетоны по куке (/api/me: tokens, tokens_max, token_next_sec). Жетон уходит, когда
+// кладёшь трубку посреди разговора: он выходит из окошка, летит к щели, разворачивается ребром и
+// проваливается. Новый приходит раз в 2 минуты и падает в окошко. Без жетонов снять трубку нельзя.
+const scene = $("scene");
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function tokenSprite(rows) { // бронза: ободок, блик, канавка; "s" — пустое гнездо
+  const c = document.createElement("canvas"); c.width = 7; c.height = rows.length;
+  const g = c.getContext("2d"), col = { k: "#3A2408", b: "#C98B2E", h: "#F2C46A", d: "#7A4E16", s: "#0F161B", r: "#24323A" };
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) { g.fillStyle = col[ch]; g.fillRect(x, y, 1, 1); } }));
+  return c.toDataURL();
+}
+const TOKEN = tokenSprite(["..kkk..", ".khhbk.", "khhbbbk", "kdddddk", "kbbbbdk", ".kbbdk.", "..kkk.."]);
+const TOKEN_EDGE = tokenSprite(["...k...", "..khk..", "..kbk..", "..kdk..", "..kbk..", "..kdk..", "...k..."]);
+const SOCKET = tokenSprite(["..rrr..", ".rsssr.", "rsssssr", "rsssssr", "rsssssr", ".rsssr.", "..rrr.."]);
+let tokens = { n: -1, max: 0, next: 0, at: 0, busy: false }; // n < 0 — жетоны выключены
+const unit = () => scene.clientWidth / 60;
+const slotX = i => 2.75 + i * 8; // левый край i-го жетона в окошке, в «пикселях» окошка
+const mmss = sec => Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+const tokenLeft = () => Math.max(0, Math.ceil(tokens.next - (Date.now() - tokens.at) / 1000));
+function renderTokens() {
+  const box = $("tokens");
+  box.hidden = tokens.n < 0;
+  scene.classList.toggle("has", tokens.n > 0);
+  scene.classList.toggle("empty", tokens.n === 0);
+  if (tokens.n < 0) return;
+  const tube = $("tube"), shown = Math.min(tokens.max, 3);
+  tube.replaceChildren(...Array.from({ length: shown }, (_, i) => {
+    const im = document.createElement("img");
+    im.src = i < tokens.n ? TOKEN : SOCKET; im.alt = "";
+    im.style.left = `calc(var(--u) * ${slotX(i)})`;
+    return im;
+  }));
+  tube.setAttribute("aria-label", T.tubeAria(tokens.n, tokens.max));
+  const w = $("tokenWait");
+  w.classList.toggle("full", tokens.n >= tokens.max);
+  w.textContent = tokens.n >= tokens.max ? "-:--" : mmss(tokenLeft());
+}
+function setTokens(m, animate) {
+  if (typeof m.tokens !== "number") { tokens.n = -1; renderTokens(); return; }
+  const old = tokens.n;
+  Object.assign(tokens, { n: m.tokens, max: m.tokens_max, next: m.token_next_sec, at: Date.now() });
+  if (tokens.busy) return; // анимация дорисует сама
+  if (animate && old >= 0 && tokens.n > old && tokens.n <= 3) return refillAnim(old);
+  renderTokens();
+}
+async function refreshTokens(animate) {
+  try { setTokens(await (await fetch("api/me", { cache: "no-store" })).json(), animate); } catch {}
+}
+setInterval(() => {
+  if (tokens.n < 0 || tokens.n >= tokens.max) return;
+  const left = tokenLeft();
+  if (!tokens.busy) $("tokenWait").textContent = mmss(left);
+  if (call.state === "idle" && tokens.n === 0 && !me.banned) sub.textContent = T.tokenIn(mmss(left));
+  if (left <= 0) refreshTokens(true);
+}, 1000);
+// Опустить жетон: крайний выходит из окошка → к щели → ребром → в щель (звон и лязг).
+function spendAnim() {
+  if (tokens.n < 0) return;
+  const i = tokens.n; // уже уменьшено: i — индекс ушедшего жетона
+  if (reduceMotion || i >= 3) { renderTokens(); return; }
+  tokens.busy = true;
+  const tube = $("tube"), im = tube.children[i];
+  if (im) im.src = SOCKET;
+  const fly = $("flyToken"), u = unit();
+  fly.src = TOKEN; fly.hidden = false;
+  const sx = (9 + slotX(i)) * u, sy = 1.7 * u;        // из окошка (координаты ряда жетонов)
+  const ax = 0, ay = -6 * u, dy = 1.5 * u;              // над щелью и в щель
+  const a = fly.animate([
+    { transform: `translate(${sx}px, ${sy}px)` },
+    { transform: `translate(${sx}px, ${sy - 3 * u}px)`, offset: .18 },
+    { transform: `translate(${ax}px, ${ay}px)`, offset: .55 },
+    { transform: `translate(${ax}px, ${ay}px) scaleX(.25)`, offset: .7 },
+    { transform: `translate(${ax}px, ${dy}px) scaleX(.25)`, clipPath: "inset(0 0 0 0)", offset: .82 },
+    { transform: `translate(${ax}px, ${dy + 5 * u}px) scaleX(.25)`, clipPath: "inset(0 0 100% 0)" },
+  ], { duration: 1100, easing: "steps(22)", fill: "forwards" });
+  setTimeout(() => { fly.src = TOKEN_EDGE; }, 750);
+  setTimeout(clunk, 900);
+  a.onfinish = () => { fly.hidden = true; a.cancel(); fly.src = TOKEN; tokens.busy = false; renderTokens(); };
+}
+// Новый жетон: падает в окошко сверху и подпрыгивает.
+function refillAnim(old) {
+  if (reduceMotion) { renderTokens(); return; }
+  renderTokens();
+  const im = $("tube").children[Math.min(tokens.n, 3) - 1];
+  if (!im) return;
+  const u = unit();
+  im.animate([
+    { transform: `translateY(${-9 * u}px)` }, { transform: "translateY(0)", offset: .55 },
+    { transform: `translateY(${-1.5 * u}px)`, offset: .75 }, { transform: "translateY(0)" },
+  ], { duration: 650, easing: "steps(13)" });
+  setTimeout(tokenTick, 360);
+}
+function clunk() { // жетон провалился: глухой удар + металл
+  const c = sfxCtx(); if (!c) return;
+  const t = c.currentTime, n = c.createBuffer(1, 900, c.sampleRate), d = n.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 4;
+  const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+  f.type = "lowpass"; f.frequency.value = 900; g.gain.value = 0.35;
+  src.buffer = n; src.connect(f); f.connect(g); g.connect(c.destination); src.start(t);
+  ping(c, t, 120, 0.12, 0.18); ping(c, t + 0.02, 2350, 0.15, 0.05); ping(c, t + 0.09, 3100, 0.1, 0.03);
+}
+function tokenTick() { const c = sfxCtx(); if (c) { ping(c, c.currentTime, 2100, 0.08, 0.05); ping(c, c.currentTime + 0.05, 3150, 0.12, 0.04); } }
+function hookClack() { // трубка легла на рычаг
+  const c = sfxCtx(); if (!c) return;
+  const t = c.currentTime, n = c.createBuffer(1, 500, c.sampleRate), d = n.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 3;
+  const src = c.createBufferSource(), g = c.createGain(); g.gain.value = 0.2;
+  src.buffer = n; src.connect(g); g.connect(c.destination); src.start(t); ping(c, t, 260, 0.06, 0.1);
+}
+function denied() { // жетонов нет: окошко и щель дёрнулись, глухой «бзз»
+  scene.classList.remove("nudge"); void scene.offsetWidth; scene.classList.add("nudge");
+  const c = sfxCtx(); if (c) { ping(c, c.currentTime, 140, 0.18, 0.12); ping(c, c.currentTime + 0.12, 110, 0.2, 0.1); }
+}
+function lift(on) {
+  if (handset.classList.contains("lifted") === on) return;
+  handset.classList.toggle("lifted", on);
+  setTimeout(() => drawBooth(on), on ? 0 : 320);
+}
 
 // ---------- поддержка ----------
 // Кнопка видна, если в конфиге станции есть хоть одна ссылка. Одна — нажатие сразу её открывает
@@ -481,7 +708,7 @@ async function loadState() {
   // в России — своя ссылка первой: зарубежные карты там не работают
   const donate = [{ url: cfg.donate_url, label: T.anyCard }, { url: cfg.donate_ru_url, label: T.ruCard }];
   setupDonate($("donate"), LANG === "ru" ? donate.reverse() : donate, clink);
-  try { me = await (await fetch("api/me", { cache: "no-store" })).json(); } catch {}
+  try { me = await (await fetch("api/me", { cache: "no-store" })).json(); setTokens(me, false); } catch {}
   if (me.banned) return showBanned();
   if (cfg.maintenance) return setIdle("bad", T.maint, T.maintHint);
   setIdle();
@@ -663,6 +890,7 @@ function onSIP(text) {
     sendRaw(build(`ACK ${call.ruri} SIP/2.0`, hdrs("ACK", 1, (/;tag=([^;>\s]+)/.exec(m.h.to[0]) || [])[1])));
     teardown(false);
     if (why === "banned") return showBanned();
+    if (why === "no-tokens") { denied(); return refreshTokens(false).then(() => setIdle()); }
     if (m.status === 503 && why === "maintenance") return setIdle("bad", T.maint, T.maintHint);
     return setIdle("bad", T.noAnswer, T.retry);
   }
@@ -714,9 +942,11 @@ async function pickUp() {
     termsOk = true;
     try { localStorage.setItem("kontakt-terms", TERMS_VERSION); } catch {}
     gate.hidden = true;
-    handset.classList.remove("entry");
+    scene.classList.remove("entry");
   }
+  if (tokens.n === 0) { denied(); return setIdle(); }
   if (!window.isSecureContext) return setIdle("bad", T.needHttps, T.needHttpsHint);
+  lift(true);
   showButtons("call");
   lcd("search", T.pickingUp, T.allowMic);
   try { await startAudio(); }
@@ -775,7 +1005,17 @@ reportBtn.onclick = async () => {
 };
 
 mainBtn.onclick = pickUp;
-hangupBtn.onclick = () => { teardown(true); setIdle(); };
+hangupBtn.onclick = () => {
+  const paid = call.state === "talking" && tokens.n > 0; // положил посреди разговора — жетон
+  teardown(true);
+  if (paid) {
+    tokens.n--;
+    if (tokens.n === tokens.max - 1) { tokens.next = cfg.token_refill_sec || 120; tokens.at = Date.now(); }
+  }
+  setIdle(...(paid && tokens.n > 0 ? ["", T.idle, T.tokensLeft(tokens.n, tokens.max)] : []));
+  setTimeout(hookClack, 250);
+  if (paid) { spendAnim(); setTimeout(() => refreshTokens(false), 1500); }
+};
 initButtons();
 window.addEventListener("pagehide", () => teardown(true));
 

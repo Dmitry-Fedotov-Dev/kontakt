@@ -57,6 +57,7 @@ const (
 	ReasonBanned     = "banned"
 	ReasonTimeLimit  = "time-limit"
 	ReasonMediaError = "media-error"
+	ReasonNoTokens   = "no-tokens" // жетоны кончились — снять трубку нельзя, пока не придёт новый
 )
 
 // NoiseSeconds — сколько звучит «пустой эфир» после ухода собеседника.
@@ -108,6 +109,8 @@ type Server struct {
 	lastPeer map[string]*pairRec
 	blocked  map[[2]string]bool // пары, которых больше не соединяем (жалоба)
 	reports  map[string][]time.Time
+
+	tokens tokenBank
 
 	totalCalls atomic.Int64
 	m          *stationMetrics
@@ -223,6 +226,10 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 		return
 	case cfg.Maintenance:
 		s.reject(inv, tr, 503, "Service Unavailable", "maintenance")
+		return
+	}
+	if n, wait := s.Tokens(tr, id); n == 0 && wait > 0 {
+		s.reject(inv, tr, 403, "Forbidden", ReasonNoTokens) // трубка покажет, сколько ждать (/api/me)
 		return
 	}
 
@@ -512,6 +519,9 @@ func (s *Server) End(l *Leg, byeReason string) {
 		l.sendRequest("BYE", "", "", byeReason)
 	}
 	s.Media.Delete(l.ep.ID)
+	if byeReason == "" && peer != nil {
+		s.spendToken(l) // положил трубку посреди разговора — жетон в монетоприёмник
+	}
 	if byeReason == "" {
 		s.m.hangups.Inc("user")
 	} else {

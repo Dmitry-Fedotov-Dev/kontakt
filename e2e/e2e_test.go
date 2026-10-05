@@ -895,3 +895,35 @@ func TestRadioShortLinkThroughWeb(t *testing.T) {
 		t.Fatalf("страница по короткой ссылке: %d", page.StatusCode)
 	}
 }
+
+// Жетоны: трубку, положенную посреди разговора, оплачивают жетоном; после трёх снять нельзя,
+// пока не придёт новый. Положить, пока ищешь собеседника, — бесплатно.
+func TestTokens(t *testing.T) {
+	st := newStack(t, func(c *config.Config) { c.Tokens, c.TokenRefillSec = 3, 3600 })
+	id := identity.New()
+	if me := getJSON(t, st.web.URL+"/api/me", id); me["tokens"] != float64(3) || me["token_next_sec"] != float64(0) {
+		t.Fatalf("у нового не полный запас: %v", me)
+	}
+	q := newPhone(t, st, id) // положил, пока искал, — бесплатно
+	q.pickUp("32")
+	q.inDialog("BYE", "")
+	time.Sleep(100 * time.Millisecond)
+	for i := 0; i < 3; i++ {
+		a, b := newPhone(t, st, id), newPhone(t, st, "")
+		a.pickUp("32")
+		b.pickUp("32")
+		a.expectState("talking", "")
+		a.inDialog("BYE", "")
+		time.Sleep(100 * time.Millisecond)
+	}
+	me := getJSON(t, st.web.URL+"/api/me", id)
+	if me["tokens"] != float64(0) || me["token_next_sec"].(float64) < 3500 {
+		t.Fatalf("после трёх «положить» в разговоре: %v", me)
+	}
+	if r := newPhone(t, st, id).dial("32"); r.Status != 403 || !strings.Contains(r.Get("Reason"), signal.ReasonNoTokens) {
+		t.Fatalf("без жетонов пустили: %d %s", r.Status, r.Get("Reason"))
+	}
+	if r := newPhone(t, st, "").dial("32"); r.Status != 200 {
+		t.Fatalf("другого человека не пустили: %d", r.Status)
+	}
+}

@@ -153,11 +153,19 @@ func (s *Server) HTTPHandler() http.Handler {
 			"default_line": c.DefaultLine, "allowed_lines": c.AllowedLines, "ban_reporters": c.BanReporters,
 			"report_window_sec": c.ReportWindowSec, "maintenance": c.Maintenance, "max_call_minutes": c.MaxCallMinutes,
 			"donate_url": c.DonateURL, "donate_ru_url": c.DonateRUURL,
+			"tokens": c.Tokens, "token_refill_sec": c.TokenRefillSec,
 		})
 	})
 	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
-		st := s.Mod.Status(identity.FromRequest(r), moderation.Calls)
-		writeJSON(w, map[string]any{"banned": st.Banned, "cards": st.Cards})
+		id := identity.FromRequest(r)
+		st := s.Mod.Status(id, moderation.Calls)
+		out := map[string]any{"banned": st.Banned, "cards": st.Cards}
+		// жетоны веб-трубки: сколько есть, запас, через сколько секунд следующий (0 — полон)
+		if n, wait := s.Tokens(&wsTransport{}, id); n >= 0 {
+			out["tokens"], out["tokens_max"] = n, s.Cfg.Get().Tokens
+			out["token_next_sec"] = int((wait + time.Second - 1) / time.Second)
+		}
+		writeJSON(w, out)
 	})
 	return mux
 }

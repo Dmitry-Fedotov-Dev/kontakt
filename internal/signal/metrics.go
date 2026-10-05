@@ -8,6 +8,7 @@ import (
 
 // stationMetrics — метрики станции (отдаются на админ-порту: /metrics).
 type stationMetrics struct {
+	tokens    *metrics.Counter
 	reg       *metrics.Registry
 	calls     *metrics.CounterVec
 	hangups   *metrics.CounterVec
@@ -25,11 +26,13 @@ func (s *Server) initMetrics() {
 		reg: r,
 		calls: r.CounterVec("kontakt_signal_calls_total",
 			"Новые звонки (INVITE) по исходу: accepted — трубку сняли, остальное — причина отказа.", "result",
-			"accepted", ReasonBanned, "maintenance", ReasonMediaError, "no-identity", "only-pcma-pcmu"),
+			"accepted", ReasonBanned, "maintenance", ReasonMediaError, "no-identity", "only-pcma-pcmu", ReasonNoTokens),
 		hangups: r.CounterVec("kontakt_signal_hangups_total",
 			"Ноги, покинувшие станцию, по причине: user — сам положил трубку, иначе причина станции.", "reason",
 			"user", ReasonBanned, ReasonYellow, ReasonMediaError),
 		pairs: r.Counter("kontakt_pairs_total", "Соединённые пары."),
+		tokens: r.Counter("kontakt_signal_tokens_spent_total",
+			"Жетоны, опущенные в монетоприёмник: положили трубку посреди разговора (веб-трубка)."),
 		reports: r.CounterVec("kontakt_signal_reports_total",
 			"Жалобы по исходу: yellow, banned, noted — от новичка (в зачёт не пошла), остальное — не принята.", "result",
 			"yellow", "banned", "noted", "already", "no_recent_call", "rate_limited"),
