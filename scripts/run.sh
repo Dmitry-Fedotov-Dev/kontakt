@@ -66,7 +66,8 @@ sleep 0.3
 ./bin/signal -http "127.0.0.1:$SIGNAL_HTTP" -admin "127.0.0.1:$SIGNAL_ADMIN" -media "127.0.0.1:$MEDIA_GRPC" \
              -config "$CONFIG" -bans "$BANS" ${SIP_UDP:+-sip "$SIP_UDP"} ${IP:+-ip "$IP"} ${notify:+-notify "$notify"} &
 pids+=($!) core+=($!)
-./bin/radio  -http "127.0.0.1:$RADIO_HTTP" -admin "127.0.0.1:$RADIO_ADMIN" -mod "http://127.0.0.1:$SIGNAL_ADMIN" &
+./bin/radio  -http "127.0.0.1:$RADIO_HTTP" -admin "127.0.0.1:$RADIO_ADMIN" -mod "http://127.0.0.1:$SIGNAL_ADMIN" \
+             -links data/radio-links.json &
 pids+=($!) core+=($!)
 ./bin/web    -http "$HTTP" -signal "http://127.0.0.1:$SIGNAL_HTTP" -media "http://127.0.0.1:$MEDIA_WS" \
              -radio "http://127.0.0.1:$RADIO_HTTP" ${HTTPS:+-https "$HTTPS"} &

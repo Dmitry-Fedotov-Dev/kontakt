@@ -6,12 +6,14 @@ PartOf=kontakt.target
 [Service]
 User=kontakt
 WorkingDirectory=/opt/kontakt
-ExecStart=/opt/kontakt/current/bin/radio -http 127.0.0.1:8083 -admin 127.0.0.1:8093 -mod http://127.0.0.1:8091
+ExecStart=/opt/kontakt/current/bin/radio -http 127.0.0.1:8083 -admin 127.0.0.1:8093 -mod http://127.0.0.1:8091 \
+  -links /opt/kontakt/data/radio-links.json
 Restart=always
 RestartSec=1
 MemoryMax=300M
 NoNewPrivileges=true
 ProtectSystem=strict
+ReadWritePaths=/opt/kontakt/data
 ProtectHome=true
 PrivateTmp=true
 

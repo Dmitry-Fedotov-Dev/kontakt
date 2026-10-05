@@ -22,6 +22,7 @@ func main() {
 	admin := flag.String("admin", "", "отдельный адрес для /metrics (и админки модерации без -mod), например 127.0.0.1:27621; задан — со страницы радио (и из туннеля) /metrics убирается")
 	modURL := flag.String("mod", "", "модерация signal'а — его админ-порт, например http://127.0.0.1:8091: одна база банов с рулеткой")
 	bansPath := flag.String("bans", "data/radio-bans.json", "своя база модерации, если -mod не задан")
+	linksPath := flag.String("links", "", "где хранить короткие ссылки /r/… (пусто — только в памяти, до перезапуска)")
 	flag.Parse()
 	log.SetPrefix("[radio]  ")
 
@@ -38,7 +39,7 @@ func main() {
 		mod = store
 		log.Printf("модерация: своя база %s", *bansPath)
 	}
-	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod})
+	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod, LinksPath: *linksPath})
 	if *admin != "" {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", h.MetricsHandler())

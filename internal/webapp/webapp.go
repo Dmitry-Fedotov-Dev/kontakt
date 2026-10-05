@@ -51,6 +51,7 @@ func Handler(up Upstreams) http.Handler {
 			r.Header.Set("X-Forwarded-Prefix", RadioPrefix)
 		}
 		mux.Handle(RadioPrefix+"/", http.StripPrefix(RadioPrefix, rp))
+		mux.Handle("/r/", rp) // короткие ссылки на волну — от корня домена, короче на «/radio»
 	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	mux.Handle("/", files)

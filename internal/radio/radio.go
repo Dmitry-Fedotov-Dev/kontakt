@@ -42,6 +42,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"log"
+
 	"kontakt/internal/identity"
 	"kontakt/internal/metrics"
 	"kontakt/internal/moderation"
@@ -83,6 +85,8 @@ type Options struct {
 	// ReportAfter — сколько надо простоять на станции, чтобы на неё пожаловаться (не на
 	// ходу ручкой); CountAfter — прослушивание или эфир такой длины засчитывается как сессия.
 	ReportAfter, CountAfter time.Duration
+	// LinksPath — где хранить короткие ссылки /r/…; пусто — только в памяти.
+	LinksPath string
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
@@ -115,6 +119,9 @@ type Hub struct {
 	og        ogCache
 
 	reportTimes map[string][]time.Time // под mu: кто сколько жаловался за час
+
+	links     *shortLinks
+	shortRate *bucket
 
 	listMu    sync.Mutex // кеш списка станций для сокета: один JSON на версию, а не на слушателя
 	listVer   uint64     // content, для которого собран listJSON
@@ -194,7 +201,14 @@ func NewHub(opt Options) *Hub {
 	h.sessions = h.reg.Counter("kontakt_radio_listener_sessions_total", "Подключения приёмников")
 	h.tunes = h.reg.Counter("kontakt_radio_tunes_total", "Перенастройки приёмников (ручка поймала или потеряла станцию)")
 	h.shares = h.reg.CounterVec("kontakt_radio_share_views_total",
-		"Открытия ссылок на волну: page — страница (люди и мессенджеры), image — картинка превью", "kind", "page", "image")
+		"Открытия ссылок на волну: page — страница (люди и мессенджеры), short — по короткой ссылке /r/, image — картинка превью",
+		"kind", "page", "short", "image")
+	var err error
+	if h.links, err = openShortLinks(opt.LinksPath, 50000); err != nil {
+		log.Printf("короткие ссылки: %v — начинаю с пустого списка", err)
+	}
+	h.shortRate = &bucket{rate: 20, burst: 40, tokens: 40, last: time.Now()} // защита диска от потока POST
+	h.reg.Gauge("kontakt_radio_short_links", "Сохранённые короткие ссылки на волну", func() float64 { return float64(h.links.Len()) })
 	h.ogRenders = h.reg.Counter("kontakt_radio_og_renders_total", "Нарисованные картинки превью (промахи кеша)")
 	h.onAir = h.reg.Histogram("kontakt_radio_on_air_seconds", "Сколько станция пробыла в эфире",
 		[]float64{10, 60, 300, 900, 1800, 3600, 7200, 14400, 43200})
@@ -259,6 +273,8 @@ func (h *Hub) Handler() http.Handler {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /{$}", h.serveIndex)
 	mux.HandleFunc("GET /w/{freq}", h.serveShare)
+	mux.HandleFunc("GET /r/{code}", h.serveShort)
+	mux.HandleFunc("POST /api/short", h.serveShortNew)
 	mux.HandleFunc("GET /og/{freq}", h.serveOG)
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -778,4 +794,24 @@ func (h *Hub) report(l *listener) (res string) {
 		s.sayHost(map[string]string{"card": "yellow"})
 	}
 	return res
+}
+
+// bucket — ведро токенов: не больше rate событий в секунду с запасом burst.
+type bucket struct {
+	mu                  sync.Mutex
+	rate, burst, tokens float64
+	last                time.Time
+}
+
+func (b *bucket) allow() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now()
+	b.tokens = min(b.burst, b.tokens+now.Sub(b.last).Seconds()*b.rate)
+	b.last = now
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
 }

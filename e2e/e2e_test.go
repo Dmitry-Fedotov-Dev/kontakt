@@ -866,3 +866,28 @@ func TestDonateURL(t *testing.T) {
 		t.Fatalf("без ссылки: %v", c)
 	}
 }
+
+// Короткая ссылка через web: выдаётся под /radio/, открывается от корня (/r/…) и ведёт на волну
+// с путём радио в og:url — по нему страница находит /radio/.
+func TestRadioShortLinkThroughWeb(t *testing.T) {
+	st := newStack(t, nil)
+	resp, err := http.Post(st.web.URL+"/radio/api/short", "application/json", strings.NewReader(`{"f":1065,"n":"Mobile","t":"трек"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct{ URL string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if !strings.HasPrefix(out.URL, st.web.URL+"/r/") {
+		t.Fatalf("короткая ссылка: %q", out.URL)
+	}
+	page, err := http.Get(out.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(page.Body)
+	page.Body.Close()
+	if page.StatusCode != 200 || !strings.Contains(string(b), `og:url" content="`+st.web.URL+`/radio/w/106.5?`) {
+		t.Fatalf("страница по короткой ссылке: %d", page.StatusCode)
+	}
+}

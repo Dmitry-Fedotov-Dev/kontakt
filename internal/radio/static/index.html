@@ -496,7 +496,12 @@ window.radioState = st; // для отладки и проверки в брау
 // ---------- соединение со списком и эфиром ----------
 let lws = null;
 // BASE — путь радио на сайте: "" отдельно, "/radio" за web (одна кука и модерация с рулеткой).
-const BASE = location.pathname.replace(/\/(w\/[^/]*)?$/, "");
+// Открыли короткую ссылку /r/код: она отдаётся от корня домена, а радио живёт под /radio/ —
+// волну и путь берём из og:url страницы (полная ссылка /radio/w/101.7?n=…&t=…).
+const WAVE = /^\/r\/[0-9A-Za-z]+$/.test(location.pathname)
+  ? new URL((document.querySelector('meta[property="og:url"]') || {}).content || location.href, location.href) : null;
+const HERE = WAVE || location;
+const BASE = HERE.pathname.replace(/\/(w\/[^/]*)?$/, "");
 // ссылка на правила — от BASE: со страницы /w/101.7 относительная ушла бы в /w/terms.html
 document.querySelectorAll(".termsLink").forEach(a => { a.href = BASE + "/terms.html"; });
 // Ссылка поддержки — из конфига станции (/api/config на том же домене). Радио, запущенное
@@ -1188,6 +1193,20 @@ function shareURL(f, name, track) {
   const qs = q.toString();
   return location.origin + BASE + "/w/" + fmt(f) + (qs ? "?" + qs : "");
 }
+// Короткая ссылка /r/код берётся у сервера заранее — как только станция поймана или трек сменился:
+// iPhone не откроет меню «Поделиться», если перед этим ждать ответа сети. Нет кода — длинная ссылка.
+const shortCache = new Map(); // «f, станция, трек» → ссылка; "" — запрос идёт или не удался
+function shortFor(f, name, track) {
+  const key = f + "\n" + name + "\n" + track;
+  if (shortCache.has(key)) return shortCache.get(key);
+  shortCache.set(key, "");
+  fetch(BASE + "/api/short", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ f, n: name, t: track }) })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(j => { if (/^https?:\/\//.test(j.url || "")) shortCache.set(key, j.url); })
+    .catch(() => { /* остаётся длинная ссылка */ });
+  return "";
+}
 let toastT = null;
 function toast(msg) {
   let el = document.querySelector(".toast");
@@ -1197,7 +1216,7 @@ function toast(msg) {
   toastT = setTimeout(() => el.remove(), 2500);
 }
 async function share(f, name, track) {
-  const url = shareURL(f, name, track);
+  const url = shortFor(f, name, track) || shareURL(f, name, track);
   const title = (name || fmt(f) + " FM") + " · Открытое радио";
   const text = track ? "♪ " + track : "Слушай " + fmt(f) + " FM";
   if (navigator.share) { // телефон: системное меню — Telegram, WhatsApp…
@@ -1218,6 +1237,8 @@ setInterval(() => {
   if (st.power) mediaSession(s && d < CATCH ? s : null);
   $("reportRx").hidden = $("shareRx").hidden || !me.moderation;
   $("shareTx").hidden = !st.onAir;
+  if (!$("shareRx").hidden) shortFor(s.f, s.n, s.t || "");
+  if (st.onAir) shortFor(st.hostFreq, $("name").value.trim(), nowTitle());
 }, 300);
 
 // ---------- жалоба на станцию ----------
@@ -1248,10 +1269,10 @@ $("reportRx").onclick = () => {
 // Открыли по ссылке на волну: стрелка сразу стоит на ней, звук — после первого касания.
 let shared = null;
 {
-  const m = location.pathname.slice(BASE.length).match(/^\/w\/(\d{2,3}(?:\.\d)?)$/);
+  const m = HERE.pathname.slice(BASE.length).match(/^\/w\/(\d{2,3}(?:\.\d)?)$/);
   const f = m ? Math.round(parseFloat(m[1]) * 10) : 0;
   if (f >= 875 && f <= 1080) {
-    const q = new URLSearchParams(location.search);
+    const q = new URLSearchParams(HERE.search);
     shared = { f, name: (q.get("n") || "").slice(0, 24), track: (q.get("t") || "").slice(0, 64) };
     st.dial = f / 10;
     R.setAttribute("aria-valuenow", st.dial.toFixed(1));

@@ -72,7 +72,7 @@ trap 'reload=1' USR1
 echo $$ >"$STATE/run.pid"
 
 start_server() {
-  ./bin/radio -http "127.0.0.1:$port" -bans "$STATE/bans.json" &
+  ./bin/radio -http "127.0.0.1:$port" -bans "$STATE/bans.json" -links "$STATE/links.json" &
   srv=$!
   started=$(date +%s)
   for _ in $(seq 40); do curl -fsS "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && return 0; sleep 0.25; done

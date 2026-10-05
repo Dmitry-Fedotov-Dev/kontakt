@@ -1,7 +1,9 @@
 package radio
 
 import (
+	"encoding/json"
 	"html"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -36,6 +38,15 @@ var prefixOK = regexp.MustCompile(`^(/[a-z0-9-]+)+$`)
 // baseURL — абсолютный адрес радио: og:image обязан быть абсолютным. За туннелем Cloudflare
 // и обратным прокси о https говорит X-Forwarded-Proto, о пути (/radio за web) — X-Forwarded-Prefix.
 func baseURL(r *http.Request) string {
+	prefix := r.Header.Get("X-Forwarded-Prefix")
+	if !prefixOK.MatchString(prefix) {
+		prefix = ""
+	}
+	return hostURL(r) + prefix
+}
+
+// hostURL — схема и хост без пути: короткие ссылки /r/ живут в корне домена (web шлёт их радио).
+func hostURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
@@ -46,11 +57,7 @@ func baseURL(r *http.Request) string {
 	if !hostOK.MatchString(host) {
 		host = "localhost"
 	}
-	prefix := r.Header.Get("X-Forwarded-Prefix")
-	if !prefixOK.MatchString(prefix) {
-		prefix = ""
-	}
-	return scheme + "://" + host + prefix
+	return scheme + "://" + host
 }
 
 func (h *Hub) liveStation(f int) (name, title string, ok bool) {
@@ -95,6 +102,47 @@ func (h *Hub) serveShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.shares.Inc("page")
+	h.writeShare(w, r, f, name, track)
+}
+
+// serveShort — короткая ссылка /r/{code}: та же страница волны с той же карточкой превью, без
+// перенаправления (не все мессенджеры по нему ходят). og:url — полная ссылка: по ней страница
+// узнаёт волну и путь радио (/r/ открывается от корня домена, а радио живёт под /radio/).
+func (h *Hub) serveShort(w http.ResponseWriter, r *http.Request) {
+	l, ok := h.links.Get(r.PathValue("code"))
+	if !ok {
+		http.Redirect(w, r, baseURL(r)+"/", http.StatusFound) // устаревшая ссылка — просто на радио
+		return
+	}
+	h.shares.Inc("short")
+	h.writeShare(w, r, l.Freq, l.Name, l.Track)
+}
+
+// serveShortNew — POST /api/short {"f":1017,"n":"…","t":"…"} → {"url":"https://…/r/k7Qx2"}.
+func (h *Hub) serveShortNew(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		F    int `json:"f"`
+		N, T string
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req) != nil || req.F < MinFreq || req.F > MaxFreq {
+		http.Error(w, `{"f":1017,"n":"станция","t":"трек"}`, http.StatusBadRequest)
+		return
+	}
+	if !h.shortRate.allow() {
+		http.Error(w, "слишком часто", http.StatusTooManyRequests)
+		return
+	}
+	code, err := h.links.Code(req.F, clean(req.N, nameRunes), clean(req.T, titleRunes))
+	if code == "" {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]string{"url": hostURL(r) + "/r/" + code})
+}
+
+func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, f int, name, track string) {
 	base := baseURL(r)
 	q := url.Values{}
 	if name != "" {
