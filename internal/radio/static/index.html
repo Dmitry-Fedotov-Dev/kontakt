@@ -140,17 +140,24 @@ button, input { font: inherit; color: inherit; }
 @keyframes keyUp { to { transform: none; box-shadow: 0 0 0 3px var(--ink), inset 0 -2px 0 #C9A86A, 0 4px 0 3px #3A2A12, 0 4px 0 6px var(--ink); } }
 .donateBtn:focus-visible { outline: 3px solid var(--amber); outline-offset: 8px; }
 .donateBtn .bulb { width: 9px; height: 9px; background: #5A3E14; box-shadow: 0 0 0 2px var(--ink); }
-/* Лампа в покое медленно и тускло дышит; под курсором вспыхивает в такт эфиру (--lv — громкость
+/* Лампа в покое медленно дышит — ярко, до полного накала; под курсором вспыхивает в такт эфиру (--lv — громкость
    из animateBody), а в тишине часто мигает. */
-.donateBtn .bulb { animation: breathe 3.2s ease-in-out infinite; }
-@keyframes breathe { 50% { background: #8A5E1C; box-shadow: 0 0 0 2px var(--ink), 0 0 5px 1px rgba(255, 194, 75, .3); } }
+/* накал — насыщенный оранжевый с белым бликом (бледно-жёлтый на кремовой клавише не виден),
+   и вся клавиша в такт светится янтарным ореолом на тёмном фоне */
+.donateBtn .bulb { animation: breathe 2.4s ease-in-out infinite; }
+@keyframes breathe { 50% { background: radial-gradient(circle at 35% 35%, #FFF6D0 0 25%, #FF9A1A 60%, #E25A00);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 10px 4px #FF9A1A, 0 0 22px 8px rgba(255, 140, 20, .55); } }
+.donateBtn { animation: halo 2.4s ease-in-out infinite; }
+@keyframes halo { 50% { box-shadow: 0 0 0 3px var(--ink), inset 0 -2px 0 #C9A86A, 0 4px 0 3px #3A2A12, 0 4px 0 6px var(--ink), 0 0 22px 8px rgba(255, 160, 40, .5); } }
+.donateBtn:hover, .donateBtn:active, .donate.go .donateBtn { animation: none; }
 .donate.hot .bulb {
   animation: none;
-  background: color-mix(in srgb, var(--amber) calc(30% + var(--lv, 0) * 70%), #5A3E14);
-  box-shadow: 0 0 0 2px var(--ink), 0 0 calc(3px + var(--lv, 0) * 16px) calc(var(--lv, 0) * 5px) var(--amber);
+  background: color-mix(in srgb, #FF9A1A calc(35% + var(--lv, 0) * 65%), #5A3E14);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 calc(6px + var(--lv, 0) * 24px) calc(1px + var(--lv, 0) * 9px) #FF9A1A;
 }
+.donate.hot .donateBtn { box-shadow: 0 0 0 3px var(--ink), inset 0 -2px 0 #C9A86A, 0 4px 0 3px #3A2A12, 0 4px 0 6px var(--ink), 0 0 calc(8px + var(--lv, 0) * 20px) calc(2px + var(--lv, 0) * 8px) rgba(255, 160, 40, .55); }
 .donate.hot.quiet .bulb { animation: flicker .45s steps(2) infinite; }
-@keyframes flicker { 50% { background: var(--amber); box-shadow: 0 0 0 2px var(--ink), 0 0 8px 2px var(--amber); } }
+@keyframes flicker { 50% { background: #FF9A1A; box-shadow: 0 0 0 2px var(--ink), 0 0 16px 6px #FF9A1A; } }
 .donate.go .bulb, .donate.go.hot .bulb { animation: glow 1.6s forwards; }
 @keyframes glow { 0%, 60% { background: var(--amber); box-shadow: 0 0 0 2px var(--ink), 0 0 12px 3px var(--amber); } 100% { background: #5A3E14; } }
 .donateMenu { /* вверх от клавиши: она внизу страницы */
@@ -161,7 +168,7 @@ button, input { font: inherit; color: inherit; }
 .donateMenu[hidden] { display: none; }
 .donateMenu a { color: var(--ink); text-decoration: none; padding: 6px 12px; font-size: 13px; }
 .donateMenu a:hover, .donateMenu a:focus-visible { background: var(--amber); outline: none; }
-@media (prefers-reduced-motion: reduce) { .donateBtn .bulb, .donate.hot.quiet .bulb, .donate.go .bulb, .donate.go .donateBtn { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .donateBtn, .donateBtn .bulb, .donate.hot.quiet .bulb, .donate.go .bulb, .donate.go .donateBtn { animation: none; } }
 .langSwitch { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 
 .desk { display: flex; align-items: flex-end; justify-content: center; gap: 22px; flex-wrap: wrap; }
