@@ -16,6 +16,7 @@
 #   scripts/deploy.sh backup root@1.2.3.4            # забрать свежий бэкап data/ к себе (data/backups/)
 #
 # На сервере: /opt/kontakt/releases/<версия>/ (bin, monitoring), current → рабочая версия;
+# monitoring/ — копия конфига мониторинга текущей версии (её монтирует docker compose);
 # config/, data/ (база модерации), .env, cloudflared/ — общие для всех версий. Наружу открыт только
 # SSH: звонки и радио идут через туннель, который сервер сам открывает к Cloudflare.
 # Grafana — через SSH: ssh -L 3002:127.0.0.1:3002 root@1.2.3.4 → http://localhost:3002
@@ -149,9 +150,13 @@ if [ \$ok != 1 ]; then
   [ -n "\$prev" ] && ln -sfn "\$prev" \$R/current.new && mv -T \$R/current.new \$R/current && systemctl restart ${SERVICES[*]}
   exit 1
 fi
-# мониторинг: конфиг и дашборды текущей версии; стек поднимается один раз и живёт сам
+# мониторинг: конфиг и дашборды текущей версии — в постоянную папку \$R/monitoring, на месте
+# (--inplace: смонтированный в контейнер файл должен остаться тем же). Из current/ монтировать
+# нельзя: Docker раскрывает ссылку при создании контейнера, и после чистки старых версий
+# Prometheus терял цели — графики обрывались. Стек поднимается один раз и живёт сам.
 dc="docker compose"; docker compose version >/dev/null 2>&1 || dc=docker-compose
-cd \$R/current/monitoring && \$dc -f docker-compose.yml --profile linux-host up -d --remove-orphans >/dev/null 2>&1 \
+mkdir -p \$R/monitoring && rsync -a --delete --inplace \$R/current/monitoring/ \$R/monitoring/
+cd \$R/monitoring && \$dc -f docker-compose.yml --profile linux-host up -d --remove-orphans >/dev/null 2>&1 \
   && docker kill -s HUP kontakt-monitoring-prometheus-1 >/dev/null 2>&1 || echo "мониторинг не поднялся — docker compose up вручную"
 # храним 5 последних версий
 ls -1dt \$R/releases/*/ | tail -n +6 | xargs -r rm -rf
