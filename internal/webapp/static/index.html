@@ -42,16 +42,18 @@ body {
    уходит в корпус; снял трубку — она снята с рычага, положил — вернулась. */
 .scene {
   position: relative;
-  /* ширина — меньшее из «во весь экран» и «во всю высоту»; высоту даёт пропорция. Высоту с
-     max-width задавать нельзя: упрёмся в край — пропорция ломается, и пиксели сцены плывут. */
-  --h: min(calc(100dvh - 24px - 2.2em), 860px); /* 2.2em — строка ссылок под сценой */
-  width: min(calc(100vw - 24px), calc(var(--h) * 60 / 92));
+  width: var(--sw);
   aspect-ratio: 60 / 92;
   container-type: size;
   --u: calc(100cqw / 60);
 }
 /* с кнопкой поддержки под сценой — ещё 3.4em, иначе строка ссылок уходит за край экрана */
-body:has(#donate:not([hidden])) .scene { --h: min(calc(100dvh - 24px - 5.6em - 10px), 860px); }
+/* ширина сцены — меньшее из «во весь экран» и «во всю высоту»; высоту даёт пропорция. Высоту с
+   max-width задавать нельзя: упрёмся в край — пропорция ломается, и пиксели сцены плывут. */
+body { --h: min(calc(100dvh - 24px - 2.2em), 860px); --sw: min(calc(100vw - 24px), calc(var(--h) * 60 / 92)); }
+body:has(#donate:not([hidden])) { --h: min(calc(100dvh - 24px - 5.6em - 10px), 860px); }
+/* «поддержать» и ссылки — по центру корпуса (пиксели 15–59), а не всей сцены: на 7 правее */
+.donate, .foot { transform: translateX(calc(var(--sw) * 7 / 60)); }
 @supports not (aspect-ratio: 1) { .scene { width: 420px; height: 644px; } }
 .scene > canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
 .u { position: absolute; }
