@@ -268,7 +268,7 @@ func (s *Service) command(text string) string {
 	if len(f) == 0 {
 		return help
 	}
-	cmd := strings.SplitN(f[0], "@", 2)[0] // /stats@kontakt_alerts_bot в группах
+	cmd := strings.SplitN(f[0], "@", 2)[0] // /stats@имя_бота — так команды выглядят в группах
 	switch cmd {
 	case "/stats":
 		return s.stats()
