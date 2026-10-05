@@ -1,0 +1,12 @@
+[Unit]
+Description=Kontakt бэкап базы модерации и журнала (data/), хранится 14 дней
+
+[Service]
+Type=oneshot
+User=kontakt
+# в data/ — только хеши кук, баны и журнал действий (без IP и разговоров)
+ExecStart=/bin/sh -c 'mkdir -p /opt/kontakt/backups && tar -czf /opt/kontakt/backups/data-$(date -u +%%Y%%m%%d-%%H%%M).tgz -C /opt/kontakt data && find /opt/kontakt/backups -name "data-*.tgz" -mtime +14 -delete'
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/kontakt/backups
+ProtectHome=true

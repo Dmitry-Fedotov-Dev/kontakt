@@ -23,6 +23,7 @@ services:
   prometheus:
     image: prom/prometheus:v3.5.0
     network_mode: host
+    restart: unless-stopped # на сервере стек живёт сам, после перезагрузки тоже
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -42,6 +43,7 @@ services:
   #   docker compose -f monitoring/docker-compose.yml --profile linux-host up -d
   node-exporter:
     image: prom/node-exporter:v1.9.1
+    restart: unless-stopped # на сервере стек живёт сам, после перезагрузки тоже
     profiles: ["linux-host"]
     network_mode: host
     pid: host
@@ -54,6 +56,7 @@ services:
   grafana:
     image: grafana/grafana:11.5.2
     network_mode: host
+    restart: unless-stopped # на сервере стек живёт сам, после перезагрузки тоже
     depends_on:
       - prometheus
     environment:

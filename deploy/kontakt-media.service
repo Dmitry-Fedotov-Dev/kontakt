@@ -1,17 +1,21 @@
 [Unit]
-Description=Kontakt media (RTP, кодеки, эффект линии)
+Description=Kontakt media (RTP, мост, гудки, окраска линии)
 After=network-online.target
+Wants=network-online.target
+PartOf=kontakt.target
 
 [Service]
 User=kontakt
 WorkingDirectory=/opt/kontakt
-ExecStart=/opt/kontakt/bin/media -grpc 127.0.0.1:7002 -ws 127.0.0.1:8082 -rtp 10000-10200
+# RTP по UDP нужен только софтфонам (SIP/UDP); браузер через туннель портов не берёт
+ExecStart=/opt/kontakt/current/bin/media -grpc 127.0.0.1:7002 -ws 127.0.0.1:8082 -rtp 10000-11000
 Restart=always
 RestartSec=1
-MemoryMax=300M
+MemoryMax=400M
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
+PrivateTmp=true
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=kontakt.target

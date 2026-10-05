@@ -69,6 +69,28 @@ git pull
 Постоянная ссылка (своё доменное имя) — `./scripts/tunnel.sh publish <домен>`; адрес
 `trycloudflare.com` временный и меняется при каждом запуске туннеля.
 
+### На свой сервер
+
+Сервер — Ubuntu 24.04 или Debian 12, вход по SSH-ключу. Всё делается с вашей машины (WSL, Linux,
+macOS): собирается здесь, на сервер едут готовые бинарники. Наружу у сервера открыт только SSH —
+звонки и радио идут через туннель, который сервер сам открывает к Cloudflare.
+
+```bash
+scripts/deploy.sh setup    root@<IP>                    # один раз: пользователь, пакеты, ufw, Docker, cloudflared, юниты
+scripts/deploy.sh env      root@<IP>                    # токен бота из .env
+scripts/deploy.sh push     root@<IP>                    # выложить текущий код; не поднялось — сам откатывает
+scripts/deploy.sh tunnel   root@<IP> kontakt.example.com  # свой домен (он должен быть в Cloudflare)
+scripts/deploy.sh status   root@<IP>                    # сервисы, версия, ответ станции, бэкап
+scripts/deploy.sh rollback root@<IP>                    # вернуть предыдущую версию
+scripts/deploy.sh backup   root@<IP>                    # забрать свежий бэкап базы модерации к себе
+ssh -L 3002:127.0.0.1:3002 root@<IP>                    # Grafana: http://localhost:3002
+```
+
+На сервере: `/opt/kontakt/releases/` — последние 5 версий, `current` — рабочая; `config/kontakt.json`
+правится на месте и применяется на лету; `data/` (база модерации) каждый день архивируется в
+`backups/`, хранится 14 дней. Сервисы — systemd (`systemctl status kontakt-*`), мониторинг —
+Docker. При `push` идущие звонки обрываются, ведущий и приёмники радио переподключаются сами.
+
 Что и как проверять — [docs/TEST_CASES.md](docs/TEST_CASES.md).
 
 ---

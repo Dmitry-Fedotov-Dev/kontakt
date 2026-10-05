@@ -1,0 +1,23 @@
+[Unit]
+Description=Kontakt Telegram-бот (тревоги, карточки и баны, команды)
+After=network-online.target kontakt-signal.service
+Wants=network-online.target
+PartOf=kontakt.target
+# токен и chat_id — в /opt/kontakt/.env (scripts/deploy.sh env); нет файла — бота нет
+ConditionPathExists=/opt/kontakt/.env
+
+[Service]
+User=kontakt
+WorkingDirectory=/opt/kontakt
+EnvironmentFile=/opt/kontakt/.env
+ExecStart=/opt/kontakt/current/bin/notify -http 127.0.0.1:27640 -admin http://127.0.0.1:8091 -prometheus http://127.0.0.1:9092
+Restart=always
+RestartSec=5
+MemoryMax=100M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=kontakt.target

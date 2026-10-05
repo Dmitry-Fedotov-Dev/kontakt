@@ -1,0 +1,19 @@
+[Unit]
+Description=Kontakt Открытое радио (за web под /radio/, модерация — у signal)
+After=kontakt-signal.service
+PartOf=kontakt.target
+
+[Service]
+User=kontakt
+WorkingDirectory=/opt/kontakt
+ExecStart=/opt/kontakt/current/bin/radio -http 127.0.0.1:8083 -admin 127.0.0.1:8093 -mod http://127.0.0.1:8091
+Restart=always
+RestartSec=1
+MemoryMax=300M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=kontakt.target

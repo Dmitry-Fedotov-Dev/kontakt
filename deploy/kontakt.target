@@ -1,0 +1,6 @@
+[Unit]
+Description=Kontakt: все сервисы станции (systemctl restart kontakt.target — перезапустить разом)
+Wants=kontakt-media.service kontakt-signal.service kontakt-radio.service kontakt-web.service kontakt-notify.service
+
+[Install]
+WantedBy=multi-user.target

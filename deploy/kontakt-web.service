@@ -1,17 +1,20 @@
 [Unit]
-Description=Kontakt web (страница, кука, прокси)
-After=kontakt-signal.service
+Description=Kontakt web (страница, кука, прокси; радио под /radio/)
+After=kontakt-signal.service kontakt-radio.service
+PartOf=kontakt.target
 
 [Service]
 User=kontakt
 WorkingDirectory=/opt/kontakt
-ExecStart=/opt/kontakt/bin/web -http 127.0.0.1:8080 -signal http://127.0.0.1:8081 -media http://127.0.0.1:8082
+ExecStart=/opt/kontakt/current/bin/web -http 127.0.0.1:8080 -signal http://127.0.0.1:8081 -media http://127.0.0.1:8082 \
+  -radio http://127.0.0.1:8083
 Restart=always
 RestartSec=1
 MemoryMax=200M
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
+PrivateTmp=true
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=kontakt.target

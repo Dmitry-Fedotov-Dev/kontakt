@@ -1,0 +1,19 @@
+[Unit]
+Description=Kontakt Cloudflare Tunnel (именованный, на свой домен)
+After=network-online.target kontakt-web.service
+Wants=network-online.target
+# конфиг пишет scripts/deploy.sh tunnel <сервер> <домен>
+ConditionPathExists=/opt/kontakt/cloudflared/config.yml
+
+[Service]
+User=kontakt
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate --metrics 127.0.0.1:20241 --config /opt/kontakt/cloudflared/config.yml run
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
