@@ -4,6 +4,7 @@
 #
 #   scripts/deploy.sh setup  root@1.2.3.4            # один раз: пользователь kontakt, пакеты, ufw,
 #                                                    # Docker для мониторинга, cloudflared, юниты
+#   scripts/deploy.sh harden root@1.2.3.4            # вход по SSH только по ключу (после того как ключ работает)
 #   scripts/deploy.sh env    root@1.2.3.4            # токен бота: локальный .env → /opt/kontakt/.env
 #   scripts/deploy.sh push   root@1.2.3.4            # новая версия рядом со старой, переключение,
 #                                                    # перезапуск; не поднялась — сам откатывает
@@ -43,7 +44,10 @@ setup)
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -yq curl rsync ufw unattended-upgrades docker.io docker-compose-v2 >/dev/null
+# compose: в Ubuntu — docker-compose-v2, в Debian — docker-compose (тоже v2)
+compose=docker-compose-v2
+apt-cache policy docker-compose-v2 2>/dev/null | grep -q 'Candidate: [0-9]' || compose=docker-compose
+apt-get install -yq curl rsync ufw unattended-upgrades docker.io "$compose" >/dev/null
 if ! command -v cloudflared >/dev/null; then
   arch=$(dpkg --print-architecture)
   curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$arch.deb" -o /tmp/cf.deb
@@ -72,6 +76,25 @@ systemctl start kontakt-backup.timer
 echo "юниты установлены"
 EOS
   echo "Готово. Дальше: scripts/deploy.sh push $host"
+  ;;
+
+harden)
+  # Вход по SSH — только по ключу (root тоже). Скрипт сам вошёл по ключу — значит, доступ не пропадёт;
+  # на крайний случай остаётся консоль в панели хостинга.
+  sudo_remote <<'EOS'
+set -euo pipefail
+cat > /etc/ssh/sshd_config.d/10-kontakt.conf <<CFG
+# scripts/deploy.sh harden: только ключи
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+CFG
+# в sshd_config первое значение побеждает: прямое «PasswordAuthentication yes» в нём перекрыло бы файл
+sed -i -E 's/^(PasswordAuthentication|PermitRootLogin|KbdInteractiveAuthentication)\b/#&/' /etc/ssh/sshd_config
+sshd -t
+systemctl reload ssh 2>/dev/null || systemctl reload sshd
+sshd -T | grep -E '^(passwordauthentication|permitrootlogin|kbdinteractiveauthentication) '
+EOS
   ;;
 
 env)
@@ -122,7 +145,8 @@ if [ \$ok != 1 ]; then
   exit 1
 fi
 # мониторинг: конфиг и дашборды текущей версии; стек поднимается один раз и живёт сам
-cd \$R/current/monitoring && docker compose -f docker-compose.yml --profile linux-host up -d --remove-orphans >/dev/null 2>&1 \
+dc="docker compose"; docker compose version >/dev/null 2>&1 || dc=docker-compose
+cd \$R/current/monitoring && \$dc -f docker-compose.yml --profile linux-host up -d --remove-orphans >/dev/null 2>&1 \
   && docker kill -s HUP kontakt-monitoring-prometheus-1 >/dev/null 2>&1 || echo "мониторинг не поднялся — docker compose up вручную"
 # храним 5 последних версий
 ls -1dt \$R/releases/*/ | tail -n +6 | xargs -r rm -rf
