@@ -132,6 +132,7 @@ body {
         <button class="rbtn" id="hangup-btn" type="button" aria-label="bye"><img alt=""><span>bye</span></button>
       </div>
       <p class="online" id="online">&nbsp;</p>
+      <p class="foot"><a href="terms.html" target="_blank" rel="noopener">rules</a><span id="donate-wrap" hidden> · <a id="donate" target="_blank" rel="noopener noreferrer">support ♥</a></span></p>
     </div>
   </section>
 </main>
@@ -284,6 +285,7 @@ function showBanned() {
 
 async function loadState() {
   try { cfg = Object.assign(cfg, await (await fetch("api/config", { cache: "no-store" })).json()); } catch {}
+  if (/^https:\/\//.test(cfg.donate_url || "")) { $("donate").href = cfg.donate_url; $("donate-wrap").hidden = false; }
   try { me = await (await fetch("api/me", { cache: "no-store" })).json(); } catch {}
   if (me.banned) return showBanned();
   if (cfg.maintenance) return setIdle("bad", "Станция на обслуживании", "Попробуйте снять трубку чуть позже.");

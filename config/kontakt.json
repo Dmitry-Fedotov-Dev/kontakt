@@ -10,5 +10,6 @@
   "max_reports_per_hour": 10,
   "max_call_minutes": 0,
   "maintenance": false,
+  "donate_url": "",
   "apply_delay_ms": 1000
 }

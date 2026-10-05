@@ -851,3 +851,18 @@ func TestMetricsReflectCall(t *testing.T) {
 		t.Fatalf("signal: отбой не посчитан:\n%s", sig)
 	}
 }
+
+// Ссылка поддержки из конфига доходит до страниц (трубка и радио берут её из /api/config);
+// не https — конфиг не принимается.
+func TestDonateURL(t *testing.T) {
+	st := newStack(t, func(c *config.Config) { c.DonateURL = "https://www.patreon.com/example" })
+	if c := getJSON(t, st.web.URL+"/api/config", identity.New()); c["donate_url"] != "https://www.patreon.com/example" {
+		t.Fatalf("/api/config: %v", c)
+	}
+	if _, err := config.Parse([]byte(`{"donate_url":"http://example.com"}`)); err == nil {
+		t.Fatal("ссылка не по https принята")
+	}
+	if c := getJSON(t, newStack(t, nil).web.URL+"/api/config", identity.New()); c["donate_url"] != "" {
+		t.Fatalf("без ссылки: %v", c)
+	}
+}

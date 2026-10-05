@@ -152,6 +152,7 @@ func (s *Server) HTTPHandler() http.Handler {
 		writeJSON(w, map[string]any{
 			"default_line": c.DefaultLine, "allowed_lines": c.AllowedLines, "ban_reporters": c.BanReporters,
 			"report_window_sec": c.ReportWindowSec, "maintenance": c.Maintenance, "max_call_minutes": c.MaxCallMinutes,
+			"donate_url": c.DonateURL,
 		})
 	})
 	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
