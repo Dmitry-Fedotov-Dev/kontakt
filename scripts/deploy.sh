@@ -9,7 +9,9 @@
 #   scripts/deploy.sh push   root@1.2.3.4            # новая версия рядом со старой, переключение,
 #                                                    # перезапуск; не поднялась — сам откатывает
 #   scripts/deploy.sh rollback root@1.2.3.4          # вернуть предыдущую версию
-#   scripts/deploy.sh tunnel root@1.2.3.4 kontakt.example.com   # туннель Cloudflare на свой домен
+#   scripts/deploy.sh https  root@1.2.3.4 openline.one   # прямой HTTPS (Caddy, Let's Encrypt), без Cloudflare;
+#                                                    # открывает 80/443; DNS домена уже должен вести на сервер
+#   scripts/deploy.sh tunnel root@1.2.3.4 kontakt.example.com   # или туннель Cloudflare на свой домен
 #   scripts/deploy.sh status root@1.2.3.4            # сервисы, версия, ответ станции
 #   scripts/deploy.sh backup root@1.2.3.4            # забрать свежий бэкап data/ к себе (data/backups/)
 #
@@ -168,6 +170,42 @@ echo "откат: \${cur##*/} → \${prev##*/}"
 EOS
   ;;
 
+https)
+  # Прямой HTTPS на сервере, без Cloudflare: Caddy сам получает и продлевает сертификат Let's
+  # Encrypt. DNS домена (A-записи домена и www) должен уже указывать на сервер.
+  domain=${3:?укажите домен: scripts/deploy.sh https $host openline.one}
+  sudo_remote <<EOS
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+command -v caddy >/dev/null || { apt-get update -q >/dev/null; apt-get install -yq caddy >/dev/null; }
+cat > /etc/caddy/Caddyfile <<'CFG'
+# scripts/deploy.sh https — разводка путей как у туннеля: /sip, /api → signal, /media → media,
+# остальное (и /radio/) → web. Журнал запросов Caddy не ведёт: IP посетителей никуда не пишутся.
+$domain {
+	@signal path /sip /api/*
+	reverse_proxy @signal 127.0.0.1:8081
+	@media path /media
+	reverse_proxy @media 127.0.0.1:8082
+	reverse_proxy 127.0.0.1:8080
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}
+www.$domain {
+	redir https://$domain{uri} permanent
+}
+CFG
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || { caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; exit 1; }
+ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null && ufw allow 443/udp >/dev/null
+systemctl enable caddy >/dev/null 2>&1
+systemctl reload caddy 2>/dev/null || systemctl restart caddy
+systemctl disable --now kontakt-tunnel >/dev/null 2>&1 || true   # туннель Cloudflare больше не нужен
+for i in \$(seq 40); do curl -fsS -m 5 https://$domain/healthz >/dev/null 2>&1 && { echo "https://$domain отвечает, сертификат получен"; exit 0; }; sleep 3; done
+echo "Caddy запущен, но https://$domain пока не отвечает: DNS ещё не разошёлся или порт 80 закрыт у провайдера. journalctl -u caddy -n 30"
+EOS
+  ;;
+
 tunnel)
   domain=${3:?укажите домен: scripts/deploy.sh tunnel $host kontakt.example.com}
   echo "Вход в Cloudflare: откройте в браузере ссылку, которую напечатает cloudflared, и выберите домен."
@@ -210,7 +248,7 @@ EOS
 status)
   sudo_remote <<'EOS'
 echo "версия: $(basename "$(readlink /opt/kontakt/current 2>/dev/null)" 2>/dev/null || echo нет)"
-for s in kontakt-media kontakt-signal kontakt-radio kontakt-web kontakt-notify kontakt-tunnel; do
+for s in kontakt-media kontakt-signal kontakt-radio kontakt-web kontakt-notify kontakt-tunnel caddy; do
   printf '  %-16s %s\n' "$s" "$(systemctl is-active $s)"
 done
 printf '  станция:         %s\n' "$(curl -fsS -m 3 http://127.0.0.1:8080/healthz 2>/dev/null || echo 'не отвечает')"

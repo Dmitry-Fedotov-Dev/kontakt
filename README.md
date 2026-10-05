@@ -71,15 +71,18 @@ git pull
 
 ### На свой сервер
 
-Сервер — Ubuntu 24.04 или Debian 12, вход по SSH-ключу. Всё делается с вашей машины (WSL, Linux,
-macOS): собирается здесь, на сервер едут готовые бинарники. Наружу у сервера открыт только SSH —
-звонки и радио идут через туннель, который сервер сам открывает к Cloudflare.
+Рабочая станция — **https://openline.one** (радио — `/radio/`). Сервер — Ubuntu 24.04 или Debian
+12/13, вход по SSH только по ключу. Всё делается с вашей машины (WSL, Linux, macOS, Git Bash):
+собирается здесь, на сервер едут готовые бинарники. HTTPS — прямо на сервере (Caddy, сертификат
+Let's Encrypt продлевается сам), без Cloudflare: его блокируют в России. Наружу открыты SSH, 80 и 443.
 
 ```bash
 scripts/deploy.sh setup    root@<IP>                    # один раз: пользователь, пакеты, ufw, Docker, cloudflared, юниты
+scripts/deploy.sh harden   root@<IP>                    # SSH только по ключу (когда вход по ключу уже работает)
 scripts/deploy.sh env      root@<IP>                    # токен бота из .env
 scripts/deploy.sh push     root@<IP>                    # выложить текущий код; не поднялось — сам откатывает
-scripts/deploy.sh tunnel   root@<IP> kontakt.example.com  # свой домен (он должен быть в Cloudflare)
+scripts/deploy.sh https    root@<IP> openline.one       # прямой HTTPS: A-записи домена и www — на IP сервера
+scripts/deploy.sh tunnel   root@<IP> kontakt.example.com  # или вместо https — туннель Cloudflare
 scripts/deploy.sh status   root@<IP>                    # сервисы, версия, ответ станции, бэкап
 scripts/deploy.sh rollback root@<IP>                    # вернуть предыдущую версию
 scripts/deploy.sh backup   root@<IP>                    # забрать свежий бэкап базы модерации к себе
