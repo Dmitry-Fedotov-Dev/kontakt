@@ -463,3 +463,26 @@ func TestLikesReachHost(t *testing.T) {
 	}
 	t.Fatal("лайк после паузы не дошёл")
 }
+
+// Сокеты радио доступны и под /radio/ — Caddy отдаёт их радио напрямую, мимо web.
+func TestSocketsUnderRadioPrefix(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, err := dial(t, srv, "/radio/ws/host?f=1053&name=X")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	l, _, err := dial(t, srv, "/radio/ws/listen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	l.WriteJSON(map[string]int{"tune": 1053})
+	host.WriteMessage(websocket.BinaryMessage, frame(7))
+	if b := readAudio(t, l); b[0] != 7 {
+		t.Fatalf("кадр %v", b[0])
+	}
+}

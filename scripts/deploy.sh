@@ -188,12 +188,15 @@ export DEBIAN_FRONTEND=noninteractive
 command -v caddy >/dev/null || { apt-get update -q >/dev/null; apt-get install -yq caddy >/dev/null; }
 cat > /etc/caddy/Caddyfile <<'CFG'
 # scripts/deploy.sh https — разводка путей как у туннеля: /sip, /api → signal, /media → media,
-# остальное (и /radio/) → web. Журнал запросов Caddy не ведёт: IP посетителей никуда не пишутся.
+# сокеты радио /radio/ws/* → радио; остальное (и страницы /radio/) → web. Журнал запросов Caddy
+# не ведёт: IP посетителей никуда не пишутся.
 $domain {
 	@signal path /sip /api/*
 	reverse_proxy @signal 127.0.0.1:8081
 	@media path /media
 	reverse_proxy @media 127.0.0.1:8082
+	@radiows path /radio/ws/*
+	reverse_proxy @radiows 127.0.0.1:8083
 	reverse_proxy 127.0.0.1:8080
 	header {
 		Strict-Transport-Security "max-age=31536000"
@@ -228,8 +231,8 @@ tid=\$(cloudflared tunnel list -o json | python3 -c "import sys,json;print(next(
 cat > \$C/config.yml <<CFG
 tunnel: \$tid
 credentials-file: \$C/.cloudflared/\$tid.json
-# /sip, /api, /media — прямо в signal и media, мимо web (вдвое дешевле по CPU, LOAD_REPORT.md);
-# остальное, включая /radio/, — в web
+# /sip, /api, /media — прямо в signal и media, сокеты радио — в радио, мимо web (вдвое дешевле
+# по CPU, LOAD_REPORT.md); остальное, включая страницы /radio/, — в web
 ingress:
   - hostname: $domain
     path: ^/sip\\\$
@@ -240,6 +243,9 @@ ingress:
   - hostname: $domain
     path: ^/media\\\$
     service: http://127.0.0.1:8082
+  - hostname: $domain
+    path: ^/radio/ws/
+    service: http://127.0.0.1:8083
   - hostname: $domain
     service: http://127.0.0.1:8080
   - service: http_status:404

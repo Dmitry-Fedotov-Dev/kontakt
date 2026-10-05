@@ -7,7 +7,7 @@ PartOf=kontakt.target
 User=kontakt
 WorkingDirectory=/opt/kontakt
 ExecStart=/opt/kontakt/current/bin/radio -http 127.0.0.1:8083 -admin 127.0.0.1:8093 -mod http://127.0.0.1:8091 \
-  -links /opt/kontakt/data/radio-links.json
+  -links /opt/kontakt/data/radio-links.json -max-stations 206 -max-listeners 1000
 Restart=always
 RestartSec=1
 MemoryMax=300M

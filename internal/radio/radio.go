@@ -267,6 +267,11 @@ func (h *Hub) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws/host", h.serveHost)
 	mux.HandleFunc("/ws/listen", h.serveListen)
+	// Те же сокеты под /radio/: Caddy и туннель отдают их радио напрямую, мимо web. Через web
+	// каждый кадр шёл ещё через один прокси: на 500 слушателях это 0,48 ядра и ~90 КБ памяти
+	// на соединение (замер 05.10.2026 на проде, LOAD_REPORT.md).
+	mux.HandleFunc("/radio/ws/host", h.serveHost)
+	mux.HandleFunc("/radio/ws/listen", h.serveListen)
 	mux.HandleFunc("/api/stations", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(h.Stations())

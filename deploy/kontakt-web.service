@@ -10,7 +10,10 @@ ExecStart=/opt/kontakt/current/bin/web -http 127.0.0.1:8080 -signal http://127.0
   -radio http://127.0.0.1:8083
 Restart=always
 RestartSec=1
-MemoryMax=200M
+# Лимит — от утечки, чтобы один сервис не уронил весь сервер. По замеру на проде 05.10.2026
+# (LOAD_REPORT.md): ~90 КБ на проксируемое соединение; 200M кончались на ~2000 и web убивало
+# вместе со всем сайтом. 1G — запас на ~10 000 соединений.
+MemoryMax=1G
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
