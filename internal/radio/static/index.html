@@ -38,7 +38,25 @@ body {
   -webkit-font-smoothing: none;
   padding: 16px;
 }
-.wrap { width: min(560px, 100%); margin: 0 auto; }
+.wrap { width: min(560px, 100%); margin: 0 auto; min-height: calc(100dvh - 32px); display: flex; flex-direction: column; }
+/* Панель приёмника — внизу страницы: по бокам правила, язык, жалоба и поддержка, в центре «поделиться».
+   На узком экране — столбиком, «поделиться» первым. Видна только на вкладке «слушать». */
+.bar {
+  padding-top: 22px;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px;
+  font-size: 12px; color: #9C86BC;
+}
+.bar a { color: inherit; }
+.bar .side { display: flex; flex-direction: column; gap: 8px; }
+.bar .left { align-items: flex-start; }
+.bar .right { align-items: flex-end; }
+.bar .share { margin: 0; }
+body:has(#rxView[hidden]) .bar { display: none; }
+@media (max-width: 440px) {
+  .bar { grid-template-columns: 1fr; justify-items: center; }
+  .bar .mid { order: -1; }
+  .bar .side { align-items: center; }
+}
 canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 button, input { font: inherit; color: inherit; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
@@ -100,10 +118,8 @@ button, input { font: inherit; color: inherit; }
 }
 .share { display: block; margin: 14px auto 0; }
 .share[hidden] { display: none !important; }
-.rxbtns { display: flex; justify-content: center; gap: 10px; }
-.rxbtns .share { margin: 14px 0 0; }
 /* жалоба — внизу и неброско: случайно не нажать, но найти можно */
-.report { background: none; border: 1px solid #6B5A86; color: #9C86BC; font: inherit; font-size: 11px; padding: 3px 10px; cursor: pointer; margin-top: 18px; }
+.report { background: none; border: 1px solid #6B5A86; color: #9C86BC; font: inherit; font-size: 11px; padding: 3px 10px; cursor: pointer; }
 .report[hidden] { display: none; }
 .report.armed { background: #C0392B; border-color: #C0392B; color: var(--cream); }
 .toast {
@@ -116,26 +132,30 @@ button, input { font: inherit; color: inherit; }
 .rules { text-align: center; font-size: 12px; color: #9C86BC; margin-top: 14px; }
 .rules a { color: inherit; }
 /* Поддержка — клавиша старого приёмника с лампочкой: утапливается со щелчком, лампа загорается. */
-.donate { display: grid; justify-items: center; gap: 8px; margin-top: 16px; }
+.donate { position: relative; }
 .donate[hidden] { display: none; }
 .donateBtn {
   display: flex; align-items: center; gap: 10px; cursor: pointer;
-  font: inherit; font-size: 14px; font-weight: 600; letter-spacing: .08em; color: var(--ink);
-  background: linear-gradient(#FFF6E2, var(--cream) 55%, #E6CC9C); border: 0; padding: 9px 18px 9px 12px;
-  box-shadow: 0 0 0 3px var(--ink), inset 0 -3px 0 #C9A86A, 0 6px 0 3px #3A2A12, 0 6px 0 6px var(--ink);
+  font: inherit; font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--ink);
+  background: linear-gradient(#FFF6E2, var(--cream) 55%, #E6CC9C); border: 0; padding: 6px 12px 6px 9px; margin-bottom: 4px;
+  box-shadow: 0 0 0 3px var(--ink), inset 0 -2px 0 #C9A86A, 0 4px 0 3px #3A2A12, 0 4px 0 6px var(--ink);
   transition: transform .07s, box-shadow .07s;
 }
 .donateBtn:hover { transform: translateY(-1px); }
-.donateBtn:active, .donate.go .donateBtn { transform: translateY(5px); box-shadow: 0 0 0 3px var(--ink), inset 0 3px 0 #C9A86A, 0 1px 0 3px #3A2A12, 0 1px 0 6px var(--ink); }
+.donateBtn:active, .donate.go .donateBtn { transform: translateY(3px); box-shadow: 0 0 0 3px var(--ink), inset 0 2px 0 #C9A86A, 0 1px 0 3px #3A2A12, 0 1px 0 6px var(--ink); }
 .donate.go .donateBtn { animation: keyUp .35s .25s forwards; }
-@keyframes keyUp { to { transform: none; box-shadow: 0 0 0 3px var(--ink), inset 0 -3px 0 #C9A86A, 0 6px 0 3px #3A2A12, 0 6px 0 6px var(--ink); } }
+@keyframes keyUp { to { transform: none; box-shadow: 0 0 0 3px var(--ink), inset 0 -2px 0 #C9A86A, 0 4px 0 3px #3A2A12, 0 4px 0 6px var(--ink); } }
 .donateBtn:focus-visible { outline: 3px solid var(--amber); outline-offset: 8px; }
-.donateBtn .bulb { width: 10px; height: 10px; background: #5A3E14; box-shadow: 0 0 0 2px var(--ink); }
+.donateBtn .bulb { width: 8px; height: 8px; background: #5A3E14; box-shadow: 0 0 0 2px var(--ink); }
 .donateBtn:hover .bulb { animation: flicker 1.2s steps(2) infinite; }
 @keyframes flicker { 50% { background: #9A6A1E; } }
 .donate.go .bulb { animation: glow 1.6s forwards; }
 @keyframes glow { 0%, 60% { background: var(--amber); box-shadow: 0 0 0 2px var(--ink), 0 0 12px 3px var(--amber); } 100% { background: #5A3E14; } }
-.donateMenu { display: grid; gap: 4px; background: var(--cream); padding: 6px; box-shadow: 0 0 0 3px var(--ink); }
+.donateMenu { /* вверх от клавиши: она внизу страницы */
+  position: absolute; bottom: calc(100% + 12px); right: 0; z-index: 5; white-space: nowrap;
+  display: grid; gap: 4px; background: var(--cream); padding: 6px; box-shadow: 0 0 0 3px var(--ink);
+}
+@media (max-width: 440px) { .donateMenu { right: 50%; transform: translateX(50%); } }
 .donateMenu[hidden] { display: none; }
 .donateMenu a { color: var(--ink); text-decoration: none; padding: 6px 12px; font-size: 13px; }
 .donateMenu a:hover, .donateMenu a:focus-visible { background: var(--amber); outline: none; }
@@ -193,7 +213,7 @@ button, input { font: inherit; color: inherit; }
 .queue li button { background: none; border: 0; color: var(--amber); cursor: pointer; padding: 0 4px; font-weight: 600; }
 .queue li button[disabled] { opacity: .3; cursor: default; }
 .queue .empty { color: #9C86BC; }
-.foot { margin: 18px 0 0; font-size: 11px; color: #9C86BC; text-align: center; line-height: 1.4; }
+.foot { margin: auto 0 0; padding-top: 18px; font-size: 11px; color: #9C86BC; text-align: center; line-height: 1.4; }
 .shake { animation: shake .08s steps(2) 3; }
 @keyframes shake { 50% { transform: translate(2px, -1px); } }
 </style>
@@ -213,15 +233,6 @@ button, input { font: inherit; color: inherit; }
               aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
     <div class="sticker" id="sticker" aria-live="polite"><b id="st1" data-i="stickerIdle">крутни ручку</b><span id="st2">&nbsp;</span></div>
-    <div class="rxbtns">
-      <button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button>
-    </div>
-    <div class="rules"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></div>
-    <div class="donate" id="donate" hidden>
-      <button type="button" class="donateBtn" aria-haspopup="true" aria-expanded="false"><i class="bulb"></i><span data-i="support">SUPPORT</span></button>
-      <div class="donateMenu" hidden></div>
-    </div>
-    <div class="rules"><button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию" data-i-aria="reportAria" data-i="report">REPORT</button></div>
   </section>
 
   <!-- Ведущий: табличка эфира, микрофон, три громкости, очередь -->
@@ -280,6 +291,21 @@ button, input { font: inherit; color: inherit; }
   </section>
 
   <p class="foot" data-i="foot">Файлы не загружаются на сервер: играют из твоего браузера, в эфир уходит только звук — G.711, 64 кбит/с.</p>
+
+  <!-- Панель приёмника внизу страницы -->
+  <nav class="bar" id="rxBar">
+    <div class="side left">
+      <span><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></span>
+      <button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию" data-i-aria="reportAria" data-i="report">REPORT</button>
+    </div>
+    <div class="mid"><button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button></div>
+    <div class="side right">
+      <div class="donate" id="donate" hidden>
+        <button type="button" class="donateBtn" aria-haspopup="true" aria-expanded="false"><i class="bulb"></i><span data-i="support">SUPPORT</span></button>
+        <div class="donateMenu" hidden></div>
+      </div>
+    </div>
+  </nav>
 </div>
 
 <script>
@@ -308,7 +334,7 @@ const I18N = {
     drop: "кинь сюда mp3 или целую папку",
     searchPh: "поиск по найденному…", searchAria: "Поиск mp3 в выбранной папке",
     foot: "Файлы не загружаются на сервер: играют из твоего браузера, в эфир уходит только звук — G.711, 64 кбит/с.",
-    canvasName: "РАДИО", band: "УКВ",
+    canvasName: "РАДИО", band: "УКВ", lcdTouch: "ЖМИ", lcdTurn: "КРУТИ", lcdTuned: "ЧИСТО", lcdSignal: "СИГНАЛ", lcdStatic: "ШУМ",
     freq: f => fmt(f) + " МГц",
     errNoWebAudio: "браузер без Web Audio — открой в Chrome или Firefox",
     errNoWorklet: "браузер без AudioWorklet — открой в Chrome или Firefox",
@@ -365,7 +391,7 @@ const I18N = {
     drop: "drop mp3 files or a whole folder here",
     searchPh: "search the files found…", searchAria: "Search mp3 in the chosen folder",
     foot: "Files are not uploaded: they play from your browser, only the sound goes on air — G.711, 64 kbit/s.",
-    canvasName: "OPEN RADIO", band: "FM",
+    canvasName: "OPEN RADIO", band: "FM", lcdTouch: "TOUCH", lcdTurn: "TURN ME", lcdTuned: "TUNED", lcdSignal: "SIGNAL", lcdStatic: "STATIC",
     freq: f => fmt(f) + " FM",
     errNoWebAudio: "this browser has no Web Audio — open in Chrome or Firefox",
     errNoWorklet: "this browser has no AudioWorklet — open in Chrome or Firefox",
@@ -793,7 +819,11 @@ const FONT = {
   // кириллица для «РАДИО» и «УКВ»; Д и И — по 4 пикселя в ширину (ширина = длина / 5)
   "Р": "110101110100100", "А": "010101111101101", "О": "010101101101010", "У": "101101011001110",
   "К": "101110100110101", "В": "110101110101110", "Д": "01100110011011111001", "И": "10011011110110011001",
+  // для надписей шкалы: ЖМИ, КРУТИ, ЧИСТО, СИГНАЛ, ШУМ (Ж, Ш, М — по 5 пикселей, Л — 4)
+  "Ч": "101101011001001", "Г": "111100100100100", "Л": "01110101010101011101", "М": "1000111011101011000110001",
+  "Ж": "1010110101011101010110101", "Ш": "1010110101101011010111111",
 };
+FONT["Т"] = FONT.T; FONT["С"] = FONT.C; FONT["Н"] = FONT.H; // одинаковы с латинскими
 function text(g, s, x, y, color, k = 1) {
   g.fillStyle = color;
   for (const ch of s.toUpperCase()) {
@@ -877,13 +907,13 @@ function drawRadio() {
   if (!st.power) {
     if (shared) { // открыли по ссылке: частота уже на шкале, ждёт касания
       text(rg, st.dial.toFixed(1).padStart(5, " "), 65, 30, P.amberDim, 2);
-      if ((tick >> 5) & 1) text(rg, "TOUCH", 65, 41, P.amber);
-    } else if ((tick >> 5) & 1) text(rg, "TURN ME", 76, 34, P.amberDim);
+      if ((tick >> 5) & 1) text(rg, TXT.lcdTouch, 65, 41, P.amber);
+    } else if ((tick >> 5) & 1) text(rg, TXT.lcdTurn, 76, 34, P.amberDim);
   } else {
     text(rg, st.dial.toFixed(1).padStart(5, " "), 65, 30, P.amber, 2);
     const bars = Math.round(st.strength * 5);
     for (let i = 0; i < 5; i++) { rg.fillStyle = i < bars ? P.amber : P.amberDim; rg.fillRect(107 + i * 2, 39 - (i * 2 + 2), 1, i * 2 + 2); }
-    const status = st.strength > 0.95 ? "TUNED" : st.strength > 0 ? "SIGNAL" : "STATIC";
+    const status = st.strength > 0.95 ? TXT.lcdTuned : st.strength > 0 ? TXT.lcdSignal : TXT.lcdStatic;
     text(rg, status, 65, 41, st.strength > 0 ? P.amber : P.amberDim);
     text(rg, TXT.band, 108, 41, P.amberDim);
     const noise = (1 - st.strength) * 0.6 + st.scratchVis; // снег и разрывы строк в окошке
@@ -1262,7 +1292,7 @@ function enqueue(files) {
 }
 function nowTitle() {
   const track = current && playing ? current.name : "";
-  return micOn ? (track ? "MIC · " + track : "MIC") : track;
+  return micOn ? (track ? TXT.fMic + " · " + track : TXT.fMic) : track;
 }
 function sendTitle() { if (hws && hws.readyState === 1) hws.send(JSON.stringify({ title: nowTitle() })); }
 
