@@ -39,22 +39,24 @@ body {
   padding: 16px;
 }
 .wrap { width: min(560px, 100%); margin: 0 auto; min-height: calc(100dvh - 32px); display: flex; flex-direction: column; }
-/* Панель приёмника — внизу страницы: по бокам правила, язык, жалоба и поддержка, в центре «поделиться».
-   На узком экране — столбиком, «поделиться» первым. Видна только на вкладке «слушать». */
+/* Панель приёмника — внизу страницы: в центре поддержка (главная кнопка футера), слева жалоба
+   («поделиться» — под карточкой станции). На узком экране — столбиком, поддержка первой. Только на
+   вкладке «слушать». Под ней, последней строкой на обеих вкладках, — правила и язык. */
 .bar {
   padding-top: 22px;
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px;
   font-size: 12px; color: #9C86BC;
 }
-.bar a { color: inherit; }
+.links { margin: 14px 0 0; text-align: center; font-size: 12px; color: #9C86BC; }
+.links a { color: inherit; }
 .bar .side { display: flex; flex-direction: column; gap: 8px; }
 .bar .left { align-items: flex-start; }
 .bar .right { align-items: flex-end; }
-.bar .share { margin: 0; }
 body:has(#rxView[hidden]) .bar { display: none; }
 @media (max-width: 440px) {
   .bar { grid-template-columns: 1fr; justify-items: center; }
   .bar .mid { order: -1; }
+  .bar .right { display: none; }
   .bar .side { align-items: center; }
 }
 canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
@@ -136,7 +138,7 @@ button, input { font: inherit; color: inherit; }
 .donate[hidden] { display: none; }
 .donateBtn {
   display: flex; align-items: center; gap: 10px; cursor: pointer;
-  font: inherit; font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--ink);
+  font: inherit; font-size: 13px; font-weight: 600; letter-spacing: .08em; color: var(--ink);
   background: linear-gradient(#FFF6E2, var(--cream) 55%, #E6CC9C); border: 0; padding: 6px 12px 6px 9px; margin-bottom: 4px;
   box-shadow: 0 0 0 3px var(--ink), inset 0 -2px 0 #C9A86A, 0 4px 0 3px #3A2A12, 0 4px 0 6px var(--ink);
   transition: transform .07s, box-shadow .07s;
@@ -146,20 +148,29 @@ button, input { font: inherit; color: inherit; }
 .donate.go .donateBtn { animation: keyUp .35s .25s forwards; }
 @keyframes keyUp { to { transform: none; box-shadow: 0 0 0 3px var(--ink), inset 0 -2px 0 #C9A86A, 0 4px 0 3px #3A2A12, 0 4px 0 6px var(--ink); } }
 .donateBtn:focus-visible { outline: 3px solid var(--amber); outline-offset: 8px; }
-.donateBtn .bulb { width: 8px; height: 8px; background: #5A3E14; box-shadow: 0 0 0 2px var(--ink); }
-.donateBtn:hover .bulb { animation: flicker 1.2s steps(2) infinite; }
-@keyframes flicker { 50% { background: #9A6A1E; } }
-.donate.go .bulb { animation: glow 1.6s forwards; }
+.donateBtn .bulb { width: 9px; height: 9px; background: #5A3E14; box-shadow: 0 0 0 2px var(--ink); }
+/* Лампа в покое медленно и тускло дышит; под курсором вспыхивает в такт эфиру (--lv — громкость
+   из animateBody), а в тишине часто мигает. */
+.donateBtn .bulb { animation: breathe 3.2s ease-in-out infinite; }
+@keyframes breathe { 50% { background: #8A5E1C; box-shadow: 0 0 0 2px var(--ink), 0 0 5px 1px rgba(255, 194, 75, .3); } }
+.donate.hot .bulb {
+  animation: none;
+  background: color-mix(in srgb, var(--amber) calc(30% + var(--lv, 0) * 70%), #5A3E14);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 calc(3px + var(--lv, 0) * 16px) calc(var(--lv, 0) * 5px) var(--amber);
+}
+.donate.hot.quiet .bulb { animation: flicker .45s steps(2) infinite; }
+@keyframes flicker { 50% { background: var(--amber); box-shadow: 0 0 0 2px var(--ink), 0 0 8px 2px var(--amber); } }
+.donate.go .bulb, .donate.go.hot .bulb { animation: glow 1.6s forwards; }
 @keyframes glow { 0%, 60% { background: var(--amber); box-shadow: 0 0 0 2px var(--ink), 0 0 12px 3px var(--amber); } 100% { background: #5A3E14; } }
 .donateMenu { /* вверх от клавиши: она внизу страницы */
   position: absolute; bottom: calc(100% + 12px); right: 0; z-index: 5; white-space: nowrap;
   display: grid; gap: 4px; background: var(--cream); padding: 6px; box-shadow: 0 0 0 3px var(--ink);
 }
-@media (max-width: 440px) { .donateMenu { right: 50%; transform: translateX(50%); } }
+.bar .mid .donateMenu { right: 50%; transform: translateX(50%); }
 .donateMenu[hidden] { display: none; }
 .donateMenu a { color: var(--ink); text-decoration: none; padding: 6px 12px; font-size: 13px; }
 .donateMenu a:hover, .donateMenu a:focus-visible { background: var(--amber); outline: none; }
-@media (prefers-reduced-motion: reduce) { .donateBtn:hover .bulb, .donate.go .bulb, .donate.go .donateBtn { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .donateBtn .bulb, .donate.hot.quiet .bulb, .donate.go .bulb, .donate.go .donateBtn { animation: none; } }
 .langSwitch { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 
 .desk { display: flex; align-items: flex-end; justify-content: center; gap: 22px; flex-wrap: wrap; }
@@ -233,6 +244,7 @@ button, input { font: inherit; color: inherit; }
               aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
     <div class="sticker" id="sticker" aria-live="polite"><b id="st1" data-i="stickerIdle">крутни ручку</b><span id="st2">&nbsp;</span></div>
+    <button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button>
   </section>
 
   <!-- Ведущий: табличка эфира, микрофон, три громкости, очередь -->
@@ -295,17 +307,17 @@ button, input { font: inherit; color: inherit; }
   <!-- Панель приёмника внизу страницы -->
   <nav class="bar" id="rxBar">
     <div class="side left">
-      <span><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></span>
       <button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию" data-i-aria="reportAria" data-i="report">REPORT</button>
     </div>
-    <div class="mid"><button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button></div>
-    <div class="side right">
+    <div class="mid">
       <div class="donate" id="donate" hidden>
         <button type="button" class="donateBtn" aria-haspopup="true" aria-expanded="false"><i class="bulb"></i><span data-i="support">SUPPORT</span></button>
         <div class="donateMenu" hidden></div>
       </div>
     </div>
+    <div class="side right"></div>
   </nav>
+  <p class="links"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></p>
 </div>
 
 <script>
@@ -947,6 +959,15 @@ function animateBody() {
   const jx = st.scratchVis > 0.05 ? (Math.random() * 2 - 1) * st.scratchVis * 3 : 0;
   const tf = `translateX(${jx.toFixed(1)}px) scale(${(1 + level * 0.025).toFixed(3)}, ${(1 - level * 0.035).toFixed(3)})`;
   if (tf !== lastTf) { R.style.transform = tf; lastTf = tf; }
+  if (donateHot) { // лампа поддержки — в такт эфиру
+    donateEl.style.setProperty("--lv", level.toFixed(2));
+    donateEl.classList.toggle("quiet", level < 0.03);
+  }
+}
+const donateEl = $("donate");
+let donateHot = false;
+for (const [ev, on] of [["mouseenter", true], ["mouseleave", false], ["focusin", true], ["focusout", false]]) {
+  donateEl.addEventListener(ev, () => { donateHot = on; donateEl.classList.toggle("hot", on); if (!on) donateEl.classList.remove("quiet"); });
 }
 
 // ---------- ручка: бесконечная, в обе стороны ----------
