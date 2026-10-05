@@ -37,23 +37,22 @@ body {
   -webkit-font-smoothing: none;
 }
 
-/* Сцена — таксофон 60 × 92 «пикселя» (--u — один пиксель сцены). Справа стальной корпус — он и
+/* Сцена 74 × 92 «пикселя» (--u — один пиксель сцены): корпус 15–59 стоит по центру (поле справа
+   пустое, под трубку слева). Стальной корпус — он и
    есть интерфейс: табличка, экран, жетоны, кнопки. Слева на рычаге висит трубка 14 × 40, шнур петлёй
    уходит в корпус; снял трубку — она снята с рычага, положил — вернулась. */
 .scene {
   position: relative;
   width: var(--sw);
-  aspect-ratio: 60 / 92;
+  aspect-ratio: 74 / 92;
   container-type: size;
-  --u: calc(100cqw / 60);
+  --u: calc(100cqw / 74);
 }
 /* с кнопкой поддержки под сценой — ещё 3.4em, иначе строка ссылок уходит за край экрана */
 /* ширина сцены — меньшее из «во весь экран» и «во всю высоту»; высоту даёт пропорция. Высоту с
    max-width задавать нельзя: упрёмся в край — пропорция ломается, и пиксели сцены плывут. */
-body { --h: min(calc(100dvh - 24px - 2.2em), 860px); --sw: min(calc(100vw - 24px), calc(var(--h) * 60 / 92)); }
+body { --h: min(calc(100dvh - 24px - 2.2em), 860px); --sw: min(calc(100vw - 24px), calc(var(--h) * 74 / 92)); }
 body:has(#donate:not([hidden])) { --h: min(calc(100dvh - 24px - 5.6em - 10px), 860px); }
-/* «поддержать» и ссылки — по центру корпуса (пиксели 15–59), а не всей сцены: на 7 правее */
-.donate, .foot { transform: translateX(calc(var(--sw) * 7 / 60)); }
 @supports not (aspect-ratio: 1) { .scene { width: 420px; height: 644px; } }
 .scene > canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
 .u { position: absolute; }
@@ -197,7 +196,7 @@ body:has(#donate:not([hidden])) { --h: min(calc(100dvh - 24px - 5.6em - 10px), 8
 </head>
 <body>
 <main class="scene" id="scene">
-  <canvas id="booth" width="60" height="92" aria-hidden="true"></canvas>
+  <canvas id="booth" width="74" height="92" aria-hidden="true"></canvas>
   <div class="u handset" id="handset"><canvas id="art" width="14" height="40" aria-hidden="true"></canvas></div>
 
   <section class="u panel">
@@ -250,7 +249,7 @@ const BOOTH = { out: "#14181B", base: "#59636B", hi: "#76828A", hi2: "#8E9AA1", 
   chr: "#B8C2C7", chrHi: "#E1E8EB", chrLo: "#7D878C", hole: "#0B0E10", panel: "#4E575E" };
 function drawBooth(lifted) {
   const g = document.getElementById("booth").getContext("2d"), C = BOOTH;
-  g.clearRect(0, 0, 60, 92);
+  g.clearRect(0, 0, 74, 92);
   const px = (x, y, c) => { g.fillStyle = c; g.fillRect(x, y, 1, 1); };
   const rect = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
   const x0 = 15, x1 = 59, y0 = 1, y1 = 90; // корпус, углы срезаны на 2
@@ -544,7 +543,7 @@ const TOKEN = tokenSprite(["..kkk..", ".khhbk.", "khhbbbk", "kdddddk", "kbbbbdk"
 const TOKEN_EDGE = tokenSprite(["...k...", "..khk..", "..kbk..", "..kdk..", "..kbk..", "..kdk..", "...k..."]);
 const SOCKET = tokenSprite(["..rrr..", ".rsssr.", "rsssssr", "rsssssr", "rsssssr", ".rsssr.", "..rrr.."]);
 let tokens = { n: -1, max: 0, next: 0, at: 0, busy: false }; // n < 0 — жетоны выключены
-const unit = () => scene.clientWidth / 60;
+const unit = () => scene.clientWidth / 74;
 const slotX = i => 2.75 + i * 8; // левый край i-го жетона в окошке, в «пикселях» окошка
 const mmss = sec => Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
 const tokenLeft = () => Math.max(0, Math.ceil(tokens.next - (Date.now() - tokens.at) / 1000));
