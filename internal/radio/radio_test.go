@@ -412,3 +412,54 @@ func TestListBytesMetric(t *testing.T) {
 		t.Fatalf("ждали %q", want)
 	}
 }
+
+// Лайки доходят до ведущего пачкой с итогом за эфир; частые от одного слушателя не считаются,
+// между станциями лайкать некого.
+func TestLikesReachHost(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=1053&name=X")
+	defer host.Close()
+	ht := readTexts(host)
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+
+	stray, _, _ := dial(t, srv, "/ws/listen") // не настроен — лайк в никуда
+	defer stray.Close()
+	stray.WriteJSON(map[string]bool{"like": true})
+
+	var ls []*websocket.Conn
+	for i := 0; i < 2; i++ {
+		l, _, _ := dial(t, srv, "/ws/listen")
+		defer l.Close()
+		l.WriteJSON(map[string]int{"tune": 1053})
+		ls = append(ls, l)
+	}
+	time.Sleep(100 * time.Millisecond)
+	for _, l := range ls {
+		for i := 0; i < 5; i++ { // пять подряд — засчитается один
+			l.WriteJSON(map[string]bool{"like": true})
+		}
+	}
+	total := 0
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && total < 2 {
+		for _, m := range ht.collect(300 * time.Millisecond) {
+			var v struct{ Likes, Total int }
+			if json.Unmarshal([]byte(m), &v) == nil && v.Likes > 0 {
+				total = v.Total
+			}
+		}
+	}
+	if total != 2 {
+		t.Fatalf("всего лайков у ведущего %d, ждали 2", total)
+	}
+	time.Sleep(likeEvery)
+	ls[0].WriteJSON(map[string]bool{"like": true})
+	for _, m := range ht.collect(time.Second) {
+		if m == `{"likes":1,"total":3}` {
+			return
+		}
+	}
+	t.Fatal("лайк после паузы не дошёл")
+}

@@ -17,7 +17,9 @@
 //	                         только {"title":{"f":1017,"t":"…"}}. Числа слушателей в списке нет:
 //	                         иначе каждый поворот ручки рассылал бы список всем;
 //	                         {"report":true} — жалоба на станцию, на которой стоит,
-//	                         ответ {"report":"yellow"|"banned"|…}
+//	                         ответ {"report":"yellow"|"banned"|…}; {"like":true} — лайк ей же
+//	                         (не чаще likeEvery от слушателя, своей станции — нет), ведущий
+//	                         получает пачкой {"likes":N,"total":T} не чаще раза в likeFlush
 //
 // Модерация (Options.Mod) общая с рулеткой: человек — кука kontakt_id, бан эфира — зона air.
 // Забаненный в эфир не выходит (сокет закрывается с кодом 4003), на жёлтую карточку ведущий
@@ -71,7 +73,11 @@ const (
 
 	CloseBanned    = 4003 // код закрытия сокета ведущего: эфир для него закрыт
 	reportsPerHour = 10   // жалоб от одного человека в час, больше — rate_limited
-	banRecheck     = 30 * time.Second
+	// Лайки: от слушателя не чаще likeEvery (больше — молча не считаются), ведущему — пачкой
+	// раз в likeFlush: сотня слушателей, жмущих сердце, — 4 коротких сообщения в секунду, а не сотни.
+	likeEvery  = 300 * time.Millisecond
+	likeFlush  = 250 * time.Millisecond
+	banRecheck = 30 * time.Second
 )
 
 //go:embed static
@@ -115,6 +121,7 @@ type Hub struct {
 	shares    *metrics.CounterVec
 	reports   *metrics.CounterVec
 	kicked    *metrics.Counter
+	likes     *metrics.Counter
 	ogRenders *metrics.Counter
 	onAir     *metrics.Histogram
 	reg       *metrics.Registry
@@ -142,6 +149,8 @@ type station struct {
 	conn     *websocket.Conn // чтобы снять с эфира
 	wmu      sync.Mutex      // текст ведущему пишут жалобы из разных горутин
 	reported map[string]bool // под Hub.mu: кто уже жаловался на этот эфир
+	likes    int             // под Hub.mu: лайков ещё не отправлено ведущему
+	likesAll int             // под Hub.mu: всего за этот эфир
 }
 
 type listener struct {
@@ -153,6 +162,7 @@ type listener struct {
 	heard      *station // станция, которую слышит, и с какого момента (под Hub.mu)
 	heardSince time.Time
 	counted    bool // прослушивание уже засчитано
+	lastLike   time.Time
 	stale      bool // под Hub.mu: не влезло сообщение о треке — при следующем тике полный список
 }
 
@@ -198,6 +208,7 @@ func NewHub(opt Options) *Hub {
 		"Жалобы на станции по исходу: yellow, banned, noted — от новичка (в зачёт не пошла), остальное — не принята",
 		"result", "yellow", "banned", "noted", "already", "no_station", "listen_more", "self", "rate_limited", "no_identity", "error")
 	h.kicked = h.reg.Counter("kontakt_radio_hosts_banned_total", "Станции, снятые с эфира баном")
+	h.likes = h.reg.Counter("kontakt_radio_likes_total", "Лайки станциям от слушателей (принятые)")
 	h.listBytes = h.reg.Counter("kontakt_radio_list_bytes_total",
 		"Байты списков станций, отправленные приёмникам (служебный трафик сверх звука)")
 	h.hosts = h.reg.Counter("kontakt_radio_host_sessions_total", "Выходы станций в эфир")
@@ -400,15 +411,25 @@ func (h *Hub) listMessage() (uint64, []byte) {
 	return v, h.listJSON
 }
 
-// hostListeners шлёт ведущему число его слушателей, когда оно изменилось.
+// hostListeners шлёт ведущему число его слушателей, когда оно изменилось, и лайки пачкой.
 func (h *Hub) hostListeners(s *station, done <-chan struct{}) {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
+	lt := time.NewTicker(likeFlush)
+	defer lt.Stop()
 	last := -1
 	for {
 		select {
 		case <-done:
 			return
+		case <-lt.C:
+			h.mu.Lock()
+			n, all := s.likes, s.likesAll
+			s.likes = 0
+			h.mu.Unlock()
+			if n > 0 {
+				s.sayHost(map[string]int{"likes": n, "total": all})
+			}
 		case <-t.C:
 			h.mu.Lock()
 			n := len(s.subs)
@@ -628,12 +649,16 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 		var m struct {
 			Tune   *int `json:"tune"`
 			Report bool `json:"report"`
+			Like   bool `json:"like"`
 		}
 		if json.Unmarshal(data, &m) != nil {
 			continue
 		}
 		if m.Tune != nil {
 			h.tune(l, *m.Tune)
+		}
+		if m.Like {
+			h.like(l)
 		}
 		if m.Report {
 			b, _ := json.Marshal(map[string]string{"report": h.report(l)})
@@ -741,6 +766,21 @@ func (h *Hub) countListen(l *listener) {
 	if ok {
 		h.opt.Mod.Seen(l.id)
 	}
+}
+
+// like — лайк станции, которую слушатель сейчас слышит. Не чаще likeEvery; свою станцию (та же
+// кука) лайкнуть нельзя. Ответа нет: сердце слушатель рисует сам, ведущему уходит пачкой.
+func (h *Hub) like(l *listener) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s, now := l.heard, time.Now()
+	if s == nil || h.st[s.freq] != s || (l.id != "" && s.host == l.id) || now.Sub(l.lastLike) < likeEvery {
+		return
+	}
+	l.lastLike = now
+	s.likes++
+	s.likesAll++
+	h.likes.Inc()
 }
 
 // report — слушатель жалуется на станцию, которую слышит не меньше ReportAfter.

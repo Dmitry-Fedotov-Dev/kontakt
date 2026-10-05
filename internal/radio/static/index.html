@@ -114,6 +114,37 @@ button, input { font: inherit; color: inherit; }
 .report { background: none; border: 1px solid #6B5A86; color: #9C86BC; font: inherit; font-size: 11px; padding: 3px 10px; cursor: pointer; }
 .report[hidden] { display: none; }
 .reportRow { text-align: center; margin-top: 12px; }
+/* Лайк: пиксельное сердце рядом с «поделиться». У ведущего сердца всплывают поверх экрана. */
+.rxRow { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 14px; }
+.rxRow .share { margin: 0; }
+.likeBtn { padding: 4px 8px 5px; line-height: 0; }
+.likeBtn[hidden] { display: none !important; }
+.heartImg { width: 27px; height: 24px; image-rendering: pixelated; display: inline-block; }
+.likeBtn.beat .heartImg { animation: beat .25s steps(3); }
+@keyframes beat { 50% { transform: scale(1.3); } }
+.likeCount { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 8px; font-weight: 600; color: var(--cream); }
+.likeCount[hidden] { display: none !important; }
+.likeCount .heartImg { width: 18px; height: 16px; }
+.likeCount.bump span { animation: beat .3s steps(3); }
+.hearts { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 20; }
+.hearts img {
+  position: absolute; image-rendering: pixelated; width: calc(27px * var(--k)); height: calc(24px * var(--k));
+  animation: rise var(--t) steps(28) forwards;
+}
+@keyframes rise {
+  0% { transform: translate(0, 0) scale(.4); opacity: 0; }
+  10% { transform: translate(0, -4vh) scale(1); opacity: 1; }
+  40% { transform: translate(calc(var(--dx) * -1), -26vh); }
+  70% { transform: translate(var(--dx), -46vh); opacity: .9; }
+  100% { transform: translate(calc(var(--dx) * -.5), -64vh); opacity: 0; }
+}
+.hearts img.pop { animation-name: pop; } /* у слушателя — коротко над кнопкой */
+@keyframes pop {
+  0% { transform: translate(0, 0) scale(.5); opacity: 0; }
+  20% { transform: translate(0, -18px) scale(1); opacity: 1; }
+  100% { transform: translate(var(--dx), -90px) scale(.8); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .hearts img { animation-timing-function: steps(4); } }
 .report.armed { background: #C0392B; border-color: #C0392B; color: var(--cream); }
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10;
@@ -242,7 +273,10 @@ button, input { font: inherit; color: inherit; }
               aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
     <div class="sticker" id="sticker" aria-live="polite"><b id="st1" data-i="stickerIdle">крутни ручку</b><span id="st2">&nbsp;</span></div>
-    <button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button>
+    <div class="rxRow">
+      <button class="btn likeBtn" id="likeRx" hidden aria-label="Like" data-i-aria="likeAria"><img class="heartImg" alt=""></button>
+      <button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button>
+    </div>
     <div class="reportRow"><button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию" data-i-aria="reportAria" data-i="report">REPORT</button></div>
   </section>
 
@@ -256,6 +290,7 @@ button, input { font: inherit; color: inherit; }
       </div>
       <input class="name" id="name" maxlength="24" placeholder="название станции" autocomplete="off" aria-label="Название станции" data-i-ph="namePh" data-i-aria="nameAria">
       <div class="hint" id="hostHint">&nbsp;</div>
+      <div class="likeCount" id="likeCount" hidden><img class="heartImg" alt=""><span id="likeTotal">0</span></div>
       <div class="rules" data-i-html="consentHtml">выходя в эфир, ты подтверждаешь, что тебе 18+, и принимаешь <a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила</a></div>
       <button class="btn share" id="shareTx" hidden data-i="share">SHARE ↗</button>
     </div>
@@ -315,6 +350,8 @@ button, input { font: inherit; color: inherit; }
   <p class="links"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></p>
 </div>
 
+<div class="hearts" id="hearts" aria-hidden="true"></div>
+
 <script>
 "use strict";
 const MIN = 87.5, MAX = 108.0, SPAN = MAX - MIN + 0.1; // шкала замкнута в кольцо: после 108.0 снова 87.5
@@ -326,6 +363,7 @@ const I18N = {
   ru: {
     title: "Открытое радио", other: "English", terms: "terms.html",
     support: "ПОДДЕРЖАТЬ", anyCard: "картой любой страны ♥", ruCard: "картой из России ₽",
+    likeAria: "Лайк станции", likesTitle: "лайков за этот эфир",
     description: "Крути ручку — между станциями шорох. Или займи свою волну: микрофон, музыка.",
     modeAria: "Режим", listen: "СЛУШАТЬ", broadcast: "ВЕЩАТЬ",
     knobAria: "Ручка настройки: крутите, чтобы переключать станции",
@@ -383,6 +421,7 @@ const I18N = {
   en: {
     title: "Open Radio", other: "Русский", terms: "terms-en.html",
     support: "SUPPORT", anyCard: "any card ♥", ruCard: "Russian card ₽",
+    likeAria: "Like the station", likesTitle: "likes this broadcast",
     description: "Turn the knob — static between stations. Or take your own frequency: mic and music.",
     modeAria: "Mode", listen: "LISTEN", broadcast: "BROADCAST",
     knobAria: "Tuning knob: turn it to change stations",
@@ -1257,6 +1296,7 @@ function connectHost() {
   hws = ws;
   ws.onopen = () => {
     opened = true; retries = 0; reconnecting = false; st.onAir = true; $("name").disabled = true;
+    $("likeCount").hidden = true; // у нового эфира свой счёт
     sendTitle(); renderHost();
   };
   ws.onmessage = e => {
@@ -1265,6 +1305,7 @@ function connectHost() {
       const m = JSON.parse(e.data);
       if (m.card === "yellow") showError(TXT.yellowCard);
       if (typeof m.listeners === "number") { st.hostListeners = m.listeners; renderHost(); }
+      if (typeof m.likes === "number") gotLikes(m.likes, m.total);
     } catch (_) {}
   };
   ws.onclose = e => {
@@ -1504,10 +1545,55 @@ setInterval(() => {
   $("shareRx").hidden = !(st.power && s && d < CATCH);
   if (st.power) mediaSession(s && d < CATCH ? s : null);
   $("reportRx").hidden = $("shareRx").hidden || !me.moderation;
+  $("likeRx").hidden = $("shareRx").hidden;
   $("shareTx").hidden = !st.onAir;
   if (!$("shareRx").hidden) shortFor(s.f, s.n, s.t || "");
   if (st.onAir) shortFor(st.hostFreq, $("name").value.trim(), nowTitle());
 }, 300);
+
+// ---------- лайки ----------
+// Слушатель жмёт сердце — сервер копит лайки и раз в 250 мс шлёт ведущему {"likes":N,"total":T};
+// у ведущего сердца всплывают поверх экрана. Чаще раза в 300 мс от слушателя сервер не считает —
+// так же ограничена и кнопка.
+const HEART = (() => { // 9 × 8: обводка, заливка, блик
+  const rows = [".kk...kk.", "krrk.krrk", "krwrrrrrk", "krrrrrrrk", ".krrrrrk.", "..krrrk..", "...krk...", "....k...."];
+  const c = document.createElement("canvas"); c.width = 9; c.height = 8;
+  const g = c.getContext("2d"), col = { k: "#1E0F0A", r: "#E8433A", w: "#FFB3A6" };
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) { g.fillStyle = col[ch]; g.fillRect(x, y, 1, 1); } }));
+  return c.toDataURL();
+})();
+document.querySelectorAll(".heartImg").forEach(i => { i.src = HEART; });
+$("likeCount").title = TXT.likesTitle;
+function floatHeart(x, y, k, t, pop) { // одно сердце от точки x,y вверх, k — масштаб, t — секунды
+  const box = $("hearts");
+  if (box.childElementCount > 60) return; // ливень лайков — лишние не рисуем
+  const i = document.createElement("img");
+  i.src = HEART; i.alt = ""; if (pop) i.className = "pop";
+  i.style.left = (x - 13.5 * k) + "px"; i.style.top = (y - 12 * k) + "px";
+  i.style.setProperty("--k", k); i.style.setProperty("--t", t + "s");
+  i.style.setProperty("--dx", pop ? ((Math.random() * 2 - 1) * 14).toFixed(0) + "px" : ((Math.random() * 2 - 1) * 5).toFixed(1) + "vw");
+  i.addEventListener("animationend", () => i.remove());
+  box.append(i);
+}
+let likeAt = 0;
+$("likeRx").onclick = () => {
+  const now = performance.now();
+  if (now - likeAt < 300) return;
+  likeAt = now;
+  const b = $("likeRx"), r = b.getBoundingClientRect();
+  b.classList.remove("beat"); void b.offsetWidth; b.classList.add("beat");
+  floatHeart(r.left + r.width / 2, r.top, 0.8, 0.9, true);
+  if (lws && lws.readyState === 1) lws.send(JSON.stringify({ like: true }));
+};
+function gotLikes(n, total) { // ведущему: n новых — сердца снизу экрана, счётчик за эфир
+  for (let i = 0; i < Math.min(n, 12); i++) {
+    setTimeout(() => floatHeart(window.innerWidth * (0.15 + Math.random() * 0.7), window.innerHeight - 20,
+      1 + Math.random() * 0.8, 2.4 + Math.random() * 1.2), i * 90);
+  }
+  const c = $("likeCount");
+  c.hidden = false; $("likeTotal").textContent = total;
+  c.classList.remove("bump"); void c.offsetWidth; c.classList.add("bump");
+}
 
 // ---------- жалоба на станцию ----------
 // Модерация общая с рулеткой: на станцию жалуются слушатели, бан закрывает эфир (слушать можно).
