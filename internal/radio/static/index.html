@@ -39,26 +39,16 @@ body {
   padding: 16px;
 }
 .wrap { width: min(560px, 100%); margin: 0 auto; min-height: calc(100dvh - 32px); display: flex; flex-direction: column; }
-/* Панель приёмника — внизу страницы: в центре поддержка (главная кнопка футера), слева жалоба
-   («поделиться» — под карточкой станции). На узком экране — столбиком, поддержка первой. Только на
-   вкладке «слушать». Под ней, последней строкой на обеих вкладках, — правила и язык. */
+/* Панель приёмника — внизу страницы: клавиша поддержки, главная кнопка футера («поделиться» и
+   жалоба — под карточкой станции). Только на вкладке «слушать». Под ней, последней строкой на обеих
+   вкладках, — правила и язык. */
 .bar {
   padding-top: 22px;
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px;
-  font-size: 12px; color: #9C86BC;
+  display: flex; justify-content: center;
 }
 .links { margin: 14px 0 0; text-align: center; font-size: 12px; color: #9C86BC; }
 .links a { color: inherit; }
-.bar .side { display: flex; flex-direction: column; gap: 8px; }
-.bar .left { align-items: flex-start; }
-.bar .right { align-items: flex-end; }
 body:has(#rxView[hidden]) .bar { display: none; }
-@media (max-width: 440px) {
-  .bar { grid-template-columns: 1fr; justify-items: center; }
-  .bar .mid { order: -1; }
-  .bar .right { display: none; }
-  .bar .side { align-items: center; }
-}
 canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 button, input { font: inherit; color: inherit; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
@@ -123,6 +113,7 @@ button, input { font: inherit; color: inherit; }
 /* жалоба — внизу и неброско: случайно не нажать, но найти можно */
 .report { background: none; border: 1px solid #6B5A86; color: #9C86BC; font: inherit; font-size: 11px; padding: 3px 10px; cursor: pointer; }
 .report[hidden] { display: none; }
+.reportRow { text-align: center; margin-top: 12px; }
 .report.armed { background: #C0392B; border-color: #C0392B; color: var(--cream); }
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10;
@@ -245,6 +236,7 @@ button, input { font: inherit; color: inherit; }
     </div>
     <div class="sticker" id="sticker" aria-live="polite"><b id="st1" data-i="stickerIdle">крутни ручку</b><span id="st2">&nbsp;</span></div>
     <button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button>
+    <div class="reportRow"><button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию" data-i-aria="reportAria" data-i="report">REPORT</button></div>
   </section>
 
   <!-- Ведущий: табличка эфира, микрофон, три громкости, очередь -->
@@ -306,16 +298,12 @@ button, input { font: inherit; color: inherit; }
 
   <!-- Панель приёмника внизу страницы -->
   <nav class="bar" id="rxBar">
-    <div class="side left">
-      <button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию" data-i-aria="reportAria" data-i="report">REPORT</button>
-    </div>
     <div class="mid">
       <div class="donate" id="donate" hidden>
         <button type="button" class="donateBtn" aria-haspopup="true" aria-expanded="false"><i class="bulb"></i><span data-i="support">SUPPORT</span></button>
         <div class="donateMenu" hidden></div>
       </div>
     </div>
-    <div class="side right"></div>
   </nav>
   <p class="links"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></p>
 </div>
