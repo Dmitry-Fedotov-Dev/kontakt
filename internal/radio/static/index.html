@@ -125,7 +125,7 @@ button, input { font: inherit; color: inherit; }
 /* Лайк: пиксельное сердце рядом с «поделиться». У ведущего сердца всплывают поверх экрана. */
 .rxRow { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 14px; min-height: 46px; }
 .rxRow .share { margin: 0; }
-.shareRow { text-align: center; min-height: 46px; margin-top: 10px; } /* место занято всегда: приёмник не прыгает */
+.shareRow { text-align: center; min-height: 40px; margin-top: 14px; } /* место занято всегда: приёмник не прыгает */
 .shareRow .share { display: inline-block; margin: 0; }
 .envImg { width: 33px; height: 27px; image-rendering: pixelated; display: inline-block; }
 .letterBtn { position: relative; }
@@ -309,8 +309,8 @@ button, input { font: inherit; color: inherit; }
               aria-label="Ручка настройки: крутите, чтобы переключать станции" data-i-aria="knobAria"
               aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
-    <div class="shareRow"><button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button></div>
     <div class="sticker" id="sticker" aria-live="polite"><b id="st1" data-i="stickerIdle">крутни ручку</b><span id="st2">&nbsp;</span></div>
+    <div class="shareRow"><button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button></div>
     <div class="rxRow">
       <button class="btn likeBtn" id="likeRx" hidden aria-label="Like" data-i-aria="likeAria"><img class="heartImg" alt=""></button>
       <button class="btn likeBtn letterBtn" id="letterRx" hidden aria-label="Letter" data-i-aria="letterAria"><img class="envImg" alt=""><span class="cool" id="letterCool"></span></button>
