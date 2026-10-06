@@ -1,0 +1,3 @@
+/* название под иконкой и объяснение, зачем микрофон */
+CFBundleDisplayName = "Open Radio";
+NSMicrophoneUsageDescription = "The microphone is used only while you broadcast on your frequency.";

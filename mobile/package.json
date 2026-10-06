@@ -1,0 +1,23 @@
+{
+  "name": "open-radio-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Открытое радио — приложение для Android и iOS: обёртка Capacitor вокруг https://openline.one/radio/",
+  "scripts": {
+    "sync": "cap sync",
+    "assets": "capacitor-assets generate --iconBackgroundColor '#2B1B3D' --iconBackgroundColorDark '#2B1B3D' --splashBackgroundColor '#2B1B3D' --splashBackgroundColorDark '#2B1B3D'"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/ios": "8.5.2",
+    "@capacitor/splash-screen": "8.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.5.2"
+  },
+  "allowScripts": {
+    "sharp@0.32.6": true
+  }
+}

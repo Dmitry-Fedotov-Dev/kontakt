@@ -704,8 +704,28 @@ async function holdScreen(on) {
   } catch (_) { /* не дали (энергосбережение, старый браузер) — эфир идёт и так */ }
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") holdScreen(st.onAir); });
+// ---------- приложение (Android) ----------
+// В приложении страница та же. Пока звук включён — слушаешь или ведёшь эфир, — Android держит
+// процесс сервисом с уведомлением, и эфир идёт в фоне. «Стоп» в уведомлении глушит звук до
+// следующего касания экрана. В браузере и на iOS (там фон даёт сама система) — ничего не делает.
+const appRadio = window.Capacitor && window.Capacitor.isPluginAvailable && window.Capacitor.isPluginAvailable("RadioService")
+  ? window.Capacitor.Plugins.RadioService : null;
+let appKey = "", appMuted = false;
+function appAir(title, text, mic) {
+  if (!appRadio) return;
+  const key = appMuted ? "" : title + "|" + text + "|" + mic;
+  if (key === appKey) return;
+  appKey = key;
+  (key ? appRadio.start({ title, text, mic }) : appRadio.stop()).catch(() => {});
+}
+if (appRadio) appRadio.addListener("stop", () => {
+  appMuted = true; appKey = "";
+  if (ctx) ctx.suspend().catch(() => {});
+  if (rxEl) rxEl.pause();
+});
 // Любое касание — повод разбудить звук, если браузер его приостановил.
 ["pointerdown", "keydown"].forEach(ev => document.addEventListener(ev, () => {
+  appMuted = false;
   if (ctx && ctx.state !== "running") ctx.resume().catch(() => { /* не разрешили и сейчас — попробуем при следующем касании */ });
   if (rxEl && rxEl.paused) rxEl.play().catch(() => {});
 }, true));
@@ -1544,6 +1564,9 @@ setInterval(() => {
   const { s, d } = nearest(st.dial);
   $("shareRx").hidden = !(st.power && s && d < CATCH);
   if (st.power) mediaSession(s && d < CATCH ? s : null);
+  if (st.onAir) appAir(($("name").value.trim() || TXT.title) + " · " + TXT.freq(st.hostFreq), TXT.onAirHint, true);
+  else if (st.power) appAir(s && d < CATCH ? s.n : TXT.betweenStations, s && d < CATCH ? TXT.freq(s.f) + (s.t ? " · " + s.t : "") : TXT.title, false);
+  else appAir("", "", false);
   $("reportRx").hidden = $("shareRx").hidden || !me.moderation;
   $("likeRx").hidden = $("shareRx").hidden;
   $("shareTx").hidden = !st.onAir;

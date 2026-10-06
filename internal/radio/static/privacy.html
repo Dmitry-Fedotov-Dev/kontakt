@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Конфиденциальность · Открытое радио</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root { --sky: #2B1B3D; --cream: #FFE9C2; --soft: #C9B6E4; --amber: #FFC24B; }
+body { margin: 0; background: var(--sky); color: var(--cream); font: 17px/1.6 "PT Sans", system-ui, sans-serif; padding: 32px 16px 48px; }
+main { max-width: 64ch; margin: 0 auto; }
+h1 { font: 600 34px/1.1 "Pixelify Sans", monospace; margin: 0 0 6px; color: var(--amber); }
+h2 { font: 600 21px/1.2 "Pixelify Sans", monospace; margin: 28px 0 6px; color: var(--amber); }
+p, li { margin: 0 0 10px; }
+.note { color: var(--soft); font-size: 15px; }
+a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Конфиденциальность</h1>
+  <p class="note"><a href="privacy-en.html" lang="en">English</a> · Открытое радио — сайт openline.one/radio и приложения для Android и iOS. Редакция 1, 6 октября 2026.</p>
+
+  <h2>Коротко</h2>
+  <p>Аккаунтов нет. Эфир не записывается. Мы не знаем, кто вы, и не продаём и не передаём данные никому.</p>
+
+  <h2>Что есть у сервиса</h2>
+  <ul>
+    <li><b>Кука kontakt_id</b> — случайный номер браузера или приложения. Нужна только для модерации: чтобы бан действовал. Из неё не узнать, кто вы.</li>
+    <li><b>База модерации</b> — хеш этой куки, баны, жалобы (без того, кто жаловался, — только отпечаток, который нельзя связать с жалобщиком) и даты без времени.</li>
+    <li><b>Короткие ссылки на волну</b> — частота, название станции и трека, только если кто-то сам поделился ссылкой.</li>
+    <li><b>Счётчики для мониторинга</b> — сколько станций и слушателей, без названий и без людей.</li>
+  </ul>
+
+  <h2>Чего у сервиса нет</h2>
+  <ul>
+    <li>записей эфира и истории того, что играло;</li>
+    <li>IP-адресов в журналах, геолокации, контактов, рекламных идентификаторов;</li>
+    <li>сторонней аналитики и рекламы.</li>
+  </ul>
+  <p>Хостинг и сети связи видят IP-адреса по своим правилам.</p>
+
+  <h2>Разрешения приложения</h2>
+  <ul>
+    <li><b>Микрофон</b> — только когда вы сами ведёте эфир и включаете микрофон. Звук уходит слушателям вживую и нигде не сохраняется.</li>
+    <li><b>Уведомления и работа в фоне</b> — чтобы эфир играл при погашенном экране; в уведомлении видно, что звучит, и есть кнопка «Стоп».</li>
+  </ul>
+
+  <h2>Mp3-файлы ведущего</h2>
+  <p>Не загружаются на сервер: играют с вашего устройства, в эфир уходит только звук.</p>
+
+  <h2>Дети</h2>
+  <p>Вести эфир можно с 18 лет. Сервис не предназначен для детей и не собирает их данные.</p>
+
+  <h2>Удаление данных</h2>
+  <p>Удалите куку (очистите данные сайта или приложения) — и связь с вашим устройством пропадёт. Записи модерации привязаны только к хешу куки. Вопросы — владельцу сервиса через <a href="https://github.com/Dmitry-Fedotov-Dev/kontakt/issues">github.com/Dmitry-Fedotov-Dev/kontakt</a>.</p>
+
+  <p class="note"><a href="terms.html">Правила радио</a> · <a href="./">← К радио</a></p>
+</main>
+</body>
+</html>

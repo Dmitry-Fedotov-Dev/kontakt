@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Open Radio</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #2B1B3D; color: #FFE9C2; font: 600 18px/1.4 ui-monospace, monospace;
+         display: grid; place-items: center; text-align: center; padding: 24px; box-sizing: border-box; }
+  button { margin-top: 18px; font: inherit; color: #1E0F0A; background: #FFC24B; border: 0; padding: 10px 20px;
+           box-shadow: 0 0 0 3px #1E0F0A; }
+  small { display: block; margin-top: 8px; color: #C9B6E4; font-weight: 400; font-size: 14px; }
+</style>
+</head>
+<body>
+  <div>
+    <div id="t">Нет связи с эфиром</div>
+    <small id="s">Проверьте интернет и попробуйте ещё раз.</small>
+    <button id="b" onclick="location.href='https://openline.one/radio/'">Ещё раз</button>
+  </div>
+<script>
+  // Страница на случай, когда сайт радио недоступен: приложение показывает её вместо ошибки.
+  if (!/^(ru|uk|be|kk|ky)\b/i.test(navigator.language || "")) {
+    document.documentElement.lang = "en";
+    document.getElementById("t").textContent = "No connection to the air";
+    document.getElementById("s").textContent = "Check your internet and try again.";
+    document.getElementById("b").textContent = "Try again";
+  }
+</script>
+</body>
+</html>

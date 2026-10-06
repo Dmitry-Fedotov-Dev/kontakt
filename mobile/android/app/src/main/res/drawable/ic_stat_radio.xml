@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- значок уведомления: пиксельный приёмник с антенной, одноцветный (Android красит сам) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M17,2h2v2h-2zM15,4h2v2h-2zM13,6h2v1h-2zM3,7h18v12h-18zM5,9v8h7v-8zM14,9v3h5v-3zM15,14v3h3v-3zM5,19h3v2h-3zM16,19h3v2h-3z"
+        android:fillType="evenOdd" />
+</vector>

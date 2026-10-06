@@ -1,0 +1,73 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace = "one.openline.radio"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "one.openline.radio"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // номер сборки — из CI (github.run_number), версия — из package.json приложения
+        versionCode (System.getenv("VERSION_CODE") ?: "1").toInteger()
+        versionName (System.getenv("VERSION_NAME") ?: "1.0.0")
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    // Ключ загрузки для Google Play — только из окружения (секреты CI) или из keystore.properties
+    // рядом, которого нет в git. Без ключа релиз собирается неподписанным.
+    signingConfigs {
+        release {
+            def props = new Properties()
+            def f = rootProject.file("keystore.properties")
+            if (f.exists()) f.withInputStream { props.load(it) }
+            def path = System.getenv("UPLOAD_KEYSTORE") ?: props["storeFile"]
+            if (path) {
+                storeFile file(path)
+                storeType "pkcs12"
+                storePassword System.getenv("UPLOAD_KEYSTORE_PASSWORD") ?: props["storePassword"]
+                keyAlias System.getenv("UPLOAD_KEY_ALIAS") ?: props["keyAlias"]
+                keyPassword System.getenv("UPLOAD_KEY_PASSWORD") ?: props["keyPassword"]
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (signingConfigs.release.storeFile) signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

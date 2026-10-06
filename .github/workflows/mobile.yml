@@ -1,0 +1,127 @@
+# Приложение «Открытое радио» (mobile/, Capacitor): сборки для Android и iOS.
+# Android: APK (поставить напрямую) и AAB (Google Play); подписываются, если в секретах есть ключ
+# загрузки (UPLOAD_KEYSTORE_B64, UPLOAD_KEYSTORE_PASSWORD, UPLOAD_KEY_ALIAS).
+# iOS: проверочные сборки без подписи; с секретами App Store Connect (ASC_KEY_ID, ASC_ISSUER_ID,
+# ASC_KEY_P8, APPLE_TEAM_ID) — архив и выгрузка в TestFlight. Подробно — mobile/STORES.md.
+name: mobile
+
+on:
+  push:
+    branches: [main]
+    paths: ["mobile/**", ".github/workflows/mobile.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: echo "VERSION_NAME=$(node -p 'require("./package.json").version')" >> "$GITHUB_ENV"
+      - run: npx cap sync android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Ключ загрузки Google Play
+        env:
+          KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "секретов нет — релиз будет без подписи"; exit 0; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.p12"
+          {
+            echo "UPLOAD_KEYSTORE=$RUNNER_TEMP/upload.p12"
+            echo "UPLOAD_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "UPLOAD_KEY_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "UPLOAD_KEY_ALIAS=$KEY_ALIAS"
+          } >> "$GITHUB_ENV"
+      - name: Сборка
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleDebug assembleRelease bundleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: open-radio-android-${{ env.VERSION_NAME }}-${{ github.run_number }}
+          path: |
+            mobile/android/app/build/outputs/apk/debug/*.apk
+            mobile/android/app/build/outputs/apk/release/*.apk
+            mobile/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      HAS_ASC: ${{ secrets.ASC_KEY_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: echo "VERSION_NAME=$(node -p 'require("./package.json").version')" >> "$GITHUB_ENV"
+      - run: npx cap sync ios
+      - name: Сборка для симулятора и устройства (без подписи)
+        working-directory: mobile/ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim \
+            MARKETING_VERSION="$VERSION_NAME" CURRENT_PROJECT_VERSION="${{ github.run_number }}" build | tail -20
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build/dev CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$VERSION_NAME" CURRENT_PROJECT_VERSION="${{ github.run_number }}" build | tail -20
+          cd build/sim/Build/Products/Release-iphonesimulator && zip -qr "$GITHUB_WORKSPACE/open-radio-simulator.zip" App.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: open-radio-ios-simulator-${{ env.VERSION_NAME }}-${{ github.run_number }}
+          path: open-radio-simulator.zip
+      # TestFlight: архив с автоматической подписью по ключу App Store Connect и выгрузка.
+      - name: Архив и выгрузка в TestFlight
+        if: env.HAS_ASC == 'true'
+        working-directory: mobile/ios/App
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          KEY="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s' "$ASC_KEY_P8" > "$KEY"
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$VERSION_NAME" CURRENT_PROJECT_VERSION="${{ github.run_number }}" "${AUTH[@]}" archive | tail -20
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}" | tail -20

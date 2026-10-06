@@ -1,0 +1,26 @@
+{
+  "appId": "one.openline.radio",
+  "appName": "Open Radio",
+  "webDir": "www",
+  "server": {
+    "url": "https://openline.one/radio/",
+    "allowNavigation": ["openline.one"],
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#2B1B3D"
+  },
+  "ios": {
+    "backgroundColor": "#2B1B3D",
+    "contentInset": "always",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "backgroundColor": "#2B1B3D",
+      "showSpinner": false
+    }
+  }
+}

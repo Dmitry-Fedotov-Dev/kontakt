@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Open Radio</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root { --sky: #2B1B3D; --cream: #FFE9C2; --soft: #C9B6E4; --amber: #FFC24B; }
+body { margin: 0; background: var(--sky); color: var(--cream); font: 17px/1.6 "PT Sans", system-ui, sans-serif; padding: 32px 16px 48px; }
+main { max-width: 64ch; margin: 0 auto; }
+h1 { font: 600 34px/1.1 "Pixelify Sans", monospace; margin: 0 0 6px; color: var(--amber); }
+h2 { font: 600 21px/1.2 "Pixelify Sans", monospace; margin: 28px 0 6px; color: var(--amber); }
+p, li { margin: 0 0 10px; }
+.note { color: var(--soft); font-size: 15px; }
+a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy</h1>
+  <p class="note"><a href="privacy.html" lang="ru">Русский</a> · Open Radio — the website openline.one/radio and the Android and iOS apps. Revision 1, October 6, 2026.</p>
+
+  <h2>In short</h2>
+  <p>There are no accounts. The air is not recorded. We don't know who you are, and we don't sell or share data with anyone.</p>
+
+  <h2>What the service has</h2>
+  <ul>
+    <li><b>The kontakt_id cookie</b> — a random number of your browser or app. It is used only for moderation, so that a ban works. It can't tell anyone who you are.</li>
+    <li><b>The moderation database</b> — a hash of that cookie, bans, reports (not who reported — only a fingerprint that can't be linked to the reporter) and dates without time.</li>
+    <li><b>Short links to a frequency</b> — the frequency, station and track name, only if someone chose to share a link.</li>
+    <li><b>Monitoring counters</b> — how many stations and listeners, without names and without people.</li>
+  </ul>
+
+  <h2>What the service doesn't have</h2>
+  <ul>
+    <li>recordings of the air or a history of what was played;</li>
+    <li>IP addresses in logs, location, contacts, advertising identifiers;</li>
+    <li>third-party analytics or ads.</li>
+  </ul>
+  <p>Hosting and network providers see IP addresses under their own rules.</p>
+
+  <h2>App permissions</h2>
+  <ul>
+    <li><b>Microphone</b> — only when you broadcast yourself and turn the mic on. The sound goes to listeners live and is not stored anywhere.</li>
+    <li><b>Notifications and background work</b> — so the air keeps playing with the screen off; the notification shows what is playing and has a Stop button.</li>
+  </ul>
+
+  <h2>The host's mp3 files</h2>
+  <p>They are not uploaded to the server: they play from your device, only the sound goes on air.</p>
+
+  <h2>Children</h2>
+  <p>You must be 18 or older to broadcast. The service is not intended for children and does not collect their data.</p>
+
+  <h2>Deleting data</h2>
+  <p>Delete the cookie (clear the site or app data) and the link to your device is gone. Moderation records are tied only to the cookie hash. Questions — to the owner of the service via <a href="https://github.com/Dmitry-Fedotov-Dev/kontakt/issues">github.com/Dmitry-Fedotov-Dev/kontakt</a>.</p>
+
+  <p class="note"><a href="terms-en.html">Radio rules</a> · <a href="./">← Back to the radio</a></p>
+</main>
+</body>
+</html>
