@@ -481,7 +481,20 @@ func TestSocketsUnderRadioPrefix(t *testing.T) {
 	}
 	defer l.Close()
 	l.WriteJSON(map[string]int{"tune": 1053})
-	host.WriteMessage(websocket.BinaryMessage, frame(7))
+	// кадры — пока слушатель не получит первый: настройка на волну доходит до сервера не сразу,
+	// и одиночный кадр мог уйти раньше неё (в CI тест падал по тайм-ауту)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-time.After(20 * time.Millisecond):
+				host.WriteMessage(websocket.BinaryMessage, frame(7))
+			}
+		}
+	}()
 	if b := readAudio(t, l); b[0] != 7 {
 		t.Fatalf("кадр %v", b[0])
 	}
