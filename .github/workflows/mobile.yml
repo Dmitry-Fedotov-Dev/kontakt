@@ -3,11 +3,13 @@
 # загрузки (UPLOAD_KEYSTORE_B64, UPLOAD_KEYSTORE_PASSWORD, UPLOAD_KEY_ALIAS).
 # iOS: проверочные сборки без подписи; с секретами App Store Connect (ASC_KEY_ID, ASC_ISSUER_ID,
 # ASC_KEY_P8, APPLE_TEAM_ID) — архив и выгрузка в TestFlight. Подробно — mobile/STORES.md.
+# Релиз: тег app-vX.Y.Z → версия X.Y.Z, сборки и GitHub Release с APK, AAB и сборкой для симулятора.
 name: mobile
 
 on:
   push:
     branches: [main]
+    tags: ["app-v*"] # для тегов фильтр paths не действует — релиз собирается всегда
     paths: ["mobile/**", ".github/workflows/mobile.yml"]
   workflow_dispatch:
 
@@ -32,7 +34,13 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: echo "VERSION_NAME=$(node -p 'require("./package.json").version')" >> "$GITHUB_ENV"
+      - name: Версия
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/app-v*) v="${GITHUB_REF#refs/tags/app-v}" ;;
+            *) v=$(node -p 'require("./package.json").version') ;;
+          esac
+          echo "VERSION_NAME=$v" >> "$GITHUB_ENV"
       - run: npx cap sync android
       - uses: actions/setup-java@v4
         with:
@@ -81,7 +89,13 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: echo "VERSION_NAME=$(node -p 'require("./package.json").version')" >> "$GITHUB_ENV"
+      - name: Версия
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/app-v*) v="${GITHUB_REF#refs/tags/app-v}" ;;
+            *) v=$(node -p 'require("./package.json").version') ;;
+          esac
+          echo "VERSION_NAME=$v" >> "$GITHUB_ENV"
       - run: npx cap sync ios
       - name: Сборка для симулятора и устройства (без подписи)
         working-directory: mobile/ios/App
@@ -125,3 +139,34 @@ jobs:
           EOF
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
             -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}" | tail -20
+
+  # Тег app-vX.Y.Z — GitHub Release с готовыми файлами: постоянная ссылка для тестировщиков и
+  # история версий (артефакты прогонов живут 90 дней).
+  release:
+    if: startsWith(github.ref, 'refs/tags/app-v')
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          v="${TAG#app-v}"
+          mkdir out
+          cp art/open-radio-android-*/apk/release/app-release.apk "out/open-radio-$v.apk"
+          cp art/open-radio-android-*/bundle/release/app-release.aab "out/open-radio-$v.aab"
+          cp art/open-radio-ios-simulator-*/open-radio-simulator.zip "out/open-radio-$v-ios-simulator.zip"
+          cat > notes.md <<EOF
+          Открытое радио $v
+
+          - \`open-radio-$v.apk\` — поставить на Android напрямую (Android 7+)
+          - \`open-radio-$v.aab\` — для Google Play (подписан ключом загрузки)
+          - \`open-radio-$v-ios-simulator.zip\` — сборка для симулятора iOS; на iPhone — через TestFlight
+          EOF
+          gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --title "Открытое радио $v" --notes-file notes.md

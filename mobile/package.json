@@ -1,7 +1,7 @@
 {
   "name": "open-radio-app",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Открытое радио — приложение для Android и iOS: обёртка Capacitor вокруг https://openline.one/radio/",
   "scripts": {
     "sync": "cap sync",

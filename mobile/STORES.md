@@ -13,6 +13,17 @@
 | Минимальная версия | Android 7 (API 24), цель — API 36 | iOS 15, только iPhone, портрет |
 | Сборка | GitHub Actions `mobile.yml`: APK и AAB, подписанные ключом загрузки | GitHub Actions: проверочные сборки; с ключом App Store Connect — TestFlight |
 
+## Сборки и релизы
+
+- Каждый push в `main` с изменениями в `mobile/` — прогон `mobile` в GitHub Actions; файлы — в
+  разделе Artifacts прогона (хранятся 90 дней).
+- **Релиз:** `git tag app-v1.0.2 && git push origin app-v1.0.2` — версия берётся из тега, номер
+  сборки — номер прогона; CI создаёт GitHub Release с `open-radio-1.0.2.apk` (на телефон),
+  `.aab` (в Google Play) и сборкой для симулятора iOS:
+  https://github.com/Dmitry-Fedotov-Dev/kontakt/releases
+- Сайт и приложение обновляются отдельно: правки страницы радио видны в приложении сразу после
+  `deploy.sh push`, новый релиз приложения нужен только при изменениях в `mobile/`.
+
 ## Что нужно от владельца
 
 1. **Google Play Console** — аккаунт разработчика ($25 разово), https://play.google.com/console.
