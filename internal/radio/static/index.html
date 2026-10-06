@@ -716,6 +716,12 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 // В приложении страница та же. Пока звук включён — слушаешь или ведёшь эфир, — Android держит
 // процесс сервисом с уведомлением, и эфир идёт в фоне. «Стоп» в уведомлении глушит звук до
 // следующего касания экрана. В браузере и на iOS (там фон даёт сама система) — ничего не делает.
+// В приложении масштаб страницы зафиксирован: Android WebView после окна выбора файлов
+// (mp3, папка) пересчитывал масштаб и увеличивал страницу. В браузере масштаб не трогаем.
+if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+  const vp = document.querySelector('meta[name="viewport"]');
+  if (vp) vp.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
+}
 const appRadio = window.Capacitor && window.Capacitor.isPluginAvailable && window.Capacitor.isPluginAvailable("RadioService")
   ? window.Capacitor.Plugins.RadioService : null;
 let appKey = "", appMuted = false;
