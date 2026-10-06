@@ -144,5 +144,11 @@ push. Не сделано: выбор нового Master'а (лучше Raft), 
   расти, WSL и Docker виснут целиком. Не запускать локально ничего, что качает гигабайты
   (образы Docker, тестовые серверы в контейнерах). Контейнер с `--privileged` и вложенным Docker
   на машине владельца — нельзя: так и уронили WSL 05.10.2026.
+- **Приложение радио (`mobile/`, Capacitor) собирается только в CI** (`mobile.yml`): Android SDK и
+  Xcode на машину владельца не ставить — диск D:. Node для `cap add`/`cap sync`/иконок — портативный.
+  npm 11 не запускает install-скрипты без `npm install-scripts approve` (иконкам нужен `sharp`).
+  В `build.gradle` версию — присваиванием (`versionCode = …`): `versionCode (…).toInteger()` Groovy
+  читает как вызов метода, и сборка падает с «Value is null». Ключ загрузки Google Play —
+  `C:\Users\cosmo\open-radio-keys\` и секреты репозитория, в git его нет.
 - **Из Git Bash в WSL** (`wsl … /mnt/d/…`) MSYS переписывает пути — нужен `MSYS_NO_PATHCONV=1`;
   `$переменные` в `wsl -- bash -c '…'` раскрываются раньше времени — скрипт кладите в файл.
