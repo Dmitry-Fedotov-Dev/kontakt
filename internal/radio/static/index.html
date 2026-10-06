@@ -319,6 +319,7 @@ button, input { font: inherit; color: inherit; }
         <div class="fader" id="fMic" tabindex="0" role="slider" aria-label="Громкость микрофона" data-i-aria="fMicAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fMic">MIC</span><span class="val"></span></div>
         <div class="fader" id="fMusic" tabindex="0" role="slider" aria-label="Громкость музыки" data-i-aria="fMusicAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fMusic">MUSIC</span><span class="val"></span></div>
         <div class="fader" id="fAir" tabindex="0" role="slider" aria-label="Громкость эфира" data-i-aria="fAirAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fAir">AIR</span><span class="val"></span></div>
+        <div class="fader" id="fMon" tabindex="0" role="slider" aria-label="Громкость монитора" data-i-aria="fMonAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fMon">MON</span><span class="val"></span></div>
         <div class="vu" aria-hidden="true"><div class="track"><i id="vu"></i></div><span class="lbl" data-i="fOut">OUT</span></div>
       </div>
     </div>
@@ -388,8 +389,9 @@ const I18N = {
     namePh: "название станции", nameAria: "Название станции",
     consentHtml: 'выходя в эфир, ты подтверждаешь, что тебе 18+, и принимаешь <a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила</a>',
     micAria: "Микрофон", micOn: "МИКР ВКЛ", micOff: "МИКР ВЫКЛ",
-    fMic: "МИКР", fMusic: "МУЗЫКА", fAir: "ЭФИР", fOut: "ВЫХОД",
+    fMic: "МИКР", fMusic: "МУЗЫКА", fAir: "ЭФИР", fMon: "МОНИТОР", fOut: "ВЫХОД",
     fMicAria: "Громкость микрофона", fMusicAria: "Громкость музыки", fAirAria: "Громкость эфира",
+    fMonAria: "Громкость монитора: что слышите вы, в эфир не влияет",
     queue: "ОЧЕРЕДЬ", addFiles: "+ ФАЙЛЫ", addDir: "+ ПАПКА", addAll: "ДОБАВИТЬ ВСЁ", play: "ИГРАТЬ", pause: "ПАУЗА", skip: "ДАЛЬШЕ",
     drop: "кинь сюда mp3 или целую папку",
     searchPh: "поиск по найденному…", searchAria: "Поиск mp3 в выбранной папке",
@@ -446,8 +448,9 @@ const I18N = {
     namePh: "station name", nameAria: "Station name",
     consentHtml: 'by going on air you confirm you are 18+ and accept the <a class="termsLink" href="terms-en.html" target="_blank" rel="noopener">rules</a>',
     micAria: "Microphone", micOn: "MIC ON", micOff: "MIC OFF",
-    fMic: "MIC", fMusic: "MUSIC", fAir: "AIR", fOut: "OUT",
+    fMic: "MIC", fMusic: "MUSIC", fAir: "AIR", fMon: "MONITOR", fOut: "OUT",
     fMicAria: "Microphone volume", fMusicAria: "Music volume", fAirAria: "On-air volume",
+    fMonAria: "Monitor volume: what you hear, doesn't affect the air",
     queue: "QUEUE", addFiles: "+ FILES", addDir: "+ FOLDER", addAll: "ADD ALL", play: "PLAY", pause: "PAUSE", skip: "SKIP",
     drop: "drop mp3 files or a whole folder here",
     searchPh: "search the files found…", searchAria: "Search mp3 in the chosen folder",
@@ -1183,7 +1186,9 @@ $("fUp").onclick = () => stepFreq(1);
 
 // Смеситель: микрофон и музыка → громкость эфира → полоса телефона → компрессор → 8 кГц кадры.
 let tx = null, hws = null, micSrc = null, micOn = false, micAn = null;
-const vol = { mic: 0.7, music: 0.7, air: 0.8 };
+// mon — монитор: что слышит сам ведущий; в эфир не идёт. Помним его между сессиями.
+const vol = { mic: 0.7, music: 0.7, air: 0.8, mon: 0.6 };
+try { const m = parseFloat(localStorage.getItem("radio-monitor")); if (m >= 0 && m <= 1) vol.mon = m; } catch (_) {}
 async function ensureTx() {
   await ensureAudio();
   if (tx) return tx;
@@ -1221,7 +1226,7 @@ function applyGains() {
   const t = ctx.currentTime;
   tx.mic.gain.setTargetAtTime(micOn ? vol.mic * 1.6 : 0, t, 0.02);
   tx.music.gain.setTargetAtTime(vol.music * 1.2 * (micOn ? 0.3 : 1), t, 0.15); // под голос музыка приглушается
-  tx.monitor.gain.setTargetAtTime(vol.music * 0.8, t, 0.05);
+  tx.monitor.gain.setTargetAtTime(vol.mon * 0.8, t, 0.05); // только в уши ведущему
   tx.air.gain.setTargetAtTime(vol.air * 1.25, t, 0.05);
 }
 let vuPeak = 0;
@@ -1242,7 +1247,10 @@ function fader(id, key) {
     val.textContent = Math.round(v * 100);
     el.setAttribute("aria-valuenow", String(Math.round(v * 100)));
   };
-  const set = v => { vol[key] = Math.round(Math.max(0, Math.min(1, v)) * 100) / 100; show(); applyGains(); renderHost(); };
+  const set = v => {
+    vol[key] = Math.round(Math.max(0, Math.min(1, v)) * 100) / 100; show(); applyGains(); renderHost();
+    if (key === "mon") try { localStorage.setItem("radio-monitor", String(vol.mon)); } catch (_) {}
+  };
   const fromY = e => { const r = track.getBoundingClientRect(); set(1 - (e.clientY - r.top) / r.height); };
   let drag = false;
   el.addEventListener("pointerdown", e => { drag = true; el.setPointerCapture(e.pointerId); fromY(e); });
@@ -1257,7 +1265,7 @@ function fader(id, key) {
   el.setAttribute("aria-valuemin", "0"); el.setAttribute("aria-valuemax", "100");
   show();
 }
-fader("fMic", "mic"); fader("fMusic", "music"); fader("fAir", "air");
+fader("fMic", "mic"); fader("fMusic", "music"); fader("fAir", "air"); fader("fMon", "mon");
 
 // Микрофон — большой, пиксельный, нажимается целиком.
 const micC = $("mic"), mg = micC.getContext("2d");
