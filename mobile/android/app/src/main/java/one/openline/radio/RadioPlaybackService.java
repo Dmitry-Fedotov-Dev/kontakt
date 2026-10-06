@@ -1,17 +1,20 @@
 package one.openline.radio;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.ServiceCompat;
+import androidx.core.content.ContextCompat;
 
 /**
  * Сервис переднего плана: пока он работает, Android не усыпляет процесс, и эфир в WebView
@@ -56,12 +59,22 @@ public class RadioPlaybackService extends Service {
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build();
-        int type = 0;
-        if (Build.VERSION.SDK_INT >= 29) {
-            type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
-            if (mic && Build.VERSION.SDK_INT >= 30) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+        // Тип «микрофон» — только с выданным разрешением: иначе Android 14+ бросает SecurityException
+        // и роняет приложение. Не вышло и так — сервис хотя бы проигрывателем, но не падаем.
+        boolean micOk = mic && Build.VERSION.SDK_INT >= 30
+            && ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        int play = Build.VERSION.SDK_INT >= 29 ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK : 0;
+        int type = micOk ? play | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE : play;
+        try {
+            ServiceCompat.startForeground(this, 1, n, type);
+        } catch (RuntimeException e) {
+            try {
+                ServiceCompat.startForeground(this, 1, n, play);
+            } catch (RuntimeException e2) {
+                stopSelf();
+                return START_NOT_STICKY;
+            }
         }
-        ServiceCompat.startForeground(this, 1, n, type);
         if (wake == null) {
             PowerManager pm = getSystemService(PowerManager.class);
             wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "openradio:air");

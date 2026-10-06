@@ -1564,7 +1564,9 @@ setInterval(() => {
   const { s, d } = nearest(st.dial);
   $("shareRx").hidden = !(st.power && s && d < CATCH);
   if (st.power) mediaSession(s && d < CATCH ? s : null);
-  if (st.onAir) appAir(($("name").value.trim() || TXT.title) + " · " + TXT.freq(st.hostFreq), TXT.onAirHint, true);
+  // тип «микрофон» у сервиса — только когда микрофон и правда включён: без разрешения Android 14+
+  // запрещает его и роняет приложение (эфир с одной музыкой разрешения не просит)
+  if (st.onAir) appAir(($("name").value.trim() || TXT.title) + " · " + TXT.freq(st.hostFreq), TXT.onAirHint, micOn);
   else if (st.power) appAir(s && d < CATCH ? s.n : TXT.betweenStations, s && d < CATCH ? TXT.freq(s.f) + (s.t ? " · " + s.t : "") : TXT.title, false);
   else appAir("", "", false);
   $("reportRx").hidden = $("shareRx").hidden || !me.moderation;

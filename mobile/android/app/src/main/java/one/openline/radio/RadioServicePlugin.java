@@ -34,8 +34,12 @@ public class RadioServicePlugin extends Plugin {
         i.putExtra("title", call.getString("title", "Open Radio"));
         i.putExtra("text", call.getString("text", ""));
         i.putExtra("mic", call.getBoolean("mic", false));
-        ContextCompat.startForegroundService(getContext(), i);
-        call.resolve();
+        try {
+            ContextCompat.startForegroundService(getContext(), i);
+            call.resolve();
+        } catch (RuntimeException e) { // например, запуск из фона запрещён — эфир идёт, без уведомления
+            call.reject(e.getMessage());
+        }
     }
 
     @PluginMethod
