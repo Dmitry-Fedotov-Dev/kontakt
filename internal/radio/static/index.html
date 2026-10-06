@@ -36,9 +36,13 @@ body {
   color: var(--cream);
   font: 400 15px/1.3 "Pixelify Sans", ui-monospace, monospace;
   -webkit-font-smoothing: none;
-  padding: 16px;
+  /* системные полосы: в приложении (Android 15+ рисует во весь экран) отступ даёт Capacitor
+     переменными --safe-area-inset-*, на iPhone — env(); в обычном браузере это 0 */
+  --st: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sb: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  padding: calc(16px + var(--st)) 16px calc(16px + var(--sb));
 }
-.wrap { width: min(560px, 100%); margin: 0 auto; min-height: calc(100dvh - 32px); display: flex; flex-direction: column; }
+.wrap { width: min(560px, 100%); margin: 0 auto; min-height: calc(100dvh - 32px - var(--st) - var(--sb)); display: flex; flex-direction: column; }
 /* Панель приёмника — внизу страницы: клавиша поддержки, главная кнопка футера («поделиться» и
    жалоба — под карточкой станции). Только на вкладке «слушать». Под ней, последней строкой на обеих
    вкладках, — правила и язык. */
@@ -56,6 +60,8 @@ button, input { font: inherit; color: inherit; }
 
 /* Вкладки: слушать / вещать */
 .tabs { display: flex; justify-content: center; gap: 10px; margin: 4px 0 18px; }
+/* вкладки и приёмник — ближе к центру: свободное место поровну над ними и над подвалом */
+.wrap > .tabs { margin-top: auto; }
 .tab {
   border: 0; cursor: pointer; padding: 7px 14px 8px; font-weight: 600; letter-spacing: .04em;
   background: #4A3463; color: #C9B6E4;
