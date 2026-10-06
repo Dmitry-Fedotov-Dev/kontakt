@@ -125,6 +125,32 @@ button, input { font: inherit; color: inherit; }
 /* Лайк: пиксельное сердце рядом с «поделиться». У ведущего сердца всплывают поверх экрана. */
 .rxRow { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 14px; min-height: 46px; }
 .rxRow .share { margin: 0; }
+.shareRow { text-align: center; min-height: 46px; margin-top: 10px; } /* место занято всегда: приёмник не прыгает */
+.shareRow .share { display: inline-block; margin: 0; }
+.envImg { width: 33px; height: 27px; image-rendering: pixelated; display: inline-block; }
+.letterBtn { position: relative; }
+.letterBtn[disabled] { opacity: .6; }
+.letterBtn .cool { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--ink);
+  background: rgba(255, 233, 194, .82); }
+.letterBtn .cool:empty { display: none; }
+.letterCount { display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--cream); cursor: pointer; }
+.letterCount[hidden] { display: none !important; }
+.letterCount .envImg { width: 22px; height: 18px; }
+.letterCount.new .envImg { animation: beat .3s steps(3) 3; }
+.card { position: fixed; inset: 0; z-index: 30; background: rgba(15, 8, 25, .72); display: grid; place-items: center; padding: 16px; }
+.card[hidden] { display: none !important; }
+.cardBox { width: min(360px, 100%); background: var(--cream); color: var(--ink); padding: 14px 14px 12px;
+  box-shadow: 0 0 0 3px var(--ink), 6px 6px 0 3px rgba(0,0,0,.4); transform: rotate(-1deg); }
+.cardHead { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; margin-bottom: 10px; }
+.cardBox textarea { width: 100%; resize: none; font: 15px/1.35 "Pixelify Sans", monospace; color: var(--ink);
+  background: #FFF6E2; border: 0; box-shadow: inset 0 0 0 2px var(--ink); padding: 8px; }
+.cardBox textarea:focus { outline: 3px solid var(--amber); }
+.cardBox p { margin: 0; font-size: 17px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 3em; }
+.cardFoot { text-align: right; font-size: 12px; color: #6B4A2A; min-height: 1.2em; margin-top: 4px; }
+.cardBtns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.cardBtns .report { margin: 0; border-color: #8A6D9E; color: #6B4A86; }
+.cardBtns .report.armed { color: var(--cream); }
+.hearts img.env { width: calc(33px * var(--k)); height: calc(27px * var(--k)); }
 .likeBtn { padding: 4px 8px 5px; line-height: 0; }
 .likeBtn[hidden] { display: none !important; }
 .heartImg { width: 27px; height: 24px; image-rendering: pixelated; display: inline-block; }
@@ -283,10 +309,11 @@ button, input { font: inherit; color: inherit; }
               aria-label="Ручка настройки: крутите, чтобы переключать станции" data-i-aria="knobAria"
               aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
+    <div class="shareRow"><button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button></div>
     <div class="sticker" id="sticker" aria-live="polite"><b id="st1" data-i="stickerIdle">крутни ручку</b><span id="st2">&nbsp;</span></div>
     <div class="rxRow">
       <button class="btn likeBtn" id="likeRx" hidden aria-label="Like" data-i-aria="likeAria"><img class="heartImg" alt=""></button>
-      <button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button>
+      <button class="btn likeBtn letterBtn" id="letterRx" hidden aria-label="Letter" data-i-aria="letterAria"><img class="envImg" alt=""><span class="cool" id="letterCool"></span></button>
     </div>
     <div class="reportRow"><button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию" data-i-aria="reportAria" data-i="report">REPORT</button></div>
   </section>
@@ -305,6 +332,7 @@ button, input { font: inherit; color: inherit; }
       <div class="airStats" id="airStats" hidden>
         <span class="listenCount" id="listenCount"></span>
         <span class="likeCount" id="likeCount" hidden><img class="heartImg" alt=""><span id="likeTotal">0</span></span>
+        <button type="button" class="letterCount" id="letterCount" hidden><img class="envImg" alt=""><span id="letterTotal">0</span></button>
       </div>
       <div class="rules" data-i-html="consentHtml">выходя в эфир, ты подтверждаешь, что тебе 18+, и принимаешь <a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила</a></div>
       <button class="btn share" id="shareTx" hidden data-i="share">SHARE ↗</button>
@@ -367,6 +395,15 @@ button, input { font: inherit; color: inherit; }
 </div>
 
 <div class="hearts" id="hearts" aria-hidden="true"></div>
+<div class="card" id="card" hidden role="dialog" aria-modal="true">
+  <div class="cardBox">
+    <div class="cardHead"><img class="envImg" alt=""><span id="cardTitle"></span></div>
+    <textarea id="cardText" maxlength="140" rows="4"></textarea>
+    <p id="cardRead"></p>
+    <div class="cardFoot"><span id="cardCount"></span></div>
+    <div class="cardBtns" id="cardBtns"></div>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -380,6 +417,13 @@ const I18N = {
     title: "Открытое радио", other: "English", terms: "terms.html",
     support: "ПОДДЕРЖАТЬ", anyCard: "картой любой страны ♥", ruCard: "картой из России ₽",
     likeAria: "Лайк станции", likesTitle: "лайков за этот эфир",
+    letterAria: "Письмо ведущему с лайком", letterTitle: "Письмо ведущему", letterPh: "Пару слов ведущему — он увидит, но не узнает от кого",
+    letterSend: "ОТПРАВИТЬ ♥", cancel: "ОТМЕНА", close: "ЗАКРЫТЬ", nextLetter: "СЛЕДУЮЩЕЕ",
+    letterFrom: "Письмо от слушателя", letterBlock: "НЕ ПРИНИМАТЬ", letterReport: "ЖАЛОБА",
+    lettersTitle: "письма за этот эфир",
+    letterRes: { sent: "письмо отправлено ♥", too_fast: "следующее письмо — чуть позже", banned: "писать в эфир тебе закрыто",
+      no_station: "станция ушла из эфира", self: "это твоя станция", empty: "письмо пустое" },
+    blocked: "от этого слушателя письма больше не придут",
     description: "Крути ручку — между станциями шорох. Или займи свою волну: микрофон, музыка.",
     modeAria: "Режим", listen: "СЛУШАТЬ", broadcast: "ВЕЩАТЬ",
     knobAria: "Ручка настройки: крутите, чтобы переключать станции",
@@ -439,6 +483,13 @@ const I18N = {
     title: "Open Radio", other: "Русский", terms: "terms-en.html",
     support: "SUPPORT", anyCard: "any card ♥", ruCard: "Russian card ₽",
     likeAria: "Like the station", likesTitle: "likes this broadcast",
+    letterAria: "Letter to the host with a like", letterTitle: "Letter to the host", letterPh: "A few words to the host — they'll see it but won't know who sent it",
+    letterSend: "SEND ♥", cancel: "CANCEL", close: "CLOSE", nextLetter: "NEXT",
+    letterFrom: "A letter from a listener", letterBlock: "BLOCK", letterReport: "REPORT",
+    lettersTitle: "letters this broadcast",
+    letterRes: { sent: "letter sent ♥", too_fast: "next letter a bit later", banned: "you can't write to the air",
+      no_station: "the station went off air", self: "that's your own station", empty: "the letter is empty" },
+    blocked: "no more letters from this listener",
     description: "Turn the knob — static between stations. Or take your own frequency: mic and music.",
     modeAria: "Mode", listen: "LISTEN", broadcast: "BROADCAST",
     knobAria: "Tuning knob: turn it to change stations",
@@ -852,6 +903,7 @@ function connectListen() {
         if (m.stations) st.stations = m.stations;
         if (m.title) { const x = st.stations.find(s => s.f === m.title.f); if (x) x.t = m.title.t; }
         if (m.report) return toast(TXT.reports[m.report] || TXT.reportFail);
+        if (m.letter) return letterAnswer(m.letter, m.wait || 0);
       }
       catch (_) { /* битый список: следующий придёт через секунду */ }
       retune();
@@ -1347,6 +1399,7 @@ function connectHost() {
   ws.onopen = () => {
     opened = true; retries = 0; reconnecting = false; st.onAir = true; $("name").disabled = true;
     $("likeCount").hidden = true; // у нового эфира свой счёт
+    inbox.length = 0; lettersAll = 0; $("letterCount").hidden = true;
     sendTitle(); renderHost();
   };
   ws.onmessage = e => {
@@ -1356,6 +1409,8 @@ function connectHost() {
       if (m.card === "yellow") showError(TXT.yellowCard);
       if (typeof m.listeners === "number") { st.hostListeners = m.listeners; renderHost(); }
       if (typeof m.likes === "number") gotLikes(m.likes, m.total);
+      if (m.letter && m.letter.text) gotLetter(m.letter);
+      if (m.letterReport) toast(TXT.reports[m.letterReport] || TXT.reportFail);
     } catch (_) {}
   };
   ws.onclose = e => {
@@ -1601,6 +1656,7 @@ setInterval(() => {
   else appAir("", "", false);
   $("reportRx").hidden = $("shareRx").hidden || !me.moderation;
   $("likeRx").hidden = $("shareRx").hidden;
+  $("letterRx").hidden = $("shareRx").hidden;
   $("shareTx").hidden = !st.onAir;
   if (!$("shareRx").hidden) shortFor(s.f, s.n, s.t || "");
   if (st.onAir) shortFor(st.hostFreq, $("name").value.trim(), nowTitle());
@@ -1619,11 +1675,11 @@ const HEART = (() => { // 9 × 8: обводка, заливка, блик
 })();
 document.querySelectorAll(".heartImg").forEach(i => { i.src = HEART; });
 $("likeCount").title = TXT.likesTitle;
-function floatHeart(x, y, k, t, pop) { // одно сердце от точки x,y вверх, k — масштаб, t — секунды
+function floatHeart(x, y, k, t, pop, src) { // одно сердце от точки x,y вверх, k — масштаб, t — секунды
   const box = $("hearts");
   if (box.childElementCount > 60) return; // ливень лайков — лишние не рисуем
   const i = document.createElement("img");
-  i.src = HEART; i.alt = ""; if (pop) i.className = "pop";
+  i.src = src || HEART; i.alt = ""; i.className = (pop ? "pop " : "") + (src ? "env" : "");
   i.style.left = (x - 13.5 * k) + "px"; i.style.top = (y - 12 * k) + "px";
   i.style.setProperty("--k", k); i.style.setProperty("--t", t + "s");
   i.style.setProperty("--dx", pop ? ((Math.random() * 2 - 1) * 14).toFixed(0) + "px" : ((Math.random() * 2 - 1) * 5).toFixed(1) + "vw");
@@ -1640,6 +1696,104 @@ $("likeRx").onclick = () => {
   floatHeart(r.left + r.width / 2, r.top, 0.8, 0.9, true);
   if (lws && lws.readyState === 1) lws.send(JSON.stringify({ like: true }));
 };
+// ---------- письма к лайкам ----------
+// Слушатель прикладывает к лайку письмо (до 140 знаков, не чаще раза в 30 с — следит сервер);
+// ведущий видит конверт, читает, может «не принимать» или пожаловаться. Ничего не хранится.
+const ENV = (() => { // конверт 11 × 9 с сердцем
+  const c = document.createElement("canvas"); c.width = 11; c.height = 9;
+  const g = c.getContext("2d"), heart = [".r.r.", "rrrrr", ".rrr.", "..r.."];
+  for (let y = 0; y < 9; y++) for (let x = 0; x < 11; x++) {
+    let col = "#FFE9C2";
+    if (x === 0 || x === 10 || y === 0 || y === 8) col = "#1E0F0A";
+    else if (y <= 4 && (x === y || x === 10 - y)) col = "#1E0F0A";          // клапан
+    else if (y === 7) col = "#E6CC9C";
+    const h = heart[y - 4] && heart[y - 4][x - 3];
+    if (h === "r") col = "#E8433A";
+    g.fillStyle = col; g.fillRect(x, y, 1, 1);
+  }
+  return c.toDataURL();
+})();
+document.querySelectorAll(".envImg").forEach(i => { i.src = ENV; });
+const card = $("card"), cardText = $("cardText"), cardRead = $("cardRead"), cardBtns = $("cardBtns");
+function cardButtons(list) { // [{label, cls, on}]
+  cardBtns.replaceChildren(...list.map(b => {
+    const el = document.createElement("button");
+    el.type = "button"; el.className = b.cls || "btn"; el.textContent = b.label; el.onclick = () => b.on(el);
+    return el;
+  }));
+}
+const closeCard = () => { card.hidden = true; };
+card.addEventListener("click", e => { if (e.target === card) closeCard(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !card.hidden) closeCard(); });
+// слушатель: написать
+let letterUntil = 0;
+function letterCooldown() {
+  const left = Math.ceil((letterUntil - Date.now()) / 1000);
+  $("letterCool").textContent = left > 0 ? left : "";
+  $("letterRx").disabled = left > 0;
+  if (left > 0) setTimeout(letterCooldown, 250);
+}
+$("letterRx").onclick = () => {
+  if (Date.now() < letterUntil) return;
+  $("cardTitle").textContent = TXT.letterTitle;
+  cardText.hidden = false; cardRead.hidden = true;
+  cardText.placeholder = TXT.letterPh;
+  const count = () => { $("cardCount").textContent = cardText.value.length + " / 140"; };
+  cardText.oninput = count; count();
+  cardButtons([
+    { label: TXT.cancel, on: closeCard },
+    { label: TXT.letterSend, on: () => {
+      const text = cardText.value.trim();
+      if (!text) return cardText.focus();
+      if (!lws || lws.readyState !== 1) return toast(TXT.noConn);
+      lws.send(JSON.stringify({ like: true, letter: text }));
+      const r = $("letterRx").getBoundingClientRect();
+      floatHeart(r.left + r.width / 2, r.top, 0.8, 0.9, true, ENV);
+      cardText.value = ""; closeCard();
+    } },
+  ]);
+  card.hidden = false;
+  setTimeout(() => cardText.focus(), 50);
+};
+function letterAnswer(res, wait) {
+  if (wait > 0) { letterUntil = Date.now() + wait * 1000; letterCooldown(); }
+  toast(TXT.letterRes[res] || TXT.noConn);
+}
+// ведущий: прочитать
+const inbox = [];
+let lettersAll = 0;
+function gotLetter(l) {
+  inbox.push(l); lettersAll++;
+  const c = $("letterCount");
+  c.hidden = false; $("letterTotal").textContent = inbox.length;
+  c.classList.remove("new"); void c.offsetWidth; c.classList.add("new");
+  floatHeart(window.innerWidth / 2, window.innerHeight - 30, 1.6, 2.6, false, ENV);
+  tokenPing();
+}
+function readLetter() {
+  const l = inbox.shift();
+  $("letterTotal").textContent = inbox.length;
+  if (!l) { $("letterCount").hidden = lettersAll === 0; return closeCard(); }
+  $("cardTitle").textContent = TXT.letterFrom;
+  cardText.hidden = true; cardRead.hidden = false;
+  cardRead.textContent = l.text;
+  $("cardCount").textContent = inbox.length ? "+" + inbox.length : "";
+  let arm = null;
+  cardButtons([
+    { label: TXT.letterReport, cls: "report", on: el => {
+      if (!el.classList.contains("armed")) { el.classList.add("armed"); el.textContent = TXT.sure; clearTimeout(arm); arm = setTimeout(() => { el.classList.remove("armed"); el.textContent = TXT.letterReport; }, 3000); return; }
+      if (hws && hws.readyState === 1) hws.send(JSON.stringify({ reportLetter: l.id }));
+      readLetter();
+    } },
+    { label: TXT.letterBlock, on: () => { if (hws && hws.readyState === 1) hws.send(JSON.stringify({ block: l.id })); toast(TXT.blocked); readLetter(); } },
+    { label: inbox.length ? TXT.nextLetter : TXT.close, on: () => readLetter() },
+  ]);
+  card.hidden = false;
+}
+$("letterCount").onclick = () => { if (inbox.length) readLetter(); };
+$("letterCount").title = TXT.lettersTitle;
+function tokenPing() { const c = sfxCtx(); if (c) { ping(c, c.currentTime, 1568, 0.1, 0.05); ping(c, c.currentTime + 0.09, 2093, 0.14, 0.05); } }
+
 function gotLikes(n, total) { // ведущему: n новых — сердца снизу экрана, счётчик за эфир
   for (let i = 0; i < Math.min(n, 12); i++) {
     setTimeout(() => floatHeart(window.innerWidth * (0.15 + Math.random() * 0.7), window.innerHeight - 20,

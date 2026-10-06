@@ -499,3 +499,55 @@ func TestSocketsUnderRadioPrefix(t *testing.T) {
 		t.Fatalf("кадр %v", b[0])
 	}
 }
+
+// Письма к лайкам: доходят до ведущего без отправителя, не чаще letterEvery; от того, кого
+// ведущий заблокировал, не доходят (а отправитель думает, что отправил).
+func TestLettersReachHost(t *testing.T) {
+	defer func(d time.Duration) { letterEvery = d }(letterEvery)
+	letterEvery = 400 * time.Millisecond
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=1053&name=X")
+	defer host.Close()
+	ht := readTexts(host)
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	l, _, _ := dial(t, srv, "/ws/listen")
+	defer l.Close()
+	lt := readTexts(l)
+	l.WriteJSON(map[string]int{"tune": 1053})
+	time.Sleep(100 * time.Millisecond)
+
+	l.WriteJSON(map[string]any{"like": true, "letter": "  привет,\nведущий!  "})
+	l.WriteJSON(map[string]any{"like": true, "letter": "ещё"}) // сразу же — рано
+	var got struct {
+		Letter struct {
+			ID   uint64
+			Text string
+		}
+	}
+	for _, m := range ht.collect(time.Second) {
+		if strings.Contains(m, `"letter"`) {
+			json.Unmarshal([]byte(m), &got)
+		}
+	}
+	if got.Letter.ID == 0 || got.Letter.Text != "привет,ведущий!" {
+		t.Fatalf("ведущему пришло: %+v", got)
+	}
+	answers := strings.Join(lt.collect(500*time.Millisecond), " ")
+	if !strings.Contains(answers, `"letter":"sent"`) || !strings.Contains(answers, `"letter":"too_fast"`) {
+		t.Fatalf("ответы слушателю: %s", answers)
+	}
+
+	host.WriteJSON(map[string]uint64{"block": got.Letter.ID})
+	time.Sleep(letterEvery)
+	l.WriteJSON(map[string]any{"like": true, "letter": "после блока"})
+	if a := strings.Join(lt.collect(500*time.Millisecond), " "); !strings.Contains(a, `"letter":"sent"`) {
+		t.Fatalf("заблокированный должен видеть «отправлено»: %s", a)
+	}
+	for _, m := range ht.collect(500 * time.Millisecond) {
+		if strings.Contains(m, "после блока") {
+			t.Fatal("письмо заблокированного дошло до ведущего")
+		}
+	}
+}

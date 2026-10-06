@@ -122,11 +122,16 @@ type Hub struct {
 	reports   *metrics.CounterVec
 	kicked    *metrics.Counter
 	likes     *metrics.Counter
-	ogRenders *metrics.Counter
-	onAir     *metrics.Histogram
-	reg       *metrics.Registry
-	upgrader  websocket.Upgrader
-	og        ogCache
+
+	letterTimes   map[string]time.Time // под mu: когда человек последний раз писал ведущему
+	letterSeq     uint64               // под mu: номер последнего письма
+	lettersSent   *metrics.CounterVec
+	letterReports *metrics.CounterVec
+	ogRenders     *metrics.Counter
+	onAir         *metrics.Histogram
+	reg           *metrics.Registry
+	upgrader      websocket.Upgrader
+	og            ogCache
 
 	reportTimes map[string][]time.Time // под mu: кто сколько жаловался за час
 
@@ -151,6 +156,9 @@ type station struct {
 	reported map[string]bool // под Hub.mu: кто уже жаловался на этот эфир
 	likes    int             // под Hub.mu: лайков ещё не отправлено ведущему
 	likesAll int             // под Hub.mu: всего за этот эфир
+
+	letterFrom map[uint64]string // под Hub.mu: номер письма → кто отправил (ведущему не отдаётся)
+	blocked    map[string]bool   // под Hub.mu: от кого ведущий писем не принимает
 }
 
 type listener struct {
@@ -189,7 +197,7 @@ func NewHub(opt Options) *Hub {
 		opt.CountAfter = 5 * time.Minute
 	}
 	h := &Hub{opt: opt, st: map[int]*station{}, ls: map[*listener]struct{}{}, reg: metrics.NewRegistry(),
-		reportTimes: map[string][]time.Time{}}
+		reportTimes: map[string][]time.Time{}, letterTimes: map[string]time.Time{}}
 	h.upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 	// Метрики — только счётчики и частоты: ни адресов, ни названий станций и треков (их
 	// задают люди, и в метках они раздули бы число рядов без предела).
@@ -209,6 +217,11 @@ func NewHub(opt Options) *Hub {
 		"result", "yellow", "banned", "noted", "already", "no_station", "listen_more", "self", "rate_limited", "no_identity", "error")
 	h.kicked = h.reg.Counter("kontakt_radio_hosts_banned_total", "Станции, снятые с эфира баном")
 	h.likes = h.reg.Counter("kontakt_radio_likes_total", "Лайки станциям от слушателей (принятые)")
+	h.lettersSent = h.reg.CounterVec("kontakt_radio_letters_total",
+		"Письма ведущему по исходу: sent — передано, too_fast — чаще раза в 30 с, banned, no_station, self, empty",
+		"result", "sent", "too_fast", "banned", "no_station", "self", "empty")
+	h.letterReports = h.reg.CounterVec("kontakt_radio_letter_reports_total",
+		"Жалобы ведущих на письма по исходу модерации", "result", "yellow", "banned", "noted", "already", "rate_limited", "error")
 	h.listBytes = h.reg.Counter("kontakt_radio_list_bytes_total",
 		"Байты списков станций, отправленные приёмникам (служебный трафик сверх звука)")
 	h.hosts = h.reg.Counter("kontakt_radio_host_sessions_total", "Выходы станций в эфир")
@@ -489,7 +502,8 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "в эфире нет места", http.StatusServiceUnavailable)
 		return
 	}
-	s := &station{freq: f, name: name, since: time.Now(), subs: map[*listener]struct{}{}, host: host, reported: map[string]bool{}}
+	s := &station{freq: f, name: name, since: time.Now(), subs: map[*listener]struct{}{}, host: host, reported: map[string]bool{},
+		letterFrom: map[uint64]string{}, blocked: map[string]bool{}}
 	h.st[f] = s // занимаем до апгрейда: двое не получат одну частоту
 	h.mu.Unlock()
 
@@ -550,6 +564,7 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 			if json.Unmarshal(data, &m) == nil && m.Title != nil {
 				h.titleChanged(s, clean(*m.Title, titleRunes))
 			}
+			h.hostLetterAction(s, data)
 			continue
 		}
 		// Ведро токенов: больше 64 кбит/с в эфир не уходит, что бы ни прислал браузер.
@@ -652,9 +667,10 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		var m struct {
-			Tune   *int `json:"tune"`
-			Report bool `json:"report"`
-			Like   bool `json:"like"`
+			Tune   *int   `json:"tune"`
+			Report bool   `json:"report"`
+			Like   bool   `json:"like"`
+			Letter string `json:"letter"`
 		}
 		if json.Unmarshal(data, &m) != nil {
 			continue
@@ -664,6 +680,14 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 		}
 		if m.Like {
 			h.like(l)
+		}
+		if m.Letter != "" {
+			res, wait := h.letter(l, m.Letter)
+			b, _ := json.Marshal(map[string]any{"letter": res, "wait": wait})
+			select {
+			case l.ctl <- b:
+			default:
+			}
 		}
 		if m.Report {
 			b, _ := json.Marshal(map[string]string{"report": h.report(l)})
