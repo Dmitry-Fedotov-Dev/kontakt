@@ -130,7 +130,10 @@ button, input { font: inherit; color: inherit; }
 .heartImg { width: 27px; height: 24px; image-rendering: pixelated; display: inline-block; }
 .likeBtn.beat .heartImg { animation: beat .25s steps(3); }
 @keyframes beat { 50% { transform: scale(1.3); } }
-.likeCount { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 8px; font-weight: 600; color: var(--cream); }
+.airStats { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 8px; font-weight: 600; color: var(--cream); }
+.airStats[hidden] { display: none !important; }
+.listenCount { color: var(--amber); letter-spacing: .03em; }
+.likeCount { display: flex; justify-content: center; align-items: center; gap: 6px; font-weight: 600; color: var(--cream); }
 .likeCount[hidden] { display: none !important; }
 .likeCount .heartImg { width: 18px; height: 16px; }
 .likeCount.bump span { animation: beat .3s steps(3); }
@@ -298,7 +301,11 @@ button, input { font: inherit; color: inherit; }
       </div>
       <input class="name" id="name" maxlength="24" placeholder="название станции" autocomplete="off" aria-label="Название станции" data-i-ph="namePh" data-i-aria="nameAria">
       <div class="hint" id="hostHint">&nbsp;</div>
-      <div class="likeCount" id="likeCount" hidden><img class="heartImg" alt=""><span id="likeTotal">0</span></div>
+      <!-- в эфире: сколько слушают и лайки за эфир — отдельной строкой, подсказку перебивают другие сообщения -->
+      <div class="airStats" id="airStats" hidden>
+        <span class="listenCount" id="listenCount"></span>
+        <span class="likeCount" id="likeCount" hidden><img class="heartImg" alt=""><span id="likeTotal">0</span></span>
+      </div>
       <div class="rules" data-i-html="consentHtml">выходя в эфир, ты подтверждаешь, что тебе 18+, и принимаешь <a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила</a></div>
       <button class="btn share" id="shareTx" hidden data-i="share">SHARE ↗</button>
     </div>
@@ -402,7 +409,7 @@ const I18N = {
     noTx: "звук в эфир не идёт — коснись экрана; не помогло — обнови страницу",
     airZeroOn: "ЭФИР на нуле — в эфире тишина, подними фейдер ЭФИР",
     silence: "в эфире тишина — нажми ИГРАТЬ или микрофон", onAirHint: "в эфире",
-    listening: n => " · слушают: " + n,
+    listening: n => " · слушают: " + n, listenersNow: n => "слушают: " + n,
     waveTaken: "эта волна занята — стрелками на соседнюю",
     airZeroOff: "ЭФИР на нуле — подними фейдер, иначе в эфире будет тишина",
     waveFree: "волна свободна — нажми на табличку «В ЭФИРЕ»",
@@ -460,7 +467,7 @@ const I18N = {
     noTx: "no sound is going out — tap the screen; if that doesn't help, reload the page",
     airZeroOn: "AIR is at zero — silence on air, raise the AIR fader",
     silence: "silence on air — press PLAY or the mic", onAirHint: "on air",
-    listening: n => " · listeners: " + n,
+    listening: n => " · listeners: " + n, listenersNow: n => "listeners: " + n,
     waveTaken: "this frequency is taken — use the arrows to pick another",
     airZeroOff: "AIR is at zero — raise the fader or the air will be silent",
     waveFree: "the frequency is free — press the ON AIR sign",
@@ -1147,6 +1154,8 @@ function renderHost() {
   $("fDown").disabled = $("fUp").disabled = st.onAir;
   $("onair").classList.toggle("live", st.onAir);
   $("onair").setAttribute("aria-pressed", String(st.onAir));
+  $("airStats").hidden = !st.onAir;
+  $("listenCount").textContent = TXT.listenersNow(st.hostListeners);
   if (performance.now() < hintHold) return;
   if (connecting) return hostHint(TXT.connecting);
   if (reconnecting) return hostHint(TXT.reconnecting, true);
@@ -1154,10 +1163,9 @@ function renderHost() {
   if (st.onAir && performance.now() - lastTxAt > 3000) return hostHint(TXT.noTx, true);
   // Тишина в эфире не выглядит как ошибка — поэтому о ней говорим прямо.
   if (st.onAir) {
-    const me = st.stations.find(s => s.f === st.hostFreq);
     if (vol.air === 0) hostHint(TXT.airZeroOn, true);
-    else if (!nowTitle()) hostHint(TXT.silence + (me ? TXT.listening(st.hostListeners) : ""), true);
-    else hostHint(TXT.onAirHint + (me ? TXT.listening(st.hostListeners) : "") + " · " + nowTitle());
+    else if (!nowTitle()) hostHint(TXT.silence, true);
+    else hostHint(TXT.onAirHint + " · " + nowTitle());
   } else if (taken(st.hostFreq)) hostHint(TXT.waveTaken, true);
   else if (vol.air === 0) hostHint(TXT.airZeroOff, true);
   else hostHint(TXT.waveFree);
