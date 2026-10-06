@@ -60,8 +60,8 @@ button, input { font: inherit; color: inherit; }
 
 /* Вкладки: слушать / вещать */
 .tabs { display: flex; justify-content: center; gap: 10px; margin: 4px 0 18px; }
-/* вкладки и приёмник — ближе к центру: свободное место поровну над ними и над подвалом */
-.wrap > .tabs { margin-top: auto; }
+/* вкладки — наверху; приёмник — посередине свободного места между ними и подвалом */
+.wrap > section { margin-top: auto; }
 .tab {
   border: 0; cursor: pointer; padding: 7px 14px 8px; font-weight: 600; letter-spacing: .04em;
   background: #4A3463; color: #C9B6E4;
@@ -119,9 +119,11 @@ button, input { font: inherit; color: inherit; }
 /* жалоба — внизу и неброско: случайно не нажать, но найти можно */
 .report { background: none; border: 1px solid #6B5A86; color: #9C86BC; font: inherit; font-size: 11px; padding: 3px 10px; cursor: pointer; }
 .report[hidden] { display: none; }
-.reportRow { text-align: center; margin-top: 12px; }
+/* место под кнопки станции занято всегда: когда станция поймана и они появляются, приёмник не
+   прыгает вверх */
+.reportRow { text-align: center; margin-top: 12px; min-height: 26px; }
 /* Лайк: пиксельное сердце рядом с «поделиться». У ведущего сердца всплывают поверх экрана. */
-.rxRow { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 14px; }
+.rxRow { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 14px; min-height: 46px; }
 .rxRow .share { margin: 0; }
 .likeBtn { padding: 4px 8px 5px; line-height: 0; }
 .likeBtn[hidden] { display: none !important; }
