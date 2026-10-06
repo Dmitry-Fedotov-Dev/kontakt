@@ -419,11 +419,10 @@ const I18N = {
     likeAria: "Лайк станции", likesTitle: "лайков за этот эфир",
     letterAria: "Письмо ведущему с лайком", letterTitle: "Письмо ведущему", letterPh: "Пару слов ведущему — он увидит, но не узнает от кого",
     letterSend: "ОТПРАВИТЬ ♥", cancel: "ОТМЕНА", close: "ЗАКРЫТЬ", nextLetter: "СЛЕДУЮЩЕЕ",
-    letterFrom: "Письмо от слушателя", letterBlock: "НЕ ПРИНИМАТЬ", letterReport: "ЖАЛОБА",
+    letterFrom: "Письмо от слушателя", letterReport: "ЖАЛОБА",
     lettersTitle: "письма за этот эфир",
     letterRes: { sent: "письмо отправлено ♥", too_fast: "следующее письмо — чуть позже", banned: "писать в эфир тебе закрыто",
       no_station: "станция ушла из эфира", self: "это твоя станция", empty: "письмо пустое" },
-    blocked: "от этого слушателя письма больше не придут",
     description: "Крути ручку — между станциями шорох. Или займи свою волну: микрофон, музыка.",
     modeAria: "Режим", listen: "СЛУШАТЬ", broadcast: "ВЕЩАТЬ",
     knobAria: "Ручка настройки: крутите, чтобы переключать станции",
@@ -485,11 +484,10 @@ const I18N = {
     likeAria: "Like the station", likesTitle: "likes this broadcast",
     letterAria: "Letter to the host with a like", letterTitle: "Letter to the host", letterPh: "A few words to the host — they'll see it but won't know who sent it",
     letterSend: "SEND ♥", cancel: "CANCEL", close: "CLOSE", nextLetter: "NEXT",
-    letterFrom: "A letter from a listener", letterBlock: "BLOCK", letterReport: "REPORT",
+    letterFrom: "A letter from a listener", letterReport: "REPORT",
     lettersTitle: "letters this broadcast",
     letterRes: { sent: "letter sent ♥", too_fast: "next letter a bit later", banned: "you can't write to the air",
       no_station: "the station went off air", self: "that's your own station", empty: "the letter is empty" },
-    blocked: "no more letters from this listener",
     description: "Turn the knob — static between stations. Or take your own frequency: mic and music.",
     modeAria: "Mode", listen: "LISTEN", broadcast: "BROADCAST",
     knobAria: "Tuning knob: turn it to change stations",
@@ -1785,8 +1783,8 @@ function readLetter() {
       if (hws && hws.readyState === 1) hws.send(JSON.stringify({ reportLetter: l.id }));
       readLetter();
     } },
-    { label: TXT.letterBlock, on: () => { if (hws && hws.readyState === 1) hws.send(JSON.stringify({ block: l.id })); toast(TXT.blocked); readLetter(); } },
-    { label: inbox.length ? TXT.nextLetter : TXT.close, on: () => readLetter() },
+    ...(inbox.length ? [{ label: TXT.nextLetter, on: () => readLetter() }] : []),
+    { label: TXT.close, on: () => closeCard() },
   ]);
   card.hidden = false;
 }
