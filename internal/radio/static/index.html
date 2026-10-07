@@ -441,6 +441,7 @@ const I18N = {
     pcNoAudio: "звука нет: в окне выбора отметь «Поделиться звуком» (вкладка) или «Системный звук» (экран)",
     pcDenied: "браузер не дал звук — попробуй ещё раз", pcEnded: "звук ПК больше не в эфире",
     pcHelp: "Вкладка — только её звук; весь экран — весь звук компьютера (Chrome и Edge на Windows)",
+    pcLoop: "в эфир идёт весь звук компьютера — не слушай свою станцию на этом же компьютере (или выключи звук той вкладки), иначе будет эхо и шум",
     queue: "ОЧЕРЕДЬ", addFiles: "+ ФАЙЛЫ", addDir: "+ ПАПКА", addAll: "ДОБАВИТЬ ВСЁ", play: "ИГРАТЬ", pause: "ПАУЗА", skip: "ДАЛЬШЕ",
     drop: "кинь сюда mp3 или целую папку",
     searchPh: "поиск по найденному…", searchAria: "Поиск mp3 в выбранной папке",
@@ -510,6 +511,7 @@ const I18N = {
     pcNoAudio: "no sound: in the picker tick “Share audio” (tab) or “Share system audio” (screen)",
     pcDenied: "the browser didn't share audio — try again", pcEnded: "PC audio is off the air",
     pcHelp: "A tab — only its sound; the whole screen — all computer sound (Chrome and Edge on Windows)",
+    pcLoop: "all computer sound goes on air — don't listen to your station on this computer (or mute that tab), or you'll get echo and noise",
     queue: "QUEUE", addFiles: "+ FILES", addDir: "+ FOLDER", addAll: "ADD ALL", play: "PLAY", pause: "PAUSE", skip: "SKIP",
     drop: "drop mp3 files or a whole folder here",
     searchPh: "search the files found…", searchAria: "Search mp3 in the chosen folder",
@@ -1545,6 +1547,9 @@ $("addPc").onclick = async () => {
       systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include",
     });
   } catch (_) { return toast(TXT.pcDenied); }
+  // экран или окно — в эфир идёт весь звук компьютера: приёмник своей же станции на этом
+  // компьютере попадёт обратно в эфир, и петля накапливается в эхо и шум (вкладке это не грозит)
+  const surface = (stream.getVideoTracks()[0] && stream.getVideoTracks()[0].getSettings().displaySurface) || "";
   stream.getVideoTracks().forEach(t => t.stop());
   const audio = stream.getAudioTracks()[0];
   if (!audio) { stream.getTracks().forEach(t => t.stop()); return toast(TXT.pcNoAudio); }
@@ -1554,6 +1559,7 @@ $("addPc").onclick = async () => {
   audio.addEventListener("ended", () => stopPc(TXT.pcEnded)); // «Закрыть доступ» в панели браузера
   $("addPc").textContent = TXT.stopPc;
   renderQueue(); sendTitle(); renderHost();
+  if (surface === "monitor" || surface === "window") { hintHold = performance.now() + 9000; hostHint(TXT.pcLoop, true); }
 };
 
 $("addFiles").onclick = () => $("files").click();
