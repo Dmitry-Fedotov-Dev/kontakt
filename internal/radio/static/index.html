@@ -884,7 +884,7 @@ let lws = null;
 const WAVE = /^\/r\/[0-9A-Za-z]+$/.test(location.pathname)
   ? new URL((document.querySelector('meta[property="og:url"]') || {}).content || location.href, location.href) : null;
 const HERE = WAVE || location;
-const BASE = HERE.pathname.replace(/\/(w\/[^/]*)?$/, "");
+const BASE = HERE.pathname.replace(/\/(w\/[^/]*(\/[^/]*)?)?$/, ""); // /w/93.4 и /w/93.4/код
 // ссылка на правила — от BASE: со страницы /w/101.7 относительная ушла бы в /w/terms.html
 document.querySelectorAll(".termsLink").forEach(a => { a.href = BASE + "/" + TXT.terms; });
 // ---------- поддержка ----------
@@ -1801,30 +1801,24 @@ function frame() {
 }
 
 // ---------- поделиться волной ----------
-// Ссылка /w/101.7?n=станция&t=трек: трек — тот, что играл в момент нажатия. Карточку с картинкой
-// для Telegram и других мессенджеров сервер собирает по этой же ссылке.
-function shareURL(f, name, track, logo) {
-  const q = new URLSearchParams();
-  if (name) q.set("n", name);
-  if (track) q.set("t", track);
-  if (LANG === "en") q.set("l", "en"); // карточка ссылки — на языке того, кто делится
-  if (logo) q.set("g", logo); // логотип станции — на картинке превью
-  const qs = q.toString();
-  return location.origin + BASE + "/w/" + fmt(f) + (qs ? "?" + qs : "");
+// Ссылка на волну: /w/93.4/код. Код сервер выдаёт заранее — как только станция поймана или трек
+// сменился (iPhone не откроет меню «Поделиться», если перед этим ждать ответа сети); за ним — станция,
+// трек и логотип в этот момент, и у каждой песни своё превью (мессенджеры кешируют превью по адресу).
+// Кода ещё нет — /w/93.4: постоянный адрес станции (английскому интерфейсу ?l=en: превью мессенджер
+// просит без языка).
+function shareURL(f, code) {
+  return location.origin + BASE + "/w/" + fmt(f) + (code ? "/" + code : LANG === "en" ? "?l=en" : "");
 }
-// Короткая ссылка /r/код берётся у сервера заранее — как только станция поймана или трек сменился:
-// iPhone не откроет меню «Поделиться», если перед этим ждать ответа сети. Нет кода — длинная ссылка.
-const shortCache = new Map(); // «f, станция, трек» → ссылка; "" — запрос идёт или не удался
-function shortFor(f, name, track, logo) {
-  logo = logo || "";
-  const key = f + "\n" + name + "\n" + track + "\n" + logo;
-  if (shortCache.has(key)) return shortCache.get(key);
-  shortCache.set(key, "");
+const codeCache = new Map(); // «f, станция, трек, логотип» → код; "" — запрос идёт или не удался
+function codeFor(f, name, track, logo) {
+  const key = [f, name, track, logo || "", LANG].join("\n");
+  if (codeCache.has(key)) return codeCache.get(key);
+  codeCache.set(key, "");
   fetch(BASE + "/api/short", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ f, n: name, t: track, l: LANG, g: logo }) })
+    body: JSON.stringify({ f, n: name, t: track, l: LANG, g: logo || "" }) })
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
-    .then(j => { if (/^https?:\/\//.test(j.url || "")) shortCache.set(key, j.url); })
-    .catch(() => { /* остаётся длинная ссылка */ });
+    .then(j => { if (/^[0-9A-Za-z]+$/.test(j.code || "")) codeCache.set(key, j.code); })
+    .catch(() => { /* остаётся адрес станции */ });
   return "";
 }
 let toastT = null;
@@ -1836,7 +1830,7 @@ function toast(msg) {
   toastT = setTimeout(() => el.remove(), 2500);
 }
 async function share(f, name, track, logo) {
-  const url = shortFor(f, name, track, logo) || shareURL(f, name, track, logo);
+  const url = shareURL(f, codeFor(f, name, track, logo));
   const title = (name || TXT.freq(f)) + " · " + TXT.title;
   const text = TXT.shareText(f, track);
   if (navigator.share) { // телефон: системное меню — Telegram, WhatsApp…
@@ -1865,8 +1859,8 @@ setInterval(() => {
   $("letterRx").hidden = $("shareRx").hidden;
   $("airCount").textContent = TXT.airCount(st.stations.length);
   $("shareTx").hidden = !st.onAir;
-  if (!$("shareRx").hidden) shortFor(s.f, s.n, s.t || "", s.g);
-  if (st.onAir) shortFor(st.hostFreq, $("name").value.trim(), nowTitle(), st.hostLogo);
+  if (!$("shareRx").hidden) codeFor(s.f, s.n, s.t || "", s.g); // код ссылки — заранее
+  if (st.onAir) codeFor(st.hostFreq, $("name").value.trim(), nowTitle(), st.hostLogo);
 }, 300);
 
 // ---------- лайки ----------
@@ -2034,11 +2028,14 @@ $("reportRx").onclick = () => {
 // Открыли по ссылке на волну: стрелка сразу стоит на ней, звук — после первого касания.
 let shared = null;
 {
-  const m = HERE.pathname.slice(BASE.length).match(/^\/w\/(\d{2,3}(?:\.\d)?)$/);
+  const m = HERE.pathname.slice(BASE.length).match(/^\/w\/(\d{2,3}(?:\.\d)?)(?:\/[0-9A-Za-z]+)?$/);
   const f = m ? Math.round(parseFloat(m[1]) * 10) : 0;
   if (f >= 875 && f <= 1080) {
     const q = new URLSearchParams(HERE.search);
-    shared = { f, name: (q.get("n") || "").slice(0, 24), track: (q.get("t") || "").slice(0, 64), logo: q.get("g") || "" };
+    let ws = {}; // ссылка с кодом: что было в эфире — в метатеге от сервера
+    try { ws = JSON.parse((document.querySelector('meta[name="wave-share"]') || {}).content || "{}"); } catch (_) {}
+    const v = k => ws[k] || q.get(k) || "";
+    shared = { f, name: v("n").slice(0, 24), track: v("t").slice(0, 64), logo: v("g") };
     st.dial = f / 10;
     R.setAttribute("aria-valuenow", st.dial.toFixed(1));
   }

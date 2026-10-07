@@ -164,6 +164,12 @@ func TestLogoAdminPin(t *testing.T) {
 	}
 	defer host2.Close()
 	waitStations(t, h2, func(s []Station) bool { return len(s) == 1 && s[0].Logo == g })
+	for i := 0; i < 100; i++ { // память волны пишется на диск сразу после выхода в эфир — дождаться,
+		if _, ok := h2.waves.Get(1000); ok { // иначе уборка временной папки гонится с записью
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if r, _ := http.Post(adm.URL+"/admin/station-logo?f=1017", "image/png", nil); r.StatusCode != 404 {
 		t.Fatalf("пустая волна: %d", r.StatusCode)
 	}
@@ -187,5 +193,30 @@ func TestHostLogosOff(t *testing.T) {
 	r.Body.Close()
 	if strings.Contains(string(page), `<meta name="host-logos"`) {
 		t.Fatal("страница разрешает ведущему логотип")
+	}
+}
+
+// Чистая ссылка /w/93.4: станция ушла — превью помнит её название и логотип; после перезапуска тоже.
+func TestWaveMemory(t *testing.T) {
+	dir := t.TempDir()
+	h := NewHub(Options{LogosDir: dir, HostLogos: true})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=934&name=Platform")
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	host.WriteJSON(map[string]string{"logo": base64.StdEncoding.EncodeToString(testLogo(t, 64, color.White))})
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 && s[0].Logo != "" })
+	g := h.Stations()[0].Logo
+	host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 0 })
+
+	h2 := NewHub(Options{LogosDir: dir})
+	srv2 := httptest.NewServer(h2.Handler())
+	defer srv2.Close()
+	r, _ := http.Get(srv2.URL + "/w/93.4")
+	page, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if !strings.Contains(string(page), "Platform · 93.4") || !strings.Contains(string(page), "g="+g) {
+		t.Fatal("превью молчащей волны без названия или логотипа")
 	}
 }

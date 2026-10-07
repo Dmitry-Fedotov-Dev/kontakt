@@ -13,7 +13,11 @@ import (
 	"sync"
 )
 
-// Ссылка на волну: /w/101.7?n=<станция>&t=<что играло, когда копировали ссылку>.
+// Ссылка на волну: /w/93.4/k7Q2xb — частота и код, за которым сервер хранит станцию, трек, игравший
+// в момент «Поделиться», и логотип (shortlinks.go). У каждой песни свой адрес: мессенджеры кешируют
+// превью по адресу, и с одним /w/93.4 все следующие отправки показали бы первую песню.
+// /w/93.4 без кода — постоянный адрес станции: превью — что в эфире или последнее на волне (waves.go).
+// Старые ссылки: /w/101.7?n=<станция>&t=<трек> и /r/<код> — работают как раньше.
 // Страница та же, что и главная, только с метатегами Open Graph: мессенджер, получив ссылку,
 // сам приходит за ними и показывает карточку с картинкой /og/1017.png?n=…&t=….
 //
@@ -153,11 +157,15 @@ func (h *Hub) shareParams(r *http.Request) (shareInfo, bool) {
 	q := r.URL.Query()
 	si := shareInfo{f, clean(q.Get("n"), nameRunes), clean(q.Get("t"), titleRunes), langParam(q.Get("l")), logoParam(q.Get("g"))}
 	if si.name == "" {
-		if name, _, logo, live := h.liveStation(f); live {
-			si.name = name
-			if si.logo == "" {
-				si.logo = logo
+		name, _, logo, live := h.liveStation(f)
+		if !live { // молчит — последняя станция этой волны (waves.go)
+			if w, ok := h.waves.Get(f); ok {
+				name, logo = w.Name, w.Logo
 			}
+		}
+		si.name = name
+		if si.logo == "" {
+			si.logo = logo
 		}
 	}
 	return si, true
@@ -186,7 +194,23 @@ func (h *Hub) serveShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.shares.Inc("page")
-	h.writeShare(w, r, si)
+	h.writeShare(w, r, si, "")
+}
+
+// serveShareCode — /w/93.4/k7Q2xb: то, что было в эфире, когда нажали «Поделиться».
+func (h *Hub) serveShareCode(w http.ResponseWriter, r *http.Request) {
+	f, ok := ParseFreq(r.PathValue("freq"))
+	l, found := h.links.Get(r.PathValue("code"))
+	if !ok || !found || l.Freq != f {
+		if ok { // код устарел или не от этой волны — просто на волну
+			http.Redirect(w, r, baseURL(r)+"/w/"+FormatFreq(f), http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+	h.shares.Inc("short")
+	h.writeShare(w, r, shareInfo{l.Freq, l.Name, l.Track, langParam(l.Lang), logoParam(l.Logo)}, l.Code)
 }
 
 // serveShort — короткая ссылка /r/{code}: та же страница волны с той же карточкой превью, без
@@ -199,7 +223,7 @@ func (h *Hub) serveShort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.shares.Inc("short")
-	h.writeShare(w, r, shareInfo{l.Freq, l.Name, l.Track, langParam(l.Lang), logoParam(l.Logo)})
+	h.writeShare(w, r, shareInfo{l.Freq, l.Name, l.Track, langParam(l.Lang), logoParam(l.Logo)}, l.Code)
 }
 
 // serveShortNew — POST /api/short {"f":1017,"n":"…","t":"…","l":"en","g":"…"} → {"url":"https://…/r/k7Qx2"}.
@@ -223,10 +247,10 @@ func (h *Hub) serveShortNew(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(map[string]string{"url": hostURL(r) + "/r/" + code})
+	json.NewEncoder(w).Encode(map[string]string{"url": hostURL(r) + "/r/" + code, "code": code})
 }
 
-func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, si shareInfo) {
+func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, si shareInfo, code string) {
 	f, name, track, lang := si.f, si.name, si.track, si.lang
 	base, t := baseURL(r), ogTexts[lang]
 	q := url.Values{}
@@ -254,12 +278,19 @@ func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, si shareInfo) {
 		desc = fmt.Sprintf(t.Played, track) + desc
 	}
 	title := ogTitle(f, name, lang)
+	pageURL := base + "/w/" + FormatFreq(f) + qs
+	if code != "" {
+		pageURL = base + "/w/" + FormatFreq(f) + "/" + code
+	}
 	meta := ogMeta(lang, map[string]string{
 		"og:title":       title,
 		"og:description": desc,
-		"og:url":         base + "/w/" + FormatFreq(f) + qs,
+		"og:url":         pageURL,
 		"og:image":       base + "/og/" + strconv.Itoa(f) + ".png" + qs,
 	})
+	// что показать на наклейке открывшему ссылку: в адресе с кодом этого нет
+	share, _ := json.Marshal(map[string]string{"n": name, "t": track, "g": si.logo})
+	meta += "\n" + `<meta name="wave-share" content="` + html.EscapeString(string(share)) + `">`
 	page := strings.Replace(indexHTML, ogPlaceholder, meta+h.airPortMeta(), 1)
 	page = strings.Replace(page, "<title>Открытое радио</title>", "<title>"+html.EscapeString(title)+"</title>", 1)
 	writePage(w, page)

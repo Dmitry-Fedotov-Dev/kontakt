@@ -2,6 +2,7 @@ package radio
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -78,7 +79,7 @@ func TestShortLinkSamePreview(t *testing.T) {
 	metas := func(page string) []string {
 		var m []string
 		for _, line := range strings.Split(page, "\n") {
-			if strings.Contains(line, `<meta property="og:`) {
+			if strings.Contains(line, `<meta property="og:`) && !strings.Contains(line, `og:url`) { // адрес у ссылки свой
 				m = append(m, line)
 			}
 		}
@@ -109,5 +110,35 @@ func TestShortLinksLang(t *testing.T) {
 	}
 	if l, _ := s.Get(en); l.Lang != "en" {
 		t.Fatalf("язык не сохранён: %+v", l)
+	}
+}
+
+// /w/93.4/код: превью с песней, игравшей при «Поделиться»; код от другой волны — на саму волну.
+func TestShareCodePath(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	resp, err := http.Post(srv.URL+"/api/short", "application/json", strings.NewReader(`{"f":934,"n":"9¾ RADIO","t":"Глава 1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct{ Code string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if out.Code == "" {
+		t.Fatal("нет кода")
+	}
+	r, _ := http.Get(srv.URL + "/w/93.4/" + out.Code)
+	b, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	page := string(b)
+	if r.StatusCode != 200 || !strings.Contains(page, `og:url" content="`+srv.URL+`/w/93.4/`+out.Code+`"`) ||
+		!strings.Contains(page, "og/934.png?") || !strings.Contains(page, `name="wave-share"`) {
+		t.Fatalf("страница по коду: %d", r.StatusCode)
+	}
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	r, _ = noFollow.Get(srv.URL + "/w/101.7/" + out.Code)
+	if r.StatusCode != http.StatusFound || !strings.HasSuffix(r.Header.Get("Location"), "/w/101.7") {
+		t.Fatalf("код чужой волны: %d %s", r.StatusCode, r.Header.Get("Location"))
 	}
 }

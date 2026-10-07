@@ -227,7 +227,11 @@ func (h *Hub) applyLogo(s *station, hash string) {
 	h.mu.Lock()
 	same := s.logo == hash
 	s.logo = hash
+	live := h.st[s.freq] == s
 	h.mu.Unlock()
+	if live {
+		h.waves.Seen(s.freq, s.name, hash)
+	}
 	s.sayHost(map[string]string{"logo": hash})
 	if !same {
 		h.changed()

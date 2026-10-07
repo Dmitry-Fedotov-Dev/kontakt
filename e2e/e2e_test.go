@@ -891,7 +891,7 @@ func TestRadioShortLinkThroughWeb(t *testing.T) {
 	}
 	b, _ := io.ReadAll(page.Body)
 	page.Body.Close()
-	if page.StatusCode != 200 || !strings.Contains(string(b), `og:url" content="`+st.web.URL+`/radio/w/106.5?`) {
+	if page.StatusCode != 200 || !strings.Contains(string(b), `og:url" content="`+st.web.URL+`/radio/w/106.5/`) {
 		t.Fatalf("страница по короткой ссылке: %d", page.StatusCode)
 	}
 }

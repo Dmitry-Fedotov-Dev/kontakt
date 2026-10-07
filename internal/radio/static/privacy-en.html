@@ -32,6 +32,7 @@ a { color: inherit; }
     <li><b>The kontakt_id cookie</b> — a random number of your browser or app. It is used only for moderation, so that a ban works. It can't tell anyone who you are.</li>
     <li><b>The moderation database</b> — a hash of that cookie, bans, reports (not who reported — only a fingerprint that can't be linked to the reporter) and dates without time.</li>
     <li><b>Short links to a frequency</b> — the frequency, station and track name, only if someone chose to share a link.</li>
+    <li><b>Frequency memory</b> — the last station name and logo on each frequency, so a link to the frequency shows the station even when it is silent. No people; a banned station is forgotten.</li>
     <li><b>Station logos</b> — a 64×64 badge set by the moderator: link previews need it after the broadcast too. Stored: the picture and a hash of the host's cookie it is pinned to (not the cookie itself); old ones are evicted, a banned station's logo is deleted.</li>
     <li><b>Monitoring counters</b> — how many stations and listeners, without names and without people.</li>
   </ul>

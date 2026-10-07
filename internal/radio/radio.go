@@ -160,6 +160,7 @@ type Hub struct {
 
 	logos       *logoStore
 	logoChanges *metrics.CounterVec
+	waves       *waveMemo // последнее название и логотип каждой волны (waves.go)
 }
 
 type station struct {
@@ -258,6 +259,7 @@ func NewHub(opt Options) *Hub {
 		log.Printf("логотипы: %v — храню только в памяти", err)
 		h.logos.dir = ""
 	}
+	h.waves = openWaves(h.logos.dir)
 	h.logoChanges = h.reg.CounterVec("kontakt_radio_logo_changes_total",
 		"Логотипы станций от ведущих: set — поставлен, removed — убран, bad — не PNG 64×64", "result", "set", "removed", "bad")
 	h.shortRate = &bucket{rate: 20, burst: 40, tokens: 40, last: time.Now()} // защита диска от потока POST
@@ -331,6 +333,7 @@ func (h *Hub) Handler() http.Handler {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /{$}", h.serveIndex)
 	mux.HandleFunc("GET /w/{freq}", h.serveShare)
+	mux.HandleFunc("GET /w/{freq}/{code}", h.serveShareCode)
 	mux.HandleFunc("GET /r/{code}", h.serveShort)
 	mux.HandleFunc("POST /api/short", h.serveShortNew)
 	mux.HandleFunc("GET /og/{freq}", h.serveOG)
@@ -563,8 +566,10 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 			l.heard, l.heardSince = s, time.Now()
 		}
 	}
+	logo := s.logo
 	h.mu.Unlock()
 	h.changed()
+	h.waves.Seen(f, name, logo)
 
 	conn.SetReadLimit(maxHostText)
 	tokens, last := float64(burstBytes), time.Now()
@@ -651,6 +656,7 @@ func (h *Hub) kick(s *station) {
 	if logo != "" { // логотип снятой баном станции не должен жить в превью ссылок
 		h.logos.Delete(logo)
 	}
+	h.waves.Forget(s.freq)
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
 	if s.conn != nil {
