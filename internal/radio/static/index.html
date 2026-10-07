@@ -1540,9 +1540,9 @@ $("addPc").onclick = async () => {
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: true,
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false, restrictOwnAudio: true },
-      // surfaceSwitching "exclude": без кнопки «Демонстрировать эту вкладку» Chrome не вешает плашку
-      // на все вкладки — только на ту, что в эфире, и на радио (её саму сайт скрыть не может)
-      systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "exclude",
+      // surfaceSwitching "include": на любой вкладке кнопка «Демонстрировать эту вкладку» —
+      // источник меняется на ходу, без остановки эфира; цена — плашка Chrome на всех вкладках
+      systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include",
     });
   } catch (_) { return toast(TXT.pcDenied); }
   stream.getVideoTracks().forEach(t => t.stop());
