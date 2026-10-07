@@ -122,6 +122,8 @@ button, input { font: inherit; color: inherit; }
 /* место под кнопки станции занято всегда: когда станция поймана и они появляются, приёмник не
    прыгает вверх */
 .reportRow { text-align: center; margin-top: 12px; min-height: 26px; }
+/* сколько станций в эфире — неприметно: подсказка, что крутить ручку есть смысл */
+.airCount { text-align: center; font-size: 11px; color: #7A6898; letter-spacing: .04em; margin-top: 10px; min-height: 1.2em; }
 /* Лайк: пиксельное сердце рядом с «поделиться». У ведущего сердца всплывают поверх экрана. */
 .rxRow { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 14px; min-height: 46px; }
 .rxRow .share { margin: 0; }
@@ -316,6 +318,7 @@ button, input { font: inherit; color: inherit; }
       <button class="btn likeBtn" id="likeRx" hidden aria-label="Like" data-i-aria="likeAria"><img class="heartImg" alt=""></button>
       <button class="btn likeBtn letterBtn" id="letterRx" hidden aria-label="Letter" data-i-aria="letterAria"><img class="envImg" alt=""><span class="cool" id="letterCool"></span></button>
     </div>
+    <div class="airCount" id="airCount" aria-live="off"></div>
     <div class="reportRow"><button class="report" id="reportRx" hidden aria-label="Пожаловаться на станцию" data-i-aria="reportAria" data-i="report">REPORT</button></div>
   </section>
 
@@ -419,6 +422,7 @@ const I18N = {
     title: "Открытое радио", other: "English", terms: "terms.html",
     support: "ПОДДЕРЖАТЬ", anyCard: "картой любой страны ♥", ruCard: "картой из России ₽",
     likeAria: "Лайк станции", likesTitle: "лайков за этот эфир",
+    airCount: n => n === 0 ? "в эфире пока тихо" : "в эфире: " + n + " " + (n % 10 === 1 && n % 100 !== 11 ? "станция" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "станции" : "станций"),
     letterAria: "Письмо ведущему с лайком", letterTitle: "Письмо ведущему", letterPh: "Пару слов ведущему — он увидит, но не узнает от кого",
     letterSend: "ОТПРАВИТЬ ♥", cancel: "ОТМЕНА", close: "ЗАКРЫТЬ", nextLetter: "СЛЕДУЮЩЕЕ",
     letterFrom: "Письмо от слушателя", letterReport: "ЖАЛОБА",
@@ -489,6 +493,7 @@ const I18N = {
     title: "Open Radio", other: "Русский", terms: "terms-en.html",
     support: "SUPPORT", anyCard: "any card ♥", ruCard: "Russian card ₽",
     likeAria: "Like the station", likesTitle: "likes this broadcast",
+    airCount: n => n === 0 ? "the air is quiet for now" : "on air: " + n + (n === 1 ? " station" : " stations"),
     letterAria: "Letter to the host with a like", letterTitle: "Letter to the host", letterPh: "A few words to the host — they'll see it but won't know who sent it",
     letterSend: "SEND ♥", cancel: "CANCEL", close: "CLOSE", nextLetter: "NEXT",
     letterFrom: "A letter from a listener", letterReport: "REPORT",
@@ -1712,6 +1717,7 @@ setInterval(() => {
   $("reportRx").hidden = $("shareRx").hidden || !me.moderation;
   $("likeRx").hidden = $("shareRx").hidden;
   $("letterRx").hidden = $("shareRx").hidden;
+  $("airCount").textContent = TXT.airCount(st.stations.length);
   $("shareTx").hidden = !st.onAir;
   if (!$("shareRx").hidden) shortFor(s.f, s.n, s.t || "");
   if (st.onAir) shortFor(st.hostFreq, $("name").value.trim(), nowTitle());
