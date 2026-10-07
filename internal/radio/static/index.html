@@ -611,14 +611,16 @@ function ulawEncode(f32) {
 // tx — передатчик: смесь → 8 кГц кадрами по 160 отсчётов (20 мс).
 const WORKLETS = `
 const L = 32768, H = 16384; // L — 4 с: принять догоняющую пачку после замершей связи
-// Запас приёмника в отсчётах 8 кГц: TARGET держится подстройкой скорости воспроизведения, START —
-// сколько накопить перед звуком, MAXN — потолок: сверх него (долгий рывок сети) лишнее выкидывается.
-// 400 мс переживают рывки туннеля и Wi-Fi; было 200 мс, и звук на них обрывался щелчком.
-const TARGET = 3200, START = 3200, MAXN = 20000; // потолок 2,5 с: сервер держит для слушателя до 3 с
+// Запас приёмника в отсчётах 8 кГц: this.target — сколько накопить перед звуком, его же держит
+// подстройка скорости воспроизведения; MAXN — потолок: сверх него (долгий рывок) лишнее выкидывается.
+// Старт — 500 мс: звук приходит пачками по 100 мс, и между пачками запас проседает на 100 мс; при
+// 400 мс пауза ведущего в 374 мс уже опустошала буфер (INC-001). Опустел буфер — запас растёт на
+// 200 мс, до 1,2 с: на рваной связи приёмник сам становится терпеливее, задержка радио не важна.
+const START = 4000, GROW = 1600, MAXT = 9600, MAXN = 20000; // потолок 2,5 с: сервер держит до 3 с
 class RX extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.buf = new Float32Array(L); this.w = 0; this.r = 0; this.n = 0; this.ready = false;
+    this.buf = new Float32Array(L); this.w = 0; this.r = 0; this.n = 0; this.ready = false; this.target = START;
     this.cur = 0; this.nxt = 0; this.frac = 0; this.step = 8000 / sampleRate; this.adj = 0;
     this.s = 0; this.d = 1; this.scratch = 0; this.vol = 0; this.lp = 0; this.crk = 0; this.ph = 0;
     this.fade = 1; this.fadeTo = 1; this.fadeT = 0; this.lfo = 0;
@@ -639,11 +641,13 @@ class RX extends AudioWorkletProcessor {
       if (this.n < L) this.n++; else this.r = (this.r + 1) % L;
     }
     // долгий рывок сети принёс пачку больше потолка — лишнее выкидываем, иначе задержка росла бы
-    if (this.n > MAXN) { const drop = this.n - TARGET; this.r = (this.r + drop) % L; this.n -= drop; }
+    if (this.n > MAXN) { const drop = this.n - this.target; this.r = (this.r + drop) % L; this.n -= drop; }
   }
   pop() {
-    if (!this.ready) { if (this.n < START) return 0; this.ready = true; } // 400 мс запаса от рывков сети
-    if (this.n === 0) { this.ready = false; this.crk = 0.5; return 0; } // пропал поток — щелчок
+    if (!this.ready) { if (this.n < this.target) return 0; this.ready = true; } // запас от рывков сети
+    if (this.n === 0) { // пропал поток — щелчок, и впредь запас побольше
+      this.ready = false; this.crk = 0.5; this.target = Math.min(MAXT, this.target + GROW); return 0;
+    }
     const v = this.buf[this.r]; this.r = (this.r + 1) % L; this.n--; return v;
   }
   process(_, outputs) {
@@ -655,7 +659,7 @@ class RX extends AudioWorkletProcessor {
     // Раньше запас копился до секунды и выкидывался прыжком — провал раз в ~100 с. Теперь скорость
     // плавно подстраивается под запас: ±2 % предел, на 0,8 % разницы часов — 0,8 %, на слух незаметно.
     if (this.ready) {
-      const want = Math.max(-0.02, Math.min(0.02, (this.n - TARGET) / TARGET * 0.02));
+      const want = Math.max(-0.02, Math.min(0.02, (this.n - this.target) / this.target * 0.02));
       this.adj += (want - this.adj) * 0.05;
     }
     const step = this.step * (1 + this.adj);
@@ -955,7 +959,9 @@ function connectListen() {
 }
 
 // Расстояние по кольцу шкалы: ручка бесконечная, 108.0 и 87.5 — соседи.
-const CATCH = 0.25;
+// CATCH — отсюда станция проступает из шороха (0,25 МГц = 45° ручки); PRELOAD — ещё на 45° раньше
+// приёмник уже настроен на неё и копит буфер: к первому звуку запас полный, без паузы на старте.
+const CATCH = 0.25, PRELOAD = 0.5;
 function ringDist(a, b) { const d = Math.abs(a - b) % SPAN; return Math.min(d, SPAN - d); }
 function nearest(freqMHz) {
   let best = null, bd = 1e9;
@@ -967,7 +973,7 @@ const strengthOf = d => d <= 0.03 ? 1 : Math.max(0, 1 - (d - 0.03) / (CATCH - 0.
 function retune() {
   if (!lws || lws.readyState !== 1) return;
   let want = 0;
-  if (st.mode === "rx" && st.power) { const { s, d } = nearest(st.dial); if (s && d < CATCH) want = s.f; }
+  if (st.mode === "rx" && st.power) { const { s, d } = nearest(st.dial); if (s && d < PRELOAD) want = s.f; }
   if (want !== st.tuned) {
     st.tuned = want;
     lws.send(JSON.stringify({ tune: want }));
