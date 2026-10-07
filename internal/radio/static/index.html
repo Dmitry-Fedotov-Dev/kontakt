@@ -358,6 +358,7 @@ button, input { font: inherit; color: inherit; }
         <div class="row">
           <button class="btn" id="addFiles" data-i="addFiles">+ FILES</button>
           <button class="btn" id="addDir" data-i="addDir">+ FOLDER</button>
+          <button class="btn" id="addPc" hidden data-i="addPc">+ PC AUDIO</button>
         </div>
       </div>
       <div class="drop" id="drop" data-i="drop">кинь сюда mp3 или целую папку</div>
@@ -435,6 +436,10 @@ const I18N = {
     fMic: "МИКР", fMusic: "МУЗЫКА", fAir: "ЭФИР", fMon: "МОНИТОР", fOut: "ВЫХОД",
     fMicAria: "Громкость микрофона", fMusicAria: "Громкость музыки", fAirAria: "Громкость эфира",
     fMonAria: "Громкость монитора: что слышите вы, в эфир не влияет",
+    addPc: "+ ЗВУК ПК", stopPc: "■ СТОП ЗВУК ПК", pcTitle: "Звук ПК", pcNow: "▶ звук ПК в эфире",
+    pcNoAudio: "звука нет: в окне выбора отметь «Поделиться звуком» (вкладка) или «Системный звук» (экран)",
+    pcDenied: "браузер не дал звук — попробуй ещё раз", pcEnded: "звук ПК больше не в эфире",
+    pcHelp: "Вкладка — только её звук; весь экран — весь звук компьютера (Chrome и Edge на Windows)",
     queue: "ОЧЕРЕДЬ", addFiles: "+ ФАЙЛЫ", addDir: "+ ПАПКА", addAll: "ДОБАВИТЬ ВСЁ", play: "ИГРАТЬ", pause: "ПАУЗА", skip: "ДАЛЬШЕ",
     drop: "кинь сюда mp3 или целую папку",
     searchPh: "поиск по найденному…", searchAria: "Поиск mp3 в выбранной папке",
@@ -500,6 +505,10 @@ const I18N = {
     fMic: "MIC", fMusic: "MUSIC", fAir: "AIR", fMon: "MONITOR", fOut: "OUT",
     fMicAria: "Microphone volume", fMusicAria: "Music volume", fAirAria: "On-air volume",
     fMonAria: "Monitor volume: what you hear, doesn't affect the air",
+    addPc: "+ PC AUDIO", stopPc: "■ STOP PC AUDIO", pcTitle: "PC audio", pcNow: "▶ PC audio on air",
+    pcNoAudio: "no sound: in the picker tick “Share audio” (tab) or “Share system audio” (screen)",
+    pcDenied: "the browser didn't share audio — try again", pcEnded: "PC audio is off the air",
+    pcHelp: "A tab — only its sound; the whole screen — all computer sound (Chrome and Edge on Windows)",
     queue: "QUEUE", addFiles: "+ FILES", addDir: "+ FOLDER", addAll: "ADD ALL", play: "PLAY", pause: "PAUSE", skip: "SKIP",
     drop: "drop mp3 files or a whole folder here",
     searchPh: "search the files found…", searchAria: "Search mp3 in the chosen folder",
@@ -1451,7 +1460,7 @@ function enqueue(files) {
   return n;
 }
 function nowTitle() {
-  const track = current && playing ? current.name : "";
+  const track = current && playing ? current.name : pc ? TXT.pcTitle : "";
   return micOn ? (track ? TXT.fMic + " · " + track : TXT.fMic) : track;
 }
 function sendTitle() { if (hws && hws.readyState === 1) hws.send(JSON.stringify({ title: nowTitle() })); }
@@ -1470,7 +1479,7 @@ function renderQueue() {
     li.append(n, up, rm);
     list.append(li);
   });
-  $("now").textContent = current ? (playing ? "▶ " : "❚❚ ") + current.name : TXT.silenceNow;
+  $("now").textContent = current ? (playing ? "▶ " : "❚❚ ") + current.name : pc ? TXT.pcNow : TXT.silenceNow;
   $("play").textContent = playing ? TXT.pause : TXT.play;
 }
 function stopCurrent() {
@@ -1504,6 +1513,45 @@ $("play").onclick = async () => {
   renderQueue(); sendTitle(); renderHost();
 };
 $("skip").onclick = () => next();
+
+// ---------- звук ПК: вкладка, окно или весь экран ----------
+// Браузер даёт звук только вместе с картинкой (getDisplayMedia): видео сразу выключаем, звук —
+// через фейдер «Музыка» (и так же приглушается под микрофон). В монитор не идёт: он и так звучит
+// в колонках ведущего. Звук самой страницы из захвата исключаем — иначе эхо эфира.
+let pc = null; // { stream, src }
+const canPc = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && !/Android|iPhone|iPad/i.test(navigator.userAgent);
+$("addPc").hidden = !canPc;
+$("addPc").title = TXT.pcHelp;
+function stopPc(msg) {
+  if (!pc) return;
+  pc.stream.getTracks().forEach(t => t.stop());
+  pc.src.disconnect();
+  pc = null;
+  $("addPc").textContent = TXT.addPc;
+  if (msg) toast(msg);
+  renderQueue(); sendTitle(); renderHost();
+}
+$("addPc").onclick = async () => {
+  if (pc) return stopPc();
+  await ensureTx();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false, restrictOwnAudio: true },
+      systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include",
+    });
+  } catch (_) { return toast(TXT.pcDenied); }
+  stream.getVideoTracks().forEach(t => t.stop());
+  const audio = stream.getAudioTracks()[0];
+  if (!audio) { stream.getTracks().forEach(t => t.stop()); return toast(TXT.pcNoAudio); }
+  const src = ctx.createMediaStreamSource(new MediaStream([audio]));
+  src.connect(tx.music);
+  pc = { stream, src };
+  audio.addEventListener("ended", () => stopPc(TXT.pcEnded)); // «Закрыть доступ» в панели браузера
+  $("addPc").textContent = TXT.stopPc;
+  renderQueue(); sendTitle(); renderHost();
+};
 
 $("addFiles").onclick = () => $("files").click();
 $("addDir").onclick = () => $("dir").click();
