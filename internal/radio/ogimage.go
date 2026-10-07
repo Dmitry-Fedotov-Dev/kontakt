@@ -280,12 +280,9 @@ func OGImage(freq int, name, track, lang string, logo []byte) []byte {
 	}
 	y := 56
 	if li != nil {
-		// Логотип — наклейкой, как карточка станции на странице: тень, тёмный контур, кремовая
-		// подложка. Справа крупно частота, ниже на всю ширину — станция и что играло.
-		c.rect(ogLogoX+3, ogLogoY+3, ogLogoBox, ogLogoBox, cInk)
-		c.rect(ogLogoX, ogLogoY, ogLogoBox, ogLogoBox, cInk)
-		c.rect(ogLogoX+1, ogLogoY+1, ogLogoBox-2, ogLogoBox-2, cCream)
-		fx := ogLogoX + ogLogoBox + 7
+		// Логотип — сам по себе, без рамки (рисуется ниже, в полном цвете); справа крупно частота,
+		// ниже на всю ширину — станция и что играло.
+		fx := ogLogoX + ogLogoBox + 8
 		c.text(FormatFreq(freq), fx, 26, 3, cAmber)
 		c.text(strings.TrimSpace(wd.freq), fx, 52, 2, cAmberDim)
 		y = 84
@@ -323,10 +320,25 @@ func OGImage(freq int, name, track, lang string, logo []byte) []byte {
 	// точки картинки (64 × 3 = 192 = 48 клеток холста): чётко и в том же пиксельном духе.
 	out := image.NewRGBA(c.img.Bounds())
 	draw.Draw(out, out.Bounds(), c.img, image.Point{}, draw.Src)
-	ox, oy := (ogLogoX+3)*ogScale, (ogLogoY+3)*ogScale
+	ox, oy := ogLogoX*ogScale, ogLogoY*ogScale
 	b := li.Bounds()
+	// Логотип всегда в круге — как на странице: углы квадратной картинки срезаются.
+	in := func(x, y int) bool { dx, dy := float64(x)-31.5, float64(y)-31.5; return dx*dx+dy*dy <= 32*32 }
+	// тень по контуру самого логотипа, сдвинута на клетку холста
+	shadow := image.NewUniform(color.RGBA{0x14, 0x0C, 0x1C, 0xC0})
 	for y := 0; y < logoSide; y++ {
 		for x := 0; x < logoSide; x++ {
+			if _, _, _, a := li.At(b.Min.X+x, b.Min.Y+y).RGBA(); a > 0x8000 && in(x, y) {
+				r := image.Rect(ox+x*3+ogScale, oy+y*3+ogScale, ox+x*3+3+ogScale, oy+y*3+3+ogScale)
+				draw.Draw(out, r, shadow, image.Point{}, draw.Over)
+			}
+		}
+	}
+	for y := 0; y < logoSide; y++ {
+		for x := 0; x < logoSide; x++ {
+			if !in(x, y) {
+				continue
+			}
 			px := image.NewUniform(li.At(b.Min.X+x, b.Min.Y+y))
 			r := image.Rect(ox+x*3, oy+y*3, ox+x*3+3, oy+y*3+3)
 			draw.Draw(out, r, px, image.Point{}, draw.Over)
@@ -335,8 +347,8 @@ func OGImage(freq int, name, track, lang string, logo []byte) []byte {
 	return encodePNG(out)
 }
 
-// Где на превью логотип: рамка ogLogoBox клеток холста — контур 1, подложка 2, логотип 48.
-const ogLogoX, ogLogoY, ogLogoBox = 146, 22, 54
+// Где на превью логотип: квадрат ogLogoBox клеток холста (64 пикселя логотипа × 3 точки = 48 клеток).
+const ogLogoX, ogLogoY, ogLogoBox = 146, 24, 48
 
 func encodePNG(img image.Image) []byte {
 	var b bytes.Buffer

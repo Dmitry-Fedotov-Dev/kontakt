@@ -24,7 +24,7 @@ func testLogo(t *testing.T, side int, c color.Color) []byte {
 			img.Set(x, y, c)
 		}
 	}
-	img.Set(3, 5, color.NRGBA{255, 0, 0, 255})
+	img.Set(32, 30, color.NRGBA{255, 0, 0, 255})
 	var b bytes.Buffer
 	png.Encode(&b, img)
 	return b.Bytes()
@@ -113,8 +113,8 @@ func TestLogoOnAir(t *testing.T) {
 	if err != nil || img.Bounds().Dx() != OGWidth || bytes.Equal(bw, bo) {
 		t.Fatalf("превью с логотипом: %v", err)
 	}
-	// логотип нарисован: в углу значка — красный пиксель (3, 5) тестовой картинки
-	px := img.At((ogLogoX+3)*ogScale+3*3+1, (ogLogoY+3)*ogScale+5*3+1)
+	// логотип нарисован: красный пиксель (32, 30) тестовой картинки — в круге, углы срезаются
+	px := img.At(ogLogoX*ogScale+32*3+1, ogLogoY*ogScale+30*3+1)
 	if r, g, b, _ := px.RGBA(); r>>8 != 255 || g>>8 != 0 || b>>8 != 0 {
 		t.Fatalf("пиксель логотипа на превью: %v", px)
 	}
