@@ -662,10 +662,10 @@ func TestListenerLimitStrict(t *testing.T) {
 		t.Fatalf("подключено %d, отказано %d — ждали 10 и 50", ok, full)
 	}
 	h.mu.Lock()
-	n, held := len(h.ls), h.lsHeld
+	n := len(h.ls)
 	h.mu.Unlock()
-	if n != 10 || held != 0 {
-		t.Fatalf("на сервере %d приёмников и %d мест в рукопожатии", n, held)
+	if used, _ := h.listenGate.Usage(); n != 10 || used != 10 {
+		t.Fatalf("на сервере %d приёмников и %d занятых мест", n, used)
 	}
 	kept[0].Close() // ушёл один — место освободилось
 	for i := 0; ; i++ {

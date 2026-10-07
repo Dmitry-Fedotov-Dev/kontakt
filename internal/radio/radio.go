@@ -50,6 +50,7 @@ import (
 
 	"log"
 
+	"kontakt/internal/admission"
 	"kontakt/internal/identity"
 	"kontakt/internal/metrics"
 	"kontakt/internal/moderation"
@@ -116,19 +117,39 @@ type Options struct {
 	// HostLogos — ведущий ставит логотип сам ({"logo":…} и ячейка на вкладке «Вещать»). Выключено —
 	// логотипы ставит только модератор через админ-порт (AdminHandler).
 	HostLogos bool
+
+	// Допуск (internal/admission, admission.go в этом пакете): из MaxListeners/MaxStations
+	// последние ReserveListeners/ReserveStations мест — только своим (пропуск, модерация засчитала
+	// сессии, недавно отключился); владельцу — ещё OwnerExtra приёмников сверх. Пределы на куку и
+	// на IP — PerID*/PerIP*; новых подключений с IP — ConnRate в секунду (запас ConnBurst).
+	// Нули — без резерва и без пределов на источник (тесты, локальный стенд).
+	ReserveListeners, ReserveStations int
+	OwnerExtra                        int
+	PerIDListeners, PerIPListeners    int
+	PerIDStations, PerIPStations      int
+	ConnRate, ConnBurst               float64
+	// Exempt — адреса без пределов по IP (localhost и сам сервер); nil — только localhost.
+	Exempt []*net.IPNet
+	// Passes — пропуска kontakt_pass (nil — без них).
+	Passes *admission.Passes
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
 func (h *Hub) MetricsHandler() http.Handler { return h.reg.Handler() }
 
 type Hub struct {
-	opt     Options
-	mu      sync.Mutex
-	st      map[int]*station
-	ls      map[*listener]struct{}
-	lsHeld  int           // под mu: места, занятые приёмниками на время рукопожатия (serveListen)
-	version atomic.Uint64 // меняется — полный список всем приёмникам
-	content atomic.Uint64 // меняется и при смене трека — только ключ кеша полного списка
+	opt Options
+	mu  sync.Mutex
+	st  map[int]*station
+	ls  map[*listener]struct{}
+	// допуск: места приёмников и частот, источники, недавно отключившиеся (их пускают в резерв)
+	listenGate, hostGate admission.Gate
+	srcs                 admission.Sources
+	conns                admission.Rate
+	seats                map[string]time.Time // под mu: кука → когда отключился приёмник
+	levels               levelCache
+	version              atomic.Uint64 // меняется — полный список всем приёмникам
+	content              atomic.Uint64 // меняется и при смене трека — только ключ кеша полного списка
 
 	framesIn  *metrics.Counter
 	framesOut *metrics.Counter
@@ -166,6 +187,8 @@ type Hub struct {
 
 	logos       *logoStore
 	logoChanges *metrics.CounterVec
+	listenAdmit *metrics.CounterVec
+	hostAdmit   *metrics.CounterVec
 	waves       *waveMemo // последнее название и логотип каждой волны (waves.go)
 }
 
@@ -229,6 +252,7 @@ func NewHub(opt Options) *Hub {
 	h := &Hub{opt: opt, st: map[int]*station{}, ls: map[*listener]struct{}{}, reg: metrics.NewRegistry(),
 		reportTimes: map[string][]time.Time{}, letterTimes: map[string]time.Time{}}
 	h.upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024, CheckOrigin: sameSite}
+	h.initAdmission()
 	// Метрики — только счётчики и частоты: ни адресов, ни названий станций и треков (их
 	// задают люди, и в метках они раздули бы число рядов без предела).
 	h.framesIn = h.reg.Counter("kontakt_radio_frames_in_total", "Кадры μ-law (20 мс), принятые от ведущих")
@@ -551,17 +575,19 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	tk, res := h.admit(r, host, &h.hostGate)
+	h.hostAdmit.Inc(string(res))
+	if tk == nil {
+		h.rejected.Inc("full")
+		http.Error(w, "в эфире нет места", http.StatusServiceUnavailable)
+		return
+	}
+	defer tk.Release()
 	h.mu.Lock()
-	switch {
-	case h.st[f] != nil:
+	if h.st[f] != nil {
 		h.mu.Unlock()
 		h.rejected.Inc("busy")
 		http.Error(w, "частота занята", http.StatusConflict)
-		return
-	case len(h.st) >= h.opt.MaxStations:
-		h.mu.Unlock()
-		h.rejected.Inc("full")
-		http.Error(w, "в эфире нет места", http.StatusServiceUnavailable)
 		return
 	}
 	s := &station{freq: f, name: name, since: time.Now(), subs: map[*listener]struct{}{}, host: host, reported: map[string]bool{},
@@ -724,34 +750,28 @@ func (h *Hub) removeStation(s *station) {
 // ---------- слушатель ----------
 
 func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
-	// Лимит строгий: место занимается под блокировкой до рукопожатия, иначе сотня одновременных
-	// подключений проходила проверку раньше, чем хоть одно попадало в h.ls. Отказ — закрытием с
-	// кодом CloseFull после рукопожатия: код ответа на апгрейд браузер странице не показывает, и та
-	// молча переподключалась бы каждые 2 с.
-	h.mu.Lock()
-	full := len(h.ls)+h.lsHeld >= h.opt.MaxListeners
-	if !full {
-		h.lsHeld++
-	}
-	h.mu.Unlock()
+	// Лимит строгий: место занимается в воротах до рукопожатия (admission.Gate), иначе сотня
+	// одновременных подключений проходила проверку раньше, чем хоть одно попадало в h.ls. Отказ —
+	// закрытием с кодом CloseFull после рукопожатия: код ответа на апгрейд браузер странице не
+	// показывает, и та молча переподключалась бы каждые 2 с.
+	id := identity.FromRequest(r)
+	tk, res := h.admit(r, id, &h.listenGate)
+	h.listenAdmit.Inc(string(res))
 	conn, err := h.upgrader.Upgrade(w, r, nil)
-	if full {
+	if tk == nil {
 		h.rejected.Inc("listeners_full")
 		if err == nil {
-			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(CloseFull, "full"), time.Now().Add(time.Second))
+			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(CloseFull, string(res)), time.Now().Add(time.Second))
 			conn.Close()
 		}
 		return
 	}
+	defer tk.Release()
 	if err != nil {
-		h.mu.Lock()
-		h.lsHeld--
-		h.mu.Unlock()
 		return
 	}
-	l := &listener{id: identity.FromRequest(r), out: make(chan []byte, listenerBuf), ctl: make(chan []byte, 16)}
+	l := &listener{id: id, out: make(chan []byte, listenerBuf), ctl: make(chan []byte, 16)}
 	h.mu.Lock()
-	h.lsHeld--
 	h.ls[l] = struct{}{}
 	h.sessions.Inc()
 	h.mu.Unlock()
@@ -809,6 +829,7 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 		delete(s.subs, l)
 	}
 	delete(h.ls, l)
+	h.seatLeftLocked(id)
 	h.mu.Unlock()
 	close(done)
 	conn.Close()

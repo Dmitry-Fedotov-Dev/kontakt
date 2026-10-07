@@ -67,6 +67,9 @@ type Status struct {
 	Banned  bool `json:"banned"`
 	Cards   int  `json:"cards"` // разных жалобщиков в окне
 	Trusted bool `json:"trusted"`
+	// Level — уровень допуска, назначенный вручную в админке (2 — доверенный, 3 — владелец; 0 —
+	// нет): по нему internal/admission пускает в резерв мест. У забаненного в зоне — 0.
+	Level int `json:"level,omitempty"`
 }
 
 type report struct {
@@ -80,6 +83,7 @@ type record struct {
 	Reports []report `json:"reports,omitempty"`
 	Talks   int      `json:"talks,omitempty"` // засчитанные сессии новичка; у доверенного не растут
 	Trusted bool     `json:"trusted,omitempty"`
+	Level   int      `json:"level,omitempty"` // уровень допуска вручную (SetLevel)
 	// Формат до общей модерации: читается при загрузке и переводится.
 	OldCards  int  `json:"cards,omitempty"`
 	OldBanned bool `json:"banned,omitempty"`
@@ -96,7 +100,7 @@ func (r *record) banned(z Zone) bool {
 // Entry — строка журнала действий модерации.
 type Entry struct {
 	Day    string `json:"day"`
-	Action string `json:"action"` // yellow | ban | unban
+	Action string `json:"action"` // yellow | ban | unban | level0…level3
 	Zone   Zone   `json:"zone"`
 	Key    string `json:"key"` // ключ записи (хеш куки), его принимает админка
 	By     string `json:"by"`  // auto | admin
@@ -210,7 +214,27 @@ func (s *Store) Status(id string, z Zone) Status {
 		return Status{Trusted: s.Policy().TrustTalks == 0}
 	}
 	s.pruneLocked(r)
-	return Status{Banned: r.banned(z), Cards: cards(r, z), Trusted: s.trustedLocked(r)}
+	st := Status{Banned: r.banned(z), Cards: cards(r, z), Trusted: s.trustedLocked(r), Level: r.Level}
+	if st.Banned {
+		st.Level = 0
+	}
+	return st
+}
+
+// SetLevel — уровень допуска вручную (0 — снять): доверенные ведущие (2), владелец (3).
+func (s *Store) SetLevel(key string, level int) error {
+	if level < 0 || level > 3 {
+		return fmt.Errorf("уровень %d: нужен 0…3", level)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.recs[key]
+	if r == nil {
+		r = &record{}
+		s.recs[key] = r
+	}
+	r.Level = level
+	return s.commitLocked(Entry{Action: fmt.Sprintf("level%d", level), Zone: All, Key: key, By: "admin"})
 }
 
 func (s *Store) Banned(id string, z Zone) bool { return s.Status(id, z).Banned }

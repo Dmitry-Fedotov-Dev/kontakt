@@ -87,6 +87,25 @@ func (s *Store) AdminHandler(onBan func(key string, z Zone)) http.Handler {
 		return err
 	})
 	action("unban", s.Unban)
+	// POST /admin/level?id=<кука>|key=<ключ>&level=0…3 — уровень допуска (internal/admission)
+	mux.HandleFunc("/admin/level", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		key := q.Get("key")
+		if id := q.Get("id"); id != "" {
+			key = Key(id)
+		}
+		lv, err := strconv.Atoi(q.Get("level"))
+		if r.Method != http.MethodPost || key == "" || err != nil {
+			http.Error(w, "POST /admin/level?id=<кука kontakt_id>|key=<ключ>&level=0|2|3", http.StatusBadRequest)
+			return
+		}
+		if err := s.SetLevel(key, lv); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("admin: level %d", lv)
+		fmt.Fprintln(w, "ok")
+	})
 	mux.HandleFunc("/admin/journal", func(w http.ResponseWriter, r *http.Request) {
 		n, _ := strconv.Atoi(r.URL.Query().Get("n"))
 		writeJSON(w, s.Journal(n))
