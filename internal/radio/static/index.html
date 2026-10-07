@@ -923,7 +923,7 @@ function connectListen() {
     if (!rx || st.mode !== "rx") return;
     const b = new Uint8Array(e.data), f = new Float32Array(b.length);
     for (let i = 0; i < b.length; i++) f[i] = ULAW[b[i]];
-    st.framesRx = (st.framesRx || 0) + 1;
+    st.framesRx = (st.framesRx || 0) + b.length / 160; // приходят пачками по 5 кадров (100 мс)
     rx.port.postMessage(f, [f.buffer]);
   };
   lws.onclose = () => setTimeout(connectListen, 2000);

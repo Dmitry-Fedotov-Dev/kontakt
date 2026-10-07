@@ -68,6 +68,8 @@ const (
 	// а не потеряется (было 0,5 с — на стенде терялось по 0,2–0,5 с каждые несколько минут).
 	// Медленный всё равно теряет кадры сверх этого, а не тормозит станцию. 150 × 160 Б × 500 = 12 МБ.
 	listenerBuf = 150
+	// звук слушателю — пачками: batchFrames кадров (100 мс) в одном сообщении, см. writeListener
+	batchFrames = 5
 	nameRunes   = 24
 	titleRunes  = 64
 
@@ -750,13 +752,42 @@ func (h *Hub) writeListener(conn *websocket.Conn, l *listener, done chan struct{
 		conn.Close()
 		return
 	}
+	// Кадры — пачками по batchFrames (не дольше batchWait с первого): каждое сообщение
+	// WebSocket стоит процессора на шифрование, заголовки и системные вызовы — у сервера, у
+	// Caddy и у телефона слушателя, а 160 байт звука обрастали ~40 % заголовков. Пачка из 5 —
+	// впятеро меньше сообщений при той же полосе; +100 мс задержки буфер слушателя (400 мс) не видит.
+	var pend []byte
+	batch := time.NewTimer(time.Hour)
+	batch.Stop()
+	defer batch.Stop()
+	var batchC <-chan time.Time
+	flush := func() bool {
+		if len(pend) == 0 {
+			return true
+		}
+		ok := send(websocket.BinaryMessage, pend)
+		pend, batchC = nil, nil
+		batch.Stop()
+		return ok
+	}
 	for {
 		select {
 		case <-done:
 			return
 		case b := <-l.out:
-			if !send(websocket.BinaryMessage, b) {
+			if pend == nil {
+				pend = make([]byte, 0, FrameBytes*batchFrames)
+				batch.Reset(batchWait)
+				batchC = batch.C
+			}
+			pend = append(pend, b...)
+			if len(pend) >= FrameBytes*batchFrames && !flush() {
 				conn.Close() // разбудит читающий цикл, тот всё уберёт
+				return
+			}
+		case <-batchC:
+			if !flush() {
+				conn.Close()
 				return
 			}
 		case b := <-l.ctl:
@@ -887,3 +918,7 @@ func (b *bucket) allow() bool {
 	b.tokens--
 	return true
 }
+
+// batchWait — пачка уходит не позже, даже неполная (станция замолчала, медленный ведущий);
+// переменная — для тестов.
+var batchWait = 100 * time.Millisecond

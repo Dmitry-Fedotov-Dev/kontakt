@@ -551,3 +551,40 @@ func TestLettersReachHost(t *testing.T) {
 		}
 	}
 }
+
+// Звук слушателю — пачками по batchFrames кадров; неполная пачка уходит не позже batchWait.
+func TestFramesBatched(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=1053&name=X")
+	defer host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	l, _, _ := dial(t, srv, "/ws/listen")
+	defer l.Close()
+	l.WriteJSON(map[string]int{"tune": 1053})
+	waitFor := func(cond func() bool) {
+		for i := 0; i < 200 && !cond(); i++ {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	waitFor(func() bool { h.mu.Lock(); defer h.mu.Unlock(); return len(h.st[1053].subs) == 1 })
+
+	for i := 0; i < 2*batchFrames; i++ {
+		host.WriteMessage(websocket.BinaryMessage, frame(byte(i)))
+	}
+	for k := 0; k < 2; k++ {
+		if b := readAudio(t, l); len(b) != FrameBytes*batchFrames || b[0] != byte(k*batchFrames) {
+			t.Fatalf("пачка %d: %d байт, первый кадр %d", k, len(b), b[0])
+		}
+	}
+	start := time.Now()
+	host.WriteMessage(websocket.BinaryMessage, frame(42))
+	b := readAudio(t, l)
+	if len(b) != FrameBytes || b[0] != 42 {
+		t.Fatalf("неполная пачка: %d байт", len(b))
+	}
+	if d := time.Since(start); d < batchWait/2 || d > batchWait+300*time.Millisecond {
+		t.Fatalf("неполная пачка через %v, ждали около %v", d, batchWait)
+	}
+}
