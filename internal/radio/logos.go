@@ -5,10 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"image"
 	"image/draw"
 	"image/png"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,6 +47,7 @@ type logoStore struct {
 	max   int
 	mem   map[string][]byte // хеш → PNG: всё (без диска) или кеш прочитанного с диска
 	order []string          // для вытеснения из памяти, старые первыми
+	pins  map[string]string // хеш куки ведущего → закреплённый логотип (pins.json)
 }
 
 func openLogos(dir string, max int) (*logoStore, error) {
@@ -210,15 +214,20 @@ func (h *Hub) setLogo(s *station, b64 string) {
 			return
 		}
 	}
-	h.mu.Lock()
-	same := s.logo == hash
-	s.logo = hash
-	h.mu.Unlock()
 	if hash == "" {
 		h.logoChanges.Inc("removed")
 	} else {
 		h.logoChanges.Inc("set")
 	}
+	h.applyLogo(s, hash)
+}
+
+// applyLogo — логотип станции сменился: ведущему — хеш, слушателям — новый список.
+func (h *Hub) applyLogo(s *station, hash string) {
+	h.mu.Lock()
+	same := s.logo == hash
+	s.logo = hash
+	h.mu.Unlock()
 	s.sayHost(map[string]string{"logo": hash})
 	if !same {
 		h.changed()
@@ -231,4 +240,116 @@ func decodeB64(s string) ([]byte, error) {
 		s = s[i+1:]
 	}
 	return base64.StdEncoding.DecodeString(s)
+}
+
+// Закреплённые логотипы: модератор ставит логотип станции в эфире из админки (на админ-порту, он
+// только на localhost — снаружи через SSH-туннель). Логотип закрепляется за ведущим — по хешу его
+// куки, саму куку не храним, — и на следующих эфирах этого ведущего ставится сам, пока он не
+// пришлёт свой. Файл pins.json рядом с логотипами.
+
+func hostKey(host string) string {
+	if host == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("radio-logo-pin\x00" + host))
+	return hex.EncodeToString(sum[:8])
+}
+
+func (s *logoStore) pinsPath() string {
+	if s.dir == "" {
+		return ""
+	}
+	return filepath.Join(s.dir, "pins.json")
+}
+
+// Pinned — закреплённый за ведущим логотип ("" — нет).
+func (s *logoStore) Pinned(host string) string {
+	k := hostKey(host)
+	if k == "" {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loadPinsLocked()
+	return s.pins[k]
+}
+
+// Pin закрепляет логотип за ведущим ("" — открепить).
+func (s *logoStore) Pin(host, hash string) error {
+	k := hostKey(host)
+	if k == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loadPinsLocked()
+	if hash == "" {
+		delete(s.pins, k)
+	} else {
+		s.pins[k] = hash
+	}
+	p := s.pinsPath()
+	if p == "" {
+		return nil
+	}
+	b, _ := json.Marshal(s.pins)
+	if err := os.WriteFile(p+".tmp", b, 0o640); err != nil {
+		return err
+	}
+	return os.Rename(p+".tmp", p)
+}
+
+func (s *logoStore) loadPinsLocked() {
+	if s.pins != nil {
+		return
+	}
+	s.pins = map[string]string{}
+	if p := s.pinsPath(); p != "" {
+		if b, err := os.ReadFile(p); err == nil {
+			json.Unmarshal(b, &s.pins)
+		}
+	}
+}
+
+// AdminHandler — то, что радио отдаёт на админ-порт (только localhost):
+//
+//	POST /admin/station-logo?f=934   тело — PNG 64×64: логотип станции в эфире, закрепляется за ведущим
+//	DELETE /admin/station-logo?f=934 убрать логотип и открепить
+func (h *Hub) AdminHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/admin/station-logo", func(w http.ResponseWriter, r *http.Request) {
+		f, ok := ParseFreq(r.URL.Query().Get("f"))
+		if !ok {
+			http.Error(w, "f=934", http.StatusBadRequest)
+			return
+		}
+		h.mu.Lock()
+		s := h.st[f]
+		h.mu.Unlock()
+		if s == nil {
+			http.Error(w, "на этой волне никого нет", http.StatusNotFound)
+			return
+		}
+		hash := ""
+		switch r.Method {
+		case http.MethodPost:
+			b, _ := io.ReadAll(io.LimitReader(r.Body, logoMaxBytes*2+1))
+			var err error
+			if hash, err = h.logos.Put(b); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		case http.MethodDelete:
+		default:
+			http.Error(w, "POST или DELETE", http.StatusMethodNotAllowed)
+			return
+		}
+		h.applyLogo(s, hash)
+		if err := h.logos.Pin(s.host, hash); err != nil {
+			log.Printf("логотипы: закрепить: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"f": f, "logo": hash})
+	})
+	return mux
 }

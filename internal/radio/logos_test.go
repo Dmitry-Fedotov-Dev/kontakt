@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 func testLogo(t *testing.T, side int, c color.Color) []byte {
@@ -76,7 +78,7 @@ func TestLogoStore(t *testing.T) {
 
 // Ведущий шлёт логотип: слушатели видят хеш в списке, картинка отдаётся, превью и ссылка — с ним.
 func TestLogoOnAir(t *testing.T) {
-	h := NewHub(Options{LogosDir: t.TempDir()})
+	h := NewHub(Options{LogosDir: t.TempDir(), HostLogos: true})
 	srv := httptest.NewServer(h.Handler())
 	defer srv.Close()
 	host, _, _ := dial(t, srv, "/ws/host?f=934&name=Platform")
@@ -127,4 +129,63 @@ func TestLogoOnAir(t *testing.T) {
 	}
 	host.WriteJSON(map[string]string{"logo": ""})
 	waitStations(t, h, func(s []Station) bool { return len(s) == 1 && s[0].Logo == "" })
+}
+
+// Модератор ставит логотип станции из админки; он закрепляется за ведущим и возвращается на новом эфире.
+func TestLogoAdminPin(t *testing.T) {
+	dir := t.TempDir()
+	h := NewHub(Options{LogosDir: dir})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	adm := httptest.NewServer(h.AdminHandler())
+	defer adm.Close()
+	hdr := http.Header{"Cookie": {"kontakt_id=" + strings.Repeat("ab", 16)}}
+	d := websocket.DefaultDialer
+	host, _, err := d.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws/host?f=934&name=X", hdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	r, _ := http.Post(adm.URL+"/admin/station-logo?f=934", "image/png", bytes.NewReader(testLogo(t, 64, color.White)))
+	if r.StatusCode != 200 {
+		t.Fatalf("админка: %d", r.StatusCode)
+	}
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 && s[0].Logo != "" })
+	g := h.Stations()[0].Logo
+	host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 0 })
+
+	h2 := NewHub(Options{LogosDir: dir}) // и после перезапуска радио
+	srv2 := httptest.NewServer(h2.Handler())
+	defer srv2.Close()
+	host2, _, err := d.Dial("ws"+strings.TrimPrefix(srv2.URL, "http")+"/ws/host?f=1000&name=X", hdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host2.Close()
+	waitStations(t, h2, func(s []Station) bool { return len(s) == 1 && s[0].Logo == g })
+	if r, _ := http.Post(adm.URL+"/admin/station-logo?f=1017", "image/png", nil); r.StatusCode != 404 {
+		t.Fatalf("пустая волна: %d", r.StatusCode)
+	}
+}
+
+// Без HostLogos логотип от ведущего не принимается, ячейки на странице нет.
+func TestHostLogosOff(t *testing.T) {
+	h := NewHub(Options{LogosDir: t.TempDir()})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=934&name=X")
+	defer host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	host.WriteJSON(map[string]string{"logo": base64.StdEncoding.EncodeToString(testLogo(t, 64, color.White))})
+	time.Sleep(150 * time.Millisecond)
+	if g := h.Stations()[0].Logo; g != "" {
+		t.Fatalf("ведущий поставил логотип сам: %s", g)
+	}
+	r, _ := http.Get(srv.URL + "/")
+	page, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if strings.Contains(string(page), `<meta name="host-logos"`) {
+		t.Fatal("страница разрешает ведущему логотип")
+	}
 }

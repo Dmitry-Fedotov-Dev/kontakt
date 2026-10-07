@@ -108,6 +108,9 @@ type Options struct {
 	DirectPort int
 	// LogosDir — где хранить логотипы станций (logos.go); пусто — только в памяти.
 	LogosDir string
+	// HostLogos — ведущий ставит логотип сам ({"logo":…} и ячейка на вкладке «Вещать»). Выключено —
+	// логотипы ставит только модератор через админ-порт (AdminHandler).
+	HostLogos bool
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
@@ -529,6 +532,11 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 	}
 	s := &station{freq: f, name: name, since: time.Now(), subs: map[*listener]struct{}{}, host: host, reported: map[string]bool{},
 		letterFrom: map[uint64]string{}, blocked: map[string]bool{}}
+	if pin := h.logos.Pinned(host); pin != "" { // логотип, закреплённый модератором; свой — заменит
+		if _, ok := h.logos.Get(pin); ok {
+			s.logo = pin
+		}
+	}
 	h.st[f] = s // занимаем до апгрейда: двое не получат одну частоту
 	h.mu.Unlock()
 
@@ -591,7 +599,9 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 				h.titleChanged(s, clean(*m.Title, titleRunes))
 			}
 			if m.Logo != nil {
-				h.setLogo(s, *m.Logo)
+				if h.opt.HostLogos {
+					h.setLogo(s, *m.Logo)
+				}
 				continue
 			}
 			h.hostLetterAction(s, data)

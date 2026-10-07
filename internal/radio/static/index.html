@@ -125,6 +125,7 @@ button, input { font: inherit; color: inherit; }
 .logoSlot.has .plus { display: none; }
 .logoSlot img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 .logoSlot img[hidden] { display: none; }
+.logoSlot[hidden] { display: none; }
 .logoSlot:hover:not(.has) { outline-color: var(--amber); }
 .logoSlot:hover:not(.has) .plus { color: var(--amber); }
 .logoDel { position: absolute; left: -6px; top: -9px; width: 16px; height: 16px; padding: 0; border: 0; cursor: pointer;
@@ -1517,9 +1518,12 @@ function shake(el) { el.classList.remove("shake"); void el.offsetWidth; el.class
 // ---------- логотип станции ----------
 // Картинку браузер сам обрезает по центру до квадрата и уменьшает до 64×64 — в эфир уходит PNG
 // в пару килобайт (logos.go на сервере). Логотип помним между эфирами в этом браузере.
+// Пока логотипы ставит только модератор, сервер не отдаёт метатег host-logos — ячейки нет.
+const HOST_LOGOS = !!document.querySelector('meta[name="host-logos"]');
 let hostLogoData = "";
-try { hostLogoData = localStorage.getItem("radio-logo") || ""; } catch (_) {}
+try { if (HOST_LOGOS) hostLogoData = localStorage.getItem("radio-logo") || ""; } catch (_) {}
 function renderLogo() {
+  $("logoSlot").hidden = !HOST_LOGOS;
   const has = !!hostLogoData;
   $("logoSlot").classList.toggle("has", has);
   $("logoImg").hidden = !has;

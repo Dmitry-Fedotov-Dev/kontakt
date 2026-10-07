@@ -27,6 +27,7 @@ func main() {
 	bansPath := flag.String("bans", "data/radio-bans.json", "своя база модерации, если -mod не задан")
 	linksPath := flag.String("links", "", "где хранить короткие ссылки /r/… (пусто — только в памяти, до перезапуска)")
 	logosDir := flag.String("logos", "", "каталог логотипов станций для превью ссылок (пусто — только в памяти, до перезапуска)")
+	hostLogos := flag.Bool("host-logos", false, "ведущие ставят логотип сами; без флага — только модератор через -admin")
 	directAddr := flag.String("direct", "", "прямой HTTPS для сокетов эфира мимо Caddy, например :8443 (нужны -cert и -key)")
 	certPath := flag.String("cert", "", "сертификат для -direct (PEM, цепочка)")
 	keyPath := flag.String("key", "", "ключ для -direct (PEM)")
@@ -58,7 +59,7 @@ func main() {
 		}
 	}
 	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod,
-		LinksPath: *linksPath, DirectPort: directPort, LogosDir: *logosDir})
+		LinksPath: *linksPath, DirectPort: directPort, LogosDir: *logosDir, HostLogos: *hostLogos})
 	if *directAddr != "" {
 		go func() { log.Fatal(radio.ServeDirect(*directAddr, *certPath, *keyPath, h.Handler())) }()
 		log.Printf("прямой HTTPS для эфира: %s", *directAddr)
@@ -66,7 +67,8 @@ func main() {
 	if *admin != "" {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", h.MetricsHandler())
-		if store != nil { // с -mod банят через админку signal'а
+		mux.Handle("/admin/station-logo", h.AdminHandler()) // логотип станции модератором (logos.go)
+		if store != nil {                                   // с -mod банят через админку signal'а
 			mux.Handle("/admin/", store.AdminHandler(nil)) // эфир снимается при ближайшей проверке, до 30 с
 		}
 		mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })

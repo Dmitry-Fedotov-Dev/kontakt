@@ -76,10 +76,15 @@ func ServeDirect(addr, certPath, keyPath string, handler http.Handler) error {
 	return srv.ListenAndServeTLS("", "")
 }
 
-// airPortMeta — порт прямого эфира для страницы (пусто — его нет, сокеты через web/Caddy).
+// airPortMeta — порт прямого эфира для страницы (пусто — его нет, сокеты через web/Caddy); заодно —
+// можно ли ведущему ставить логотип самому (без метатега ячейка логотипа скрыта).
 func (h *Hub) airPortMeta() string {
-	if h.opt.DirectPort == 0 {
-		return ""
+	m := ""
+	if h.opt.DirectPort != 0 {
+		m = fmt.Sprintf(`<meta name="air-port" content="%d">`+"\n", h.opt.DirectPort)
 	}
-	return fmt.Sprintf(`<meta name="air-port" content="%d">`+"\n", h.opt.DirectPort)
+	if h.opt.HostLogos {
+		m += `<meta name="host-logos" content="1">` + "\n"
+	}
+	return m
 }
