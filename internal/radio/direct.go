@@ -3,6 +3,7 @@ package radio
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -68,6 +69,9 @@ func ServeDirect(addr, certPath, keyPath string, handler http.Handler) error {
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: c.get},
+		// Порт смотрит в интернет напрямую, и сканеры сыплют неудачными рукопожатиями: net/http пишет
+		// их в журнал вместе с IP («TLS handshake error from …»). IP в журнал не пишем — молчим.
+		ErrorLog: log.New(io.Discard, "", 0),
 	}
 	return srv.ListenAndServeTLS("", "")
 }
