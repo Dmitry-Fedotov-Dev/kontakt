@@ -1540,7 +1540,9 @@ $("addPc").onclick = async () => {
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: true,
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false, restrictOwnAudio: true },
-      systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include",
+      // surfaceSwitching "exclude": без кнопки «Демонстрировать эту вкладку» Chrome не вешает плашку
+      // на все вкладки — только на ту, что в эфире, и на радио (её саму сайт скрыть не может)
+      systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "exclude",
     });
   } catch (_) { return toast(TXT.pcDenied); }
   stream.getVideoTracks().forEach(t => t.stop());
