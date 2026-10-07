@@ -80,6 +80,7 @@ const (
 	titleRunes  = 64
 
 	CloseBanned    = 4003 // код закрытия сокета ведущего: эфир для него закрыт
+	CloseFull      = 4009 // код закрытия сокета приёмника: слушателей уже MaxListeners, подключиться позже
 	reportsPerHour = 10   // жалоб от одного человека в час, больше — rate_limited
 	// Лайки: от слушателя не чаще likeEvery (больше — молча не считаются), ведущему — пачкой
 	// раз в likeFlush: сотня слушателей, жмущих сердце, — 4 коротких сообщения в секунду, а не сотни.
@@ -121,6 +122,7 @@ type Hub struct {
 	mu      sync.Mutex
 	st      map[int]*station
 	ls      map[*listener]struct{}
+	lsHeld  int           // под mu: места, занятые приёмниками на время рукопожатия (serveListen)
 	version atomic.Uint64 // меняется — полный список всем приёмникам
 	content atomic.Uint64 // меняется и при смене трека — только ключ кеша полного списка
 
@@ -693,20 +695,34 @@ func (h *Hub) removeStation(s *station) {
 // ---------- слушатель ----------
 
 func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
+	// Лимит строгий: место занимается под блокировкой до рукопожатия, иначе сотня одновременных
+	// подключений проходила проверку раньше, чем хоть одно попадало в h.ls. Отказ — закрытием с
+	// кодом CloseFull после рукопожатия: код ответа на апгрейд браузер странице не показывает, и та
+	// молча переподключалась бы каждые 2 с.
 	h.mu.Lock()
-	if len(h.ls) >= h.opt.MaxListeners {
-		h.mu.Unlock()
-		h.rejected.Inc("listeners_full")
-		http.Error(w, "приёмников слишком много", http.StatusServiceUnavailable)
-		return
+	full := len(h.ls)+h.lsHeld >= h.opt.MaxListeners
+	if !full {
+		h.lsHeld++
 	}
 	h.mu.Unlock()
 	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if full {
+		h.rejected.Inc("listeners_full")
+		if err == nil {
+			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(CloseFull, "full"), time.Now().Add(time.Second))
+			conn.Close()
+		}
+		return
+	}
 	if err != nil {
+		h.mu.Lock()
+		h.lsHeld--
+		h.mu.Unlock()
 		return
 	}
 	l := &listener{id: identity.FromRequest(r), out: make(chan []byte, listenerBuf), ctl: make(chan []byte, 16)}
 	h.mu.Lock()
+	h.lsHeld--
 	h.ls[l] = struct{}{}
 	h.sessions.Inc()
 	h.mu.Unlock()

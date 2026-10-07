@@ -461,6 +461,7 @@ const I18N = {
     modeAria: "Режим", listen: "СЛУШАТЬ", broadcast: "ВЕЩАТЬ",
     knobAria: "Ручка настройки: крутите, чтобы переключать станции",
     stickerIdle: "крутни ручку", share: "ПОДЕЛИТЬСЯ ↗",
+    airFull: "эфир переполнен", airFullSub: "подключимся, как освободится место",
     rules: "правила радио", report: "ЖАЛОБА", sure: "ТОЧНО?", reportAria: "Пожаловаться на станцию",
     freqDown: "Частота ниже", freqUp: "Частота выше", onAir: "В ЭФИРЕ", mhz: "МГц",
     namePh: "название станции", nameAria: "Название станции",
@@ -534,6 +535,7 @@ const I18N = {
     modeAria: "Mode", listen: "LISTEN", broadcast: "BROADCAST",
     knobAria: "Tuning knob: turn it to change stations",
     stickerIdle: "turn the knob", share: "SHARE ↗",
+    airFull: "the air is full", airFullSub: "we'll connect as soon as a spot frees up",
     rules: "radio rules", report: "REPORT", sure: "SURE?", reportAria: "Report this station",
     freqDown: "Lower frequency", freqUp: "Higher frequency", onAir: "ON AIR", mhz: "MHz",
     namePh: "station name", nameAria: "Station name",
@@ -964,7 +966,7 @@ function airSocket(path, needProven) {
 function connectListen() {
   lws = airSocket("/ws/listen", false);
   lws.binaryType = "arraybuffer";
-  lws.onopen = () => { st.tuned = -1; retune(); };
+  lws.onopen = () => { st.tuned = -1; st.full = false; retune(); };
   lws.onmessage = e => {
     if (typeof e.data === "string") {
       try {
@@ -985,7 +987,13 @@ function connectListen() {
     st.framesRx = (st.framesRx || 0) + b.length / 160; // приходят пачками по 5 кадров (100 мс)
     rx.port.postMessage(f, [f.buffer]);
   };
-  lws.onclose = () => setTimeout(connectListen, 2000);
+  // 4009 — слушателей на платформе уже максимум: говорим об этом и пробуем через 20–30 с
+  // (разброс — чтобы освободившееся место не штурмовали все отказанные разом).
+  lws.onclose = e => {
+    st.full = e.code === 4009;
+    if (st.full) drawSticker();
+    setTimeout(connectListen, st.full ? 20000 + Math.random() * 10000 : 2000);
+  };
 }
 
 // Расстояние по кольцу шкалы: ручка бесконечная, 108.0 и 87.5 — соседи.
@@ -1239,6 +1247,7 @@ function setSticker(a, b, glitch, logo) {
 }
 function drawSticker() {
   if (performance.now() < errUntil) return setSticker(TXT.noSound, errText);
+  if (st.full) return setSticker(TXT.airFull, TXT.airFullSub);
   if (!st.power) {
     if (shared) return setSticker(shared.name || TXT.freq(shared.f), TXT.sharedSticker(shared.track), false, shared.logo);
     return setSticker(TXT.stickerIdle, "");
@@ -1857,7 +1866,7 @@ setInterval(() => {
   $("reportRx").hidden = $("shareRx").hidden || !me.moderation;
   $("likeRx").hidden = $("shareRx").hidden;
   $("letterRx").hidden = $("shareRx").hidden;
-  $("airCount").textContent = TXT.airCount(st.stations.length);
+  $("airCount").textContent = st.full ? "" : TXT.airCount(st.stations.length); // переполнен — списка станций нет
   $("shareTx").hidden = !st.onAir;
   if (!$("shareRx").hidden) codeFor(s.f, s.n, s.t || "", s.g); // код ссылки — заранее
   if (st.onAir) codeFor(st.hostFreq, $("name").value.trim(), nowTitle(), st.hostLogo);

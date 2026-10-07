@@ -609,3 +609,83 @@ func TestSameSiteOrigin(t *testing.T) {
 		}
 	}
 }
+
+// Лимит слушателей строгий: при одновременном штурме подключено ровно MaxListeners, остальным —
+// закрытие с кодом CloseFull; ушёл один — место снова занимается.
+func TestListenerLimitStrict(t *testing.T) {
+	h := NewHub(Options{MaxListeners: 10})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/listen"
+	type res struct {
+		c    *websocket.Conn
+		code int
+	}
+	out := make(chan res, 60)
+	for i := 0; i < 60; i++ {
+		go func() {
+			c, _, err := websocket.DefaultDialer.Dial(url, nil)
+			if err != nil {
+				out <- res{nil, -1}
+				return
+			}
+			c.SetReadDeadline(time.Now().Add(2 * time.Second))
+			for { // принятый получает список станций и молчит; отказанный — закрытие 4009
+				if _, _, err := c.ReadMessage(); err != nil {
+					if ce, ok := err.(*websocket.CloseError); ok {
+						out <- res{nil, ce.Code}
+						return
+					}
+					out <- res{c, 0} // тайм-аут чтения: подключён и держится
+					return
+				}
+			}
+		}()
+	}
+	ok, full := 0, 0
+	var kept []*websocket.Conn
+	for i := 0; i < 60; i++ {
+		r := <-out
+		switch {
+		case r.c != nil:
+			ok++
+			kept = append(kept, r.c)
+			defer r.c.Close()
+		case r.code == CloseFull:
+			full++
+		default:
+			t.Fatalf("неожиданный исход: %d", r.code)
+		}
+	}
+	if ok != 10 || full != 50 {
+		t.Fatalf("подключено %d, отказано %d — ждали 10 и 50", ok, full)
+	}
+	h.mu.Lock()
+	n, held := len(h.ls), h.lsHeld
+	h.mu.Unlock()
+	if n != 10 || held != 0 {
+		t.Fatalf("на сервере %d приёмников и %d мест в рукопожатии", n, held)
+	}
+	kept[0].Close() // ушёл один — место освободилось
+	for i := 0; ; i++ {
+		h.mu.Lock()
+		n = len(h.ls)
+		h.mu.Unlock()
+		if n == 9 {
+			break
+		}
+		if i == 200 {
+			t.Fatal("место не освободилось")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	c, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	if _, _, err := c.ReadMessage(); err != nil { // первым приходит список станций, а не отказ
+		t.Fatalf("на освободившееся место не пустили: %v", err)
+	}
+}
