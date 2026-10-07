@@ -26,6 +26,7 @@ type shortLink struct {
 	Name  string `json:"n,omitempty"`
 	Track string `json:"t,omitempty"`
 	Lang  string `json:"l,omitempty"` // язык карточки: "en"; пусто — русский
+	Logo  string `json:"g,omitempty"` // хеш логотипа станции (logos.go)
 	Day   string `json:"d"`
 }
 
@@ -71,15 +72,18 @@ func candidate(sum [32]byte, n int) string {
 	return string(b)
 }
 
-// Code — код для ссылки (создаёт, если её ещё нет). Русский язык в хеш не входит — у старых
-// ссылок коды прежние.
-func (s *shortLinks) Code(f int, name, track, lang string) (string, error) {
+// Code — код для ссылки (создаёт, если её ещё нет). Русский язык и пустой логотип в хеш не
+// входят — у старых ссылок коды прежние.
+func (s *shortLinks) Code(f int, name, track, lang, logo string) (string, error) {
 	if lang != "en" {
 		lang = ""
 	}
 	key := strconv.Itoa(f) + "\x00" + name + "\x00" + track
 	if lang != "" {
 		key += "\x00" + lang
+	}
+	if logo != "" {
+		key += "\x00g" + logo
 	}
 	sum := sha256.Sum256([]byte(key))
 	s.mu.Lock()
@@ -88,7 +92,7 @@ func (s *shortLinks) Code(f int, name, track, lang string) (string, error) {
 		c := candidate(sum, n)
 		l := s.byKey[c]
 		if l == nil {
-			l = &shortLink{Code: c, Freq: f, Name: name, Track: track, Lang: lang, Day: time.Now().UTC().Format(time.DateOnly)}
+			l = &shortLink{Code: c, Freq: f, Name: name, Track: track, Lang: lang, Logo: logo, Day: time.Now().UTC().Format(time.DateOnly)}
 			s.byKey[c] = l
 			s.order = append(s.order, c)
 			for len(s.order) > s.max {
@@ -97,7 +101,7 @@ func (s *shortLinks) Code(f int, name, track, lang string) (string, error) {
 			}
 			return c, s.saveLocked()
 		}
-		if l.Freq == f && l.Name == name && l.Track == track && l.Lang == lang {
+		if l.Freq == f && l.Name == name && l.Track == track && l.Lang == lang && l.Logo == logo {
 			return c, nil
 		}
 	}

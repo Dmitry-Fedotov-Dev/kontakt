@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"math"
 	"strings"
@@ -244,9 +245,9 @@ var ogWords = map[string]struct {
 		[]string{"YOUR OWN FREQUENCY —", "BROADCAST MUSIC", "AND VOICE. OR TURN", "THE KNOB AND LISTEN."}},
 }
 
-// OGImage — PNG превью: радио, частота, название станции и что играло; lang — "ru" или "en".
-// freq == 0 — общая картинка сайта.
-func OGImage(freq int, name, track, lang string) []byte {
+// OGImage — PNG превью: радио, частота, название станции и что играло; lang — "ru" или "en";
+// logo — PNG 64×64 логотипа станции (logos.go) или nil. freq == 0 — общая картинка сайта.
+func OGImage(freq int, name, track, lang string, logo []byte) []byte {
 	wd, ok := ogWords[lang]
 	if !ok {
 		lang, wd = "ru", ogWords["ru"]
@@ -273,8 +274,24 @@ func OGImage(freq int, name, track, lang string) []byte {
 		return encodePNG(c.img)
 	}
 
-	c.text(FormatFreq(freq)+wd.freq, tx, 26, 3, cAmber)
+	var li image.Image
+	if logo != nil {
+		li, _ = png.Decode(bytes.NewReader(logo))
+	}
 	y := 56
+	if li != nil {
+		// Логотип — наклейкой, как карточка станции на странице: тень, тёмный контур, кремовая
+		// подложка. Справа крупно частота, ниже на всю ширину — станция и что играло.
+		c.rect(ogLogoX+3, ogLogoY+3, ogLogoBox, ogLogoBox, cInk)
+		c.rect(ogLogoX, ogLogoY, ogLogoBox, ogLogoBox, cInk)
+		c.rect(ogLogoX+1, ogLogoY+1, ogLogoBox-2, ogLogoBox-2, cCream)
+		fx := ogLogoX + ogLogoBox + 7
+		c.text(FormatFreq(freq), fx, 26, 3, cAmber)
+		c.text(strings.TrimSpace(wd.freq), fx, 52, 2, cAmberDim)
+		y = 84
+	} else {
+		c.text(FormatFreq(freq)+wd.freq, tx, 26, 3, cAmber)
+	}
 	if name == "" {
 		name = "RADIO " + FormatFreq(freq)
 	}
@@ -299,8 +316,27 @@ func OGImage(freq int, name, track, lang string) []byte {
 		c.text(wd.live, tx, y, 1, cAmber)
 	}
 	c.text(wd.open, tx, 142, 1, cLilacDim)
-	return encodePNG(c.img)
+	if li == nil {
+		return encodePNG(c.img)
+	}
+	// Логотип не в палитре радио: дорисовываем в полном цвете поверх, пиксель логотипа — 3×3
+	// точки картинки (64 × 3 = 192 = 48 клеток холста): чётко и в том же пиксельном духе.
+	out := image.NewRGBA(c.img.Bounds())
+	draw.Draw(out, out.Bounds(), c.img, image.Point{}, draw.Src)
+	ox, oy := (ogLogoX+3)*ogScale, (ogLogoY+3)*ogScale
+	b := li.Bounds()
+	for y := 0; y < logoSide; y++ {
+		for x := 0; x < logoSide; x++ {
+			px := image.NewUniform(li.At(b.Min.X+x, b.Min.Y+y))
+			r := image.Rect(ox+x*3, oy+y*3, ox+x*3+3, oy+y*3+3)
+			draw.Draw(out, r, px, image.Point{}, draw.Over)
+		}
+	}
+	return encodePNG(out)
 }
+
+// Где на превью логотип: рамка ogLogoBox клеток холста — контур 1, подложка 2, логотип 48.
+const ogLogoX, ogLogoY, ogLogoBox = 146, 22, 54
 
 func encodePNG(img image.Image) []byte {
 	var b bytes.Buffer

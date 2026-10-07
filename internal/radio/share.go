@@ -20,6 +20,8 @@ import (
 // Что играло, сервер не хранит: истории эфира нет вовсе. Название трека едет в самой ссылке —
 // поэтому карточка показывает ровно ту песню, что звучала в момент копирования.
 //
+// Логотип станции — g=<хеш> (logos.go): картинка лежит у сервера по хешу и переживает эфир.
+//
 // Язык карточки — язык того, кто поделился: l=en в ссылке (нет — русский, как у старых ссылок).
 // Главная страница радио — по Accept-Language. Сама страница потом говорит на языке открывшего.
 
@@ -117,28 +119,48 @@ func hostURL(r *http.Request) string {
 	return scheme + "://" + host
 }
 
-func (h *Hub) liveStation(f int) (name, title string, ok bool) {
+func (h *Hub) liveStation(f int) (name, title, logo string, ok bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if s := h.st[f]; s != nil {
-		return s.name, s.title, true
+		return s.name, s.title, s.logo, true
 	}
-	return "", "", false
+	return "", "", "", false
 }
 
-// shareParams — частота из пути, имя и трек из запроса; пустое имя берётся у станции в эфире.
-// Трек у живой станции НЕ подставляется: ссылка — про то, что играло, когда ею поделились.
-func (h *Hub) shareParams(r *http.Request) (f int, name, track, lang string, ok bool) {
-	f, ok = ParseFreq(strings.TrimSuffix(r.PathValue("freq"), ".png"))
+// shareInfo — что показывает карточка ссылки на волну.
+type shareInfo struct {
+	f                       int
+	name, track, lang, logo string
+}
+
+// logoParam — хеш логотипа из ссылки: только 16 шестнадцатеричных знаков.
+func logoParam(v string) string {
+	if logoHashOK.MatchString(v) {
+		return v
+	}
+	return ""
+}
+
+// shareParams — частота из пути, имя, трек и логотип из запроса. Ссылка без имени — про то, что
+// сейчас в эфире: имя и логотип берутся у живой станции. Трек у неё НЕ подставляется: ссылка — про
+// то, что играло, когда ею поделились.
+func (h *Hub) shareParams(r *http.Request) (shareInfo, bool) {
+	f, ok := ParseFreq(strings.TrimSuffix(r.PathValue("freq"), ".png"))
 	if !ok {
-		return 0, "", "", "", false
+		return shareInfo{}, false
 	}
 	q := r.URL.Query()
-	name, track, lang = clean(q.Get("n"), nameRunes), clean(q.Get("t"), titleRunes), langParam(q.Get("l"))
-	if name == "" {
-		name, _, _ = h.liveStation(f)
+	si := shareInfo{f, clean(q.Get("n"), nameRunes), clean(q.Get("t"), titleRunes), langParam(q.Get("l")), logoParam(q.Get("g"))}
+	if si.name == "" {
+		if name, _, logo, live := h.liveStation(f); live {
+			si.name = name
+			if si.logo == "" {
+				si.logo = logo
+			}
+		}
 	}
-	return f, name, track, lang, true
+	return si, true
 }
 
 func (h *Hub) serveIndex(w http.ResponseWriter, r *http.Request) {
@@ -158,13 +180,13 @@ func (h *Hub) serveIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) serveShare(w http.ResponseWriter, r *http.Request) {
-	f, name, track, lang, ok := h.shareParams(r)
+	si, ok := h.shareParams(r)
 	if !ok {
 		http.Error(w, "frequency out of range 87.5–108.0", http.StatusNotFound)
 		return
 	}
 	h.shares.Inc("page")
-	h.writeShare(w, r, f, name, track, lang)
+	h.writeShare(w, r, si)
 }
 
 // serveShort — короткая ссылка /r/{code}: та же страница волны с той же карточкой превью, без
@@ -177,14 +199,14 @@ func (h *Hub) serveShort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.shares.Inc("short")
-	h.writeShare(w, r, l.Freq, l.Name, l.Track, langParam(l.Lang))
+	h.writeShare(w, r, shareInfo{l.Freq, l.Name, l.Track, langParam(l.Lang), logoParam(l.Logo)})
 }
 
-// serveShortNew — POST /api/short {"f":1017,"n":"…","t":"…","l":"en"} → {"url":"https://…/r/k7Qx2"}.
+// serveShortNew — POST /api/short {"f":1017,"n":"…","t":"…","l":"en","g":"…"} → {"url":"https://…/r/k7Qx2"}.
 func (h *Hub) serveShortNew(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		F       int `json:"f"`
-		N, T, L string
+		F          int `json:"f"`
+		N, T, L, G string
 	}
 	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req) != nil || req.F < MinFreq || req.F > MaxFreq {
 		http.Error(w, `{"f":1017,"n":"station","t":"track","l":"en"}`, http.StatusBadRequest)
@@ -194,7 +216,7 @@ func (h *Hub) serveShortNew(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
-	code, err := h.links.Code(req.F, clean(req.N, nameRunes), clean(req.T, titleRunes), langParam(req.L))
+	code, err := h.links.Code(req.F, clean(req.N, nameRunes), clean(req.T, titleRunes), langParam(req.L), logoParam(req.G))
 	if code == "" {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -204,7 +226,8 @@ func (h *Hub) serveShortNew(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"url": hostURL(r) + "/r/" + code})
 }
 
-func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, f int, name, track, lang string) {
+func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, si shareInfo) {
+	f, name, track, lang := si.f, si.name, si.track, si.lang
 	base, t := baseURL(r), ogTexts[lang]
 	q := url.Values{}
 	if name != "" {
@@ -216,12 +239,15 @@ func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, f int, name, tr
 	if lang == "en" {
 		q.Set("l", "en")
 	}
+	if si.logo != "" {
+		q.Set("g", si.logo)
+	}
 	qs := ""
 	if len(q) > 0 {
 		qs = "?" + q.Encode()
 	}
 	desc := t.Live
-	if _, _, live := h.liveStation(f); !live {
+	if _, _, _, live := h.liveStation(f); !live {
 		desc = t.Silent
 	}
 	if track != "" {
@@ -294,16 +320,23 @@ func (h *Hub) serveOG(w http.ResponseWriter, r *http.Request) {
 	var img []byte
 	if r.PathValue("freq") == "radio.png" {
 		lang := langParam(r.URL.Query().Get("l"))
-		img = h.og.get(lang, func() []byte { h.ogRenders.Inc(); return OGImage(0, "", "", lang) })
+		img = h.og.get(lang, func() []byte { h.ogRenders.Inc(); return OGImage(0, "", "", lang, nil) })
 	} else {
-		f, name, track, lang, ok := h.shareParams(r)
+		si, ok := h.shareParams(r)
 		if !ok || !strings.HasSuffix(r.PathValue("freq"), ".png") {
 			http.NotFound(w, r)
 			return
 		}
 		h.shares.Inc("image")
-		key := strconv.Itoa(f) + "\x00" + name + "\x00" + track + "\x00" + lang
-		img = h.og.get(key, func() []byte { h.ogRenders.Inc(); return OGImage(f, name, track, lang) })
+		var logo []byte
+		if si.logo != "" {
+			logo, _ = h.logos.Get(si.logo) // логотипа уже нет (бан, вытеснен) — карточка без него
+		}
+		key := strconv.Itoa(si.f) + "\x00" + si.name + "\x00" + si.track + "\x00" + si.lang + "\x00" + si.logo
+		if logo == nil {
+			key += "-"
+		}
+		img = h.og.get(key, func() []byte { h.ogRenders.Inc(); return OGImage(si.f, si.name, si.track, si.lang, logo) })
 	}
 	if img == nil {
 		http.Error(w, "image failed", http.StatusInternalServerError)

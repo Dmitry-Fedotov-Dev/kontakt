@@ -9,11 +9,13 @@
 // Протокол (WebSocket):
 //
 //	/ws/host?f=1017&name=…   ведущий; двоичные сообщения — кадры μ-law, текстовые —
-//	                         {"title":"…"} (что сейчас в эфире); получает {"listeners":N},
+//	                         {"title":"…"} (что сейчас в эфире), {"logo":"<base64 PNG 64×64>"|""}
+//	                         (логотип станции, logos.go; ответ {"logo":хеш}); получает {"listeners":N},
 //	                         когда число слушателей изменилось (не чаще раза в 2 с)
 //	/ws/listen               слушатель; шлёт {"tune":1017} (0 — между станциями),
 //	                         получает двоичные кадры станции, при подключении и когда станция
-//	                         вышла в эфир или ушла — {"stations":[{f,n,t}…]}, при смене трека —
+//	                         вышла в эфир или ушла — {"stations":[{f,n,t,g}…]} (g — хеш логотипа,
+//	                         картинка — /logo/{g}.png), при смене трека —
 //	                         только {"title":{"f":1017,"t":"…"}}. Числа слушателей в списке нет:
 //	                         иначе каждый поворот ручки рассылал бы список всем;
 //	                         {"report":true} — жалоба на станцию, на которой стоит,
@@ -58,7 +60,9 @@ const (
 	MaxFreq = 1080
 
 	FrameBytes = 160  // 20 мс μ-law при 8 кГц
-	maxMessage = 2048 // больше в одном сообщении ведущему не нужно никогда
+	maxMessage = 2048 // больше в одном сообщении не нужно никогда — кроме логотипа ведущего
+	// maxHostText — текст от ведущего: логотип в base64 (PNG до logoMaxBytes) с запасом на JSON
+	maxHostText = logoMaxBytes*2*4/3 + 512
 	// Ведущему разрешено 64 кбит/с + 10 %: браузер считает кадры по часам звуковой карты, а они
 	// расходятся с часами сервера на проценты (на стенде страница слала 50,4–51,2 кадра/с). Без
 	// запаса ведро всё время пусто и режет каждый лишний кадр. Подушка 3 с: после рывка сети
@@ -102,6 +106,8 @@ type Options struct {
 	LinksPath string
 	// DirectPort — порт прямого HTTPS для сокетов эфира (direct.go); 0 — его нет.
 	DirectPort int
+	// LogosDir — где хранить логотипы станций (logos.go); пусто — только в памяти.
+	LogosDir string
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
@@ -148,11 +154,15 @@ type Hub struct {
 	listVer   uint64     // content, для которого собран listJSON
 	listJSON  []byte
 	listBytes *metrics.Counter
+
+	logos       *logoStore
+	logoChanges *metrics.CounterVec
 }
 
 type station struct {
 	freq        int
 	name, title string
+	logo        string // под Hub.mu: хеш логотипа, "" — нет
 	since       time.Time
 	subs        map[*listener]struct{}
 
@@ -185,6 +195,7 @@ type Station struct {
 	Freq      int    `json:"f"`
 	Name      string `json:"n"`
 	Title     string `json:"t,omitempty"`
+	Logo      string `json:"g,omitempty"`
 	Listeners int    `json:"l"`
 	OnAirSec  int64  `json:"s"`
 }
@@ -240,6 +251,12 @@ func NewHub(opt Options) *Hub {
 	if h.links, err = openShortLinks(opt.LinksPath, 50000); err != nil {
 		log.Printf("короткие ссылки: %v — начинаю с пустого списка", err)
 	}
+	if h.logos, err = openLogos(opt.LogosDir, 5000); err != nil {
+		log.Printf("логотипы: %v — храню только в памяти", err)
+		h.logos.dir = ""
+	}
+	h.logoChanges = h.reg.CounterVec("kontakt_radio_logo_changes_total",
+		"Логотипы станций от ведущих: set — поставлен, removed — убран, bad — не PNG 64×64", "result", "set", "removed", "bad")
 	h.shortRate = &bucket{rate: 20, burst: 40, tokens: 40, last: time.Now()} // защита диска от потока POST
 	h.reg.Gauge("kontakt_radio_short_links", "Сохранённые короткие ссылки на волну", func() float64 { return float64(h.links.Len()) })
 	h.ogRenders = h.reg.Counter("kontakt_radio_og_renders_total", "Нарисованные картинки превью (промахи кеша)")
@@ -314,6 +331,7 @@ func (h *Hub) Handler() http.Handler {
 	mux.HandleFunc("GET /r/{code}", h.serveShort)
 	mux.HandleFunc("POST /api/short", h.serveShortNew)
 	mux.HandleFunc("GET /og/{freq}", h.serveOG)
+	mux.HandleFunc("GET /logo/{file}", h.serveLogo)
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if h.opt.Mod != nil { // за web кука уже есть; радио, запущенное отдельно, ставит её само
@@ -332,7 +350,7 @@ func (h *Hub) Stations() []Station {
 	out := make([]Station, 0, len(h.st))
 	now := time.Now()
 	for _, s := range h.st {
-		out = append(out, Station{s.freq, s.name, s.title, len(s.subs), int64(now.Sub(s.since).Seconds())})
+		out = append(out, Station{s.freq, s.name, s.title, s.logo, len(s.subs), int64(now.Sub(s.since).Seconds())})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Freq < out[j].Freq })
 	return out
@@ -424,11 +442,12 @@ func (h *Hub) listMessage() (uint64, []byte) {
 		Freq  int    `json:"f"`
 		Name  string `json:"n"`
 		Title string `json:"t,omitempty"`
+		Logo  string `json:"g,omitempty"`
 	}
 	st := h.Stations()
 	out := make([]wire, len(st))
 	for i, x := range st {
-		out[i] = wire{x.Freq, x.Name, x.Title}
+		out[i] = wire{x.Freq, x.Name, x.Title, x.Logo}
 	}
 	h.listJSON, _ = json.Marshal(map[string]any{"stations": out})
 	h.listVer = c
@@ -539,7 +558,7 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 	h.mu.Unlock()
 	h.changed()
 
-	conn.SetReadLimit(maxMessage)
+	conn.SetReadLimit(maxHostText)
 	tokens, last := float64(burstBytes), time.Now()
 	counted, checked := false, time.Now()
 	for {
@@ -566,11 +585,19 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 		if typ == websocket.TextMessage {
 			var m struct {
 				Title *string `json:"title"`
+				Logo  *string `json:"logo"`
 			}
 			if json.Unmarshal(data, &m) == nil && m.Title != nil {
 				h.titleChanged(s, clean(*m.Title, titleRunes))
 			}
+			if m.Logo != nil {
+				h.setLogo(s, *m.Logo)
+				continue
+			}
 			h.hostLetterAction(s, data)
+			continue
+		}
+		if len(data) > maxMessage { // звук — кадрами по 160 байт; длинное двоичное не раздаём
 			continue
 		}
 		// Ведро токенов: больше 64 кбит/с в эфир не уходит, что бы ни прислал браузер.
@@ -608,6 +635,12 @@ func (h *Hub) broadcast(s *station, data []byte) {
 // kick снимает станцию с эфира: ведущий получает код 4003 и больше не переподключается.
 func (h *Hub) kick(s *station) {
 	h.kicked.Inc()
+	h.mu.Lock()
+	logo := s.logo
+	h.mu.Unlock()
+	if logo != "" { // логотип снятой баном станции не должен жить в превью ссылок
+		h.logos.Delete(logo)
+	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
 	if s.conn != nil {

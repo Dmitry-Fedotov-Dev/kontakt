@@ -26,6 +26,7 @@ func main() {
 	modURL := flag.String("mod", "", "модерация signal'а — его админ-порт, например http://127.0.0.1:8091: одна база банов с рулеткой")
 	bansPath := flag.String("bans", "data/radio-bans.json", "своя база модерации, если -mod не задан")
 	linksPath := flag.String("links", "", "где хранить короткие ссылки /r/… (пусто — только в памяти, до перезапуска)")
+	logosDir := flag.String("logos", "", "каталог логотипов станций для превью ссылок (пусто — только в памяти, до перезапуска)")
 	directAddr := flag.String("direct", "", "прямой HTTPS для сокетов эфира мимо Caddy, например :8443 (нужны -cert и -key)")
 	certPath := flag.String("cert", "", "сертификат для -direct (PEM, цепочка)")
 	keyPath := flag.String("key", "", "ключ для -direct (PEM)")
@@ -57,7 +58,7 @@ func main() {
 		}
 	}
 	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod,
-		LinksPath: *linksPath, DirectPort: directPort})
+		LinksPath: *linksPath, DirectPort: directPort, LogosDir: *logosDir})
 	if *directAddr != "" {
 		go func() { log.Fatal(radio.ServeDirect(*directAddr, *certPath, *keyPath, h.Handler())) }()
 		log.Printf("прямой HTTPS для эфира: %s", *directAddr)
