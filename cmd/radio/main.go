@@ -6,9 +6,12 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"kontakt/internal/moderation"
@@ -23,6 +26,9 @@ func main() {
 	modURL := flag.String("mod", "", "модерация signal'а — его админ-порт, например http://127.0.0.1:8091: одна база банов с рулеткой")
 	bansPath := flag.String("bans", "data/radio-bans.json", "своя база модерации, если -mod не задан")
 	linksPath := flag.String("links", "", "где хранить короткие ссылки /r/… (пусто — только в памяти, до перезапуска)")
+	directAddr := flag.String("direct", "", "прямой HTTPS для сокетов эфира мимо Caddy, например :8443 (нужны -cert и -key)")
+	certPath := flag.String("cert", "", "сертификат для -direct (PEM, цепочка)")
+	keyPath := flag.String("key", "", "ключ для -direct (PEM)")
 	flag.Parse()
 	log.SetPrefix("[radio]  ")
 
@@ -39,7 +45,23 @@ func main() {
 		mod = store
 		log.Printf("модерация: своя база %s", *bansPath)
 	}
-	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod, LinksPath: *linksPath})
+	directPort := 0
+	// прямой эфир — только если сертификат читается: на свежем сервере (ещё без HTTPS) или при
+	// туннеле его нет, и радио работает по-старому, через web
+	if *directAddr != "" {
+		if _, err := tls.LoadX509KeyPair(*certPath, *keyPath); err != nil {
+			log.Printf("прямой HTTPS для эфира выключен — нет сертификата: %v", err)
+			*directAddr = ""
+		} else if _, p, err := net.SplitHostPort(*directAddr); err == nil {
+			directPort, _ = strconv.Atoi(p)
+		}
+	}
+	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod,
+		LinksPath: *linksPath, DirectPort: directPort})
+	if *directAddr != "" {
+		go func() { log.Fatal(radio.ServeDirect(*directAddr, *certPath, *keyPath, h.Handler())) }()
+		log.Printf("прямой HTTPS для эфира: %s", *directAddr)
+	}
 	if *admin != "" {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", h.MetricsHandler())

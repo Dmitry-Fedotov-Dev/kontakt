@@ -33,7 +33,9 @@ import (
 	"embed"
 	"encoding/json"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -98,6 +100,8 @@ type Options struct {
 	ReportAfter, CountAfter time.Duration
 	// LinksPath — где хранить короткие ссылки /r/…; пусто — только в памяти.
 	LinksPath string
+	// DirectPort — порт прямого HTTPS для сокетов эфира (direct.go); 0 — его нет.
+	DirectPort int
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
@@ -200,7 +204,7 @@ func NewHub(opt Options) *Hub {
 	}
 	h := &Hub{opt: opt, st: map[int]*station{}, ls: map[*listener]struct{}{}, reg: metrics.NewRegistry(),
 		reportTimes: map[string][]time.Time{}, letterTimes: map[string]time.Time{}}
-	h.upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
+	h.upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024, CheckOrigin: sameSite}
 	// Метрики — только счётчики и частоты: ни адресов, ни названий станций и треков (их
 	// задают люди, и в метках они раздули бы число рядов без предела).
 	h.framesIn = h.reg.Counter("kontakt_radio_frames_in_total", "Кадры μ-law (20 мс), принятые от ведущих")
@@ -922,3 +926,21 @@ func (b *bucket) allow() bool {
 // batchWait — пачка уходит не позже, даже неполная (станция замолчала, медленный ведущий);
 // переменная — для тестов.
 var batchWait = 100 * time.Millisecond
+
+// sameSite — сокет открывает страница с того же домена; порт может отличаться: страница —
+// с 443 (Caddy), прямой эфир — с DirectPort. Чужие сайты сокет с кукой посетителя не откроют.
+func sameSite(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true // не браузер (приложения, генератор нагрузки)
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return strings.EqualFold(u.Hostname(), host)
+}

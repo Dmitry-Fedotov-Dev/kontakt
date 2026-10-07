@@ -907,8 +907,28 @@ fetch("/api/config", { cache: "no-store" }).then(r => r.ok ? r.json() : {}).then
   setupDonate($("donate"), LANG === "ru" ? donate.reverse() : donate, keyClick); // в России — своя первой
 }).catch(() => {});
 const wsURL = path => (location.protocol === "https:" ? "wss://" : "ws://") + location.host + BASE + path;
+// Прямой эфир: сервер отдаёт сокеты сам на порту из метатега air-port — без Caddy, дешевле.
+// Не открылся за 4 с (порт закрыт в сети) — до конца вкладки ходим старым путём через Caddy.
+// Ведущий идёт напрямую, только когда приёмник уже открылся так: иначе ложная ошибка эфира.
+const airPort = location.protocol === "https:" && (document.querySelector('meta[name="air-port"]') || {}).content;
+let directOK = null; // null — не пробовали, true — работает, false — нет
+try { if (sessionStorage.getItem("air-direct") === "0") directOK = false; } catch (_) {}
+function airSocket(path, needProven) {
+  const direct = airPort && (needProven ? directOK === true : directOK !== false);
+  const ws = new WebSocket(direct ? "wss://" + location.hostname + ":" + airPort + BASE + path : wsURL(path));
+  if (direct && directOK !== true) {
+    let opened = false;
+    const t = setTimeout(() => { if (!opened) ws.close(); }, 4000);
+    ws.addEventListener("open", () => { opened = true; clearTimeout(t); directOK = true; });
+    ws.addEventListener("close", () => {
+      clearTimeout(t);
+      if (!opened) { directOK = false; try { sessionStorage.setItem("air-direct", "0"); } catch (_) {} }
+    });
+  }
+  return ws;
+}
 function connectListen() {
-  lws = new WebSocket(wsURL("/ws/listen"));
+  lws = airSocket("/ws/listen", false);
   lws.binaryType = "arraybuffer";
   lws.onopen = () => { st.tuned = -1; retune(); };
   lws.onmessage = e => {
@@ -1409,7 +1429,7 @@ $("onair").onclick = async () => {
 function connectHost() {
   lastTxAt = performance.now();
   let opened = false;
-  const ws = new WebSocket(wsURL("/ws/host?f=" + st.hostFreq + "&name=" + encodeURIComponent($("name").value.trim())));
+  const ws = airSocket("/ws/host?f=" + st.hostFreq + "&name=" + encodeURIComponent($("name").value.trim()), true);
   hws = ws;
   ws.onopen = () => {
     opened = true; retries = 0; reconnecting = false; st.onAir = true; $("name").disabled = true;

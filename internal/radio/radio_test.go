@@ -588,3 +588,24 @@ func TestFramesBatched(t *testing.T) {
 		t.Fatalf("неполная пачка через %v, ждали около %v", d, batchWait)
 	}
 }
+
+// Сокет пускает страницы с того же домена (порт может отличаться — прямой эфир), чужие — нет.
+func TestSameSiteOrigin(t *testing.T) {
+	for origin, want := range map[string]bool{
+		"":                          true,
+		"https://openline.one":      true,
+		"https://openline.one:8443": true,
+		"https://OpenLine.one":      true,
+		"https://evil.example":      false,
+		"https://openline.one.evil": false,
+		"not a url\x7f":             false,
+	} {
+		r := httptest.NewRequest("GET", "https://openline.one:8443/radio/ws/listen", nil)
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		if got := sameSite(r); got != want {
+			t.Errorf("Origin %q: %v, ждали %v", origin, got, want)
+		}
+	}
+}

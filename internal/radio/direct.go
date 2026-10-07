@@ -1,0 +1,81 @@
+package radio
+
+import (
+	"crypto/tls"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"sync"
+	"time"
+)
+
+// Прямой HTTPS для сокетов эфира: радио само шифрует /radio/ws/* на отдельном порту
+// (DirectPort, обычно 8443), и звук не идёт через Caddy — на проде тот тратил на звук больше
+// процессора, чем само радио. Сертификат — тот же, что Caddy получает от Let's Encrypt: его копию
+// кладёт служба kontakt-tls-sync, радио перечитывает файлы, когда они меняются. Страница узнаёт
+// порт из <meta name="air-port"> и, если порт недоступен (закрыт в сети), уходит на путь через Caddy.
+
+// certReloader отдаёт сертификат из файлов и перечитывает их не чаще раза в минуту, если они
+// поменялись (продление раз в ~60 дней).
+type certReloader struct {
+	certPath, keyPath string
+	mu                sync.Mutex
+	cert              *tls.Certificate
+	mod               time.Time
+	checked           time.Time
+}
+
+func (c *certReloader) load() error {
+	st, err := os.Stat(c.certPath)
+	if err != nil {
+		return err
+	}
+	if c.cert != nil && !st.ModTime().After(c.mod) {
+		return nil
+	}
+	cert, err := tls.LoadX509KeyPair(c.certPath, c.keyPath)
+	if err != nil {
+		return err
+	}
+	c.cert, c.mod = &cert, st.ModTime()
+	return nil
+}
+
+func (c *certReloader) get(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if time.Since(c.checked) > time.Minute {
+		c.checked = time.Now()
+		if err := c.load(); err != nil && c.cert == nil {
+			return nil, err
+		} else if err != nil {
+			log.Printf("прямой HTTPS: сертификат не перечитался, работаю со старым: %v", err)
+		}
+	}
+	return c.cert, nil
+}
+
+// ServeDirect — прямой HTTPS на addr с сертификатом из файлов; блокирует.
+func ServeDirect(addr, certPath, keyPath string, handler http.Handler) error {
+	c := &certReloader{certPath: certPath, keyPath: keyPath}
+	if err := c.load(); err != nil {
+		return fmt.Errorf("прямой HTTPS: %w", err)
+	}
+	c.checked = time.Now()
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: c.get},
+	}
+	return srv.ListenAndServeTLS("", "")
+}
+
+// airPortMeta — порт прямого эфира для страницы (пусто — его нет, сокеты через web/Caddy).
+func (h *Hub) airPortMeta() string {
+	if h.opt.DirectPort == 0 {
+		return ""
+	}
+	return fmt.Sprintf(`<meta name="air-port" content="%d">`+"\n", h.opt.DirectPort)
+}

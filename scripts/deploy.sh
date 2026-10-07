@@ -209,10 +209,35 @@ www.$domain {
 CFG
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || { caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; exit 1; }
 ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null && ufw allow 443/udp >/dev/null
+# Прямой эфир радио (порт 8443, мимо Caddy): копия сертификата Caddy для радио — при каждом
+# продлении (path-юнит следит за файлом), владелец root, читать может группа kontakt.
+CERTS=/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/$domain
+install -d -m 750 -o root -g kontakt /opt/kontakt/tls
+cat > /etc/systemd/system/kontakt-tls-sync.service <<UNIT
+[Unit]
+Description=Kontakt: копия сертификата Caddy для прямого эфира радио
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'install -m 640 -o root -g kontakt \$CERTS/$domain.crt /opt/kontakt/tls/cert.pem && install -m 640 -o root -g kontakt \$CERTS/$domain.key /opt/kontakt/tls/key.pem'
+UNIT
+cat > /etc/systemd/system/kontakt-tls-sync.path <<UNIT
+[Unit]
+Description=Kontakt: следить за продлением сертификата Caddy
+[Path]
+PathChanged=\$CERTS/$domain.crt
+[Install]
+WantedBy=multi-user.target
+UNIT
+ufw allow 8443/tcp >/dev/null
 systemctl enable caddy >/dev/null 2>&1
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
 systemctl disable --now kontakt-tunnel >/dev/null 2>&1 || true   # туннель Cloudflare больше не нужен
-for i in \$(seq 40); do curl -fsS -m 5 https://$domain/healthz >/dev/null 2>&1 && { echo "https://$domain отвечает, сертификат получен"; exit 0; }; sleep 3; done
+systemctl daemon-reload
+systemctl enable --now kontakt-tls-sync.path >/dev/null 2>&1
+# первая копия — когда Caddy уже получил сертификат (ниже ждём ответа по https)
+for i in \$(seq 40); do curl -fsS -m 5 https://$domain/healthz >/dev/null 2>&1 && {
+  systemctl start kontakt-tls-sync.service && systemctl restart kontakt-radio
+  echo "https://$domain отвечает, сертификат получен; прямой эфир радио — https://$domain:8443"; exit 0; }; sleep 3; done
 echo "Caddy запущен, но https://$domain пока не отвечает: DNS ещё не разошёлся или порт 80 закрыт у провайдера. journalctl -u caddy -n 30"
 EOS
   ;;

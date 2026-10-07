@@ -154,7 +154,7 @@ func (h *Hub) serveIndex(w http.ResponseWriter, r *http.Request) {
 		"og:url":         base + "/",
 		"og:image":       img,
 	})
-	writePage(w, strings.Replace(indexHTML, ogPlaceholder, meta, 1))
+	writePage(w, strings.Replace(indexHTML, ogPlaceholder, meta+h.airPortMeta(), 1))
 }
 
 func (h *Hub) serveShare(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +234,7 @@ func (h *Hub) writeShare(w http.ResponseWriter, r *http.Request, f int, name, tr
 		"og:url":         base + "/w/" + FormatFreq(f) + qs,
 		"og:image":       base + "/og/" + strconv.Itoa(f) + ".png" + qs,
 	})
-	page := strings.Replace(indexHTML, ogPlaceholder, meta, 1)
+	page := strings.Replace(indexHTML, ogPlaceholder, meta+h.airPortMeta(), 1)
 	page = strings.Replace(page, "<title>Открытое радио</title>", "<title>"+html.EscapeString(title)+"</title>", 1)
 	writePage(w, page)
 }
