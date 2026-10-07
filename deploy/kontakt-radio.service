@@ -7,10 +7,10 @@ PartOf=kontakt.target
 User=kontakt
 WorkingDirectory=/opt/kontakt
 ExecStart=/opt/kontakt/current/bin/radio -http 127.0.0.1:8083 -admin 127.0.0.1:8093 -mod http://127.0.0.1:8091 \
-  -links /opt/kontakt/data/radio-links.json -max-stations 206 -max-listeners 1700 \
-  -direct :8443 -cert /opt/kontakt/tls/cert.pem -key /opt/kontakt/tls/key.pem
-# -direct: сокеты эфира по своему HTTPS, мимо Caddy (сертификат — копия от kontakt-tls-sync,
-# её ставит deploy.sh https); нет сертификата — радио работает через web, как раньше
+  -links /opt/kontakt/data/radio-links.json -max-stations 206 -max-listeners 1700
+# Прямой HTTPS эфира (-direct :8443 -cert /opt/kontakt/tls/cert.pem -key /opt/kontakt/tls/key.pem)
+# выключен 07.10.2026 по INC-001 (docs/incidents): эфир — через Caddy на 443, пачки остаются.
+# Вернуть — дописать флаги выше; сертификат для него копирует kontakt-tls-sync (deploy.sh https).
 # -max-listeners 1700: замер 07.10.2026 (LOAD_REPORT.md) — 2000 без потерь звука, 0,64 ядра, 185 МБ
 Restart=always
 RestartSec=1
