@@ -57,7 +57,13 @@ const (
 	ReasonBanned     = "banned"
 	ReasonTimeLimit  = "time-limit"
 	ReasonMediaError = "media-error"
-	ReasonNoTokens   = "no-tokens" // жетоны кончились — снять трубку нельзя, пока не придёт новый
+	ReasonNoTokens   = "no-tokens"      // жетоны кончились — снять трубку нельзя, пока не придёт новый
+	ReasonTooMany    = "too-many-calls" // у этой куки уже maxLegsPerID трубок
+
+	// maxLegsPerID — трубок на одну куку (вкладка и приложение). Больше нормальному человеку не нужно,
+	// а без предела одна кука ставила в очередь тысячи ног: подбор пар перебирал их попарно (O(n²))
+	// под общей блокировкой — несовместимы между собой все ноги одной куки.
+	maxLegsPerID = 2
 )
 
 // NoiseSeconds — сколько звучит «пустой эфир» после ухода собеседника.
@@ -105,6 +111,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	legs     map[string]*Leg
+	perID    map[string]int // под mu: трубок у куки (newCall занимает, endLeg отпускает)
 	queue    []*Leg
 	lastPeer map[string]*pairRec
 	blocked  map[[2]string]bool // пары, которых больше не соединяем (жалоба)
@@ -117,7 +124,7 @@ type Server struct {
 }
 
 func New(cfg *config.Live, mod *moderation.Store, media Media) *Server {
-	s := &Server{Cfg: cfg, Mod: mod, Media: media, legs: map[string]*Leg{},
+	s := &Server{Cfg: cfg, Mod: mod, Media: media, legs: map[string]*Leg{}, perID: map[string]int{},
 		lastPeer: map[string]*pairRec{}, blocked: map[[2]string]bool{}, reports: map[string][]time.Time{}}
 	s.initMetrics()
 	// Пороги модерации — из горячего конфига; по той же базе банит и радио (через /mod/*).
@@ -202,6 +209,17 @@ func (s *Server) Handle(m *sip.Msg, tr Transport) {
 	}
 }
 
+// releaseID отпускает место трубки куки.
+func (s *Server) releaseID(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.perID[id] <= 1 {
+		delete(s.perID, id)
+		return
+	}
+	s.perID[id]--
+}
+
 func (s *Server) reject(inv *sip.Msg, tr Transport, code int, reason, text string) {
 	s.m.calls.Inc(text)
 	r := inv.Response(code, reason, sip.RandHex(6))
@@ -244,6 +262,21 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 		s.reject(inv, tr, 488, "Not Acceptable Here", "only-pcma-pcmu")
 		return
 	}
+	// место занимаем под блокировкой до медиа: одновременные INVITE одной куки не проскочат предел
+	s.mu.Lock()
+	if s.perID[id] >= maxLegsPerID {
+		s.mu.Unlock()
+		s.reject(inv, tr, 429, "Too Many Requests", ReasonTooMany)
+		return
+	}
+	s.perID[id]++
+	s.mu.Unlock()
+	registered := false
+	defer func() {
+		if !registered {
+			s.releaseID(id)
+		}
+	}()
 
 	leg := &Leg{callID: inv.Get("Call-ID"), tr: tr, identity: id, invite: inv, toTag: sip.RandHex(6),
 		line: s.pickLine(sip.UserOf(sip.URIOf(inv.RURI))), pt: pt, cseq: 1}
@@ -264,6 +297,7 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 	s.mu.Lock()
 	s.legs[leg.callID] = leg
 	s.mu.Unlock()
+	registered = true // дальше место отпустит конец ноги
 
 	// Трубку сняли — отвечаем сразу, дальше вы «на станции».
 	r := inv.Response(200, "OK", leg.toTag)
@@ -511,6 +545,7 @@ func (s *Server) End(l *Leg, byeReason string) {
 	s.mu.Lock()
 	delete(s.legs, l.callID)
 	s.mu.Unlock()
+	s.releaseID(l.identity)
 	if peer != nil {
 		s.markEnded(l, peer)
 	}

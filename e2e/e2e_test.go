@@ -927,3 +927,30 @@ func TestTokens(t *testing.T) {
 		t.Fatalf("другого человека не пустили: %d", r.Status)
 	}
 }
+
+// Не больше двух трубок на одну куку: третья — 429; положил одну — место освободилось. Без предела
+// тысяча ног одной куки делала подбор пар O(n²) под общей блокировкой.
+func TestLegsPerIdentity(t *testing.T) {
+	st := newStack(t, nil)
+	id := identity.New()
+	a, b := newPhone(t, st, id), newPhone(t, st, id)
+	a.pickUp("32")
+	b.pickUp("32")
+	if r := newPhone(t, st, id).dial("32"); r.Status != 429 || !strings.Contains(r.Get("Reason"), signal.ReasonTooMany) {
+		t.Fatalf("третью трубку одной куки пустили: %d %s", r.Status, r.Get("Reason"))
+	}
+	if r := newPhone(t, st, "").dial("32"); r.Status != 200 {
+		t.Fatalf("другого человека не пустили: %d", r.Status)
+	}
+	a.inDialog("BYE", "")
+	for i := 0; ; i++ {
+		r := newPhone(t, st, id).dial("32")
+		if r.Status == 200 {
+			break
+		}
+		if i == 30 {
+			t.Fatalf("место не освободилось: %d", r.Status)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -687,5 +688,66 @@ func TestListenerLimitStrict(t *testing.T) {
 	c.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 	if _, _, err := c.ReadMessage(); err != nil { // первым приходит список станций, а не отказ
 		t.Fatalf("на освободившееся место не пустили: %v", err)
+	}
+}
+
+// Название трека уходит приёмникам не чаще titleEvery; последнее из пачки не теряется.
+func TestTitleCoalesced(t *testing.T) {
+	old := titleEvery
+	titleEvery = 300 * time.Millisecond
+	defer func() { titleEvery = old }()
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	host, _, _ := dial(t, srv, "/ws/host?f=1053&name=X")
+	defer host.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 1 })
+	l, _, _ := dial(t, srv, "/ws/listen")
+	defer l.Close()
+	msgs := make(chan string, 1000)
+	go func() {
+		for {
+			typ, b, err := l.ReadMessage()
+			if err != nil {
+				return
+			}
+			if typ == websocket.TextMessage && strings.HasPrefix(string(b), `{"title"`) {
+				msgs <- string(b)
+			}
+		}
+	}()
+	for i := 0; i < 200; i++ { // спам названиями
+		host.WriteJSON(map[string]string{"title": fmt.Sprintf("трек %d", i)})
+	}
+	time.Sleep(800 * time.Millisecond)
+	n, last := len(msgs), ""
+	for i := 0; i < n; i++ {
+		last = <-msgs
+	}
+	if n == 0 || n > 3 || !strings.Contains(last, "трек 199") {
+		t.Fatalf("названий дошло %d, последнее %q — ждали 1–3 и «трек 199»", n, last)
+	}
+}
+
+// Приёмник, крутящий ручку чаще скрипта, отключается.
+func TestTuneFlood(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	l, _, _ := dial(t, srv, "/ws/listen")
+	defer l.Close()
+	for i := 0; i < 200; i++ {
+		if l.WriteJSON(map[string]int{"tune": 900 + i%50}) != nil {
+			break
+		}
+	}
+	l.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		if _, _, err := l.ReadMessage(); err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				t.Fatal("флуд tune не отключили")
+			}
+			return
+		}
 	}
 }

@@ -26,7 +26,7 @@ func (s *Server) initMetrics() {
 		reg: r,
 		calls: r.CounterVec("kontakt_signal_calls_total",
 			"Новые звонки (INVITE) по исходу: accepted — трубку сняли, остальное — причина отказа.", "result",
-			"accepted", ReasonBanned, "maintenance", ReasonMediaError, "no-identity", "only-pcma-pcmu", ReasonNoTokens),
+			"accepted", ReasonBanned, "maintenance", ReasonMediaError, "no-identity", "only-pcma-pcmu", ReasonNoTokens, ReasonTooMany),
 		hangups: r.CounterVec("kontakt_signal_hangups_total",
 			"Ноги, покинувшие станцию, по причине: user — сам положил трубку, иначе причина станции.", "reason",
 			"user", ReasonBanned, ReasonYellow, ReasonMediaError),

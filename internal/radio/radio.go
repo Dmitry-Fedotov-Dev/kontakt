@@ -79,9 +79,13 @@ const (
 	nameRunes   = 24
 	titleRunes  = 64
 
-	CloseBanned    = 4003 // код закрытия сокета ведущего: эфир для него закрыт
-	CloseFull      = 4009 // код закрытия сокета приёмника: слушателей уже MaxListeners, подключиться позже
-	reportsPerHour = 10   // жалоб от одного человека в час, больше — rate_limited
+	CloseBanned = 4003 // код закрытия сокета ведущего: эфир для него закрыт
+	CloseFull   = 4009 // код закрытия сокета приёмника: слушателей уже MaxListeners, подключиться позже
+
+	// tuneRate/tuneBurst — настроек ручки в секунду от приёмника; сверх — соединение закрывается
+	// (страница переподключится сама). Человек, крутящий ручку, не набирает и пяти в секунду.
+	tuneRate, tuneBurst = 10, 30
+	reportsPerHour      = 10 // жалоб от одного человека в час, больше — rate_limited
 	// Лайки: от слушателя не чаще likeEvery (больше — молча не считаются), ведущему — пачкой
 	// раз в likeFlush: сотня слушателей, жмущих сердце, — 4 коротких сообщения в секунду, а не сотни.
 	likeEvery  = 300 * time.Millisecond
@@ -168,9 +172,12 @@ type Hub struct {
 type station struct {
 	freq        int
 	name, title string
-	logo        string // под Hub.mu: хеш логотипа, "" — нет
-	since       time.Time
-	subs        map[*listener]struct{}
+	titleAt     time.Time // под Hub.mu: когда название ушло приёмникам (titleEvery)
+	titlePend   *string   // под Hub.mu: пришедшее раньше срока — уйдёт по таймеру, последнее
+
+	logo  string // под Hub.mu: хеш логотипа, "" — нет
+	since time.Time
+	subs  map[*listener]struct{}
 
 	host     string          // кука ведущего ("" без модерации)
 	conn     *websocket.Conn // чтобы снять с эфира
@@ -233,8 +240,8 @@ func NewHub(opt Options) *Hub {
 		"reason", "slow_listener", "host_rate")
 	h.rejected = h.reg.CounterVec("kontakt_radio_rejected_total",
 		"Отказы: busy — волна занята, bad_freq — вне диапазона, full — нет места для станции, listeners_full — для приёмника, "+
-			"banned — эфир закрыт модерацией, no_identity — нет куки",
-		"reason", "busy", "bad_freq", "full", "listeners_full", "banned", "no_identity")
+			"banned — эфир закрыт модерацией, no_identity — нет куки, tune_flood — приёмник крутит ручку чаще скрипта",
+		"reason", "busy", "bad_freq", "full", "listeners_full", "banned", "no_identity", "tune_flood")
 	h.reports = h.reg.CounterVec("kontakt_radio_reports_total",
 		"Жалобы на станции по исходу: yellow, banned, noted — от новичка (в зачёт не пошла), остальное — не принята",
 		"result", "yellow", "banned", "noted", "already", "no_station", "listen_more", "self", "rate_limited", "no_identity", "error")
@@ -414,13 +421,35 @@ func (h *Hub) changed() {
 // titleChanged — ведущий сменил трек: всем приёмникам короткое {"title":…} вместо полного списка
 // (трек меняется чаще всего: 50 станций — раз в несколько секунд). Кому не влезло в очередь,
 // получит полный список на следующем тике.
+//
+// Не чаще раза в titleEvery: каждое название уходит всем приёмникам, и ведущий, меняющий его сотни
+// раз в секунду, заставлял сервер слать сотни × 1700 сообщений (усиление атаки). Пришедшее раньше
+// срока не теряется: последнее уходит, когда срок выйдет (листание очереди — это нормально).
 func (h *Hub) titleChanged(s *station, title string) {
-	b, _ := json.Marshal(map[string]any{"title": map[string]any{"f": s.freq, "t": title}})
 	h.mu.Lock()
+	if wait := titleEvery - time.Since(s.titleAt); wait > 0 {
+		first := s.titlePend == nil
+		s.titlePend = &title
+		h.mu.Unlock()
+		if first {
+			time.AfterFunc(wait, func() {
+				h.mu.Lock()
+				p := s.titlePend
+				s.titlePend = nil
+				h.mu.Unlock()
+				if p != nil {
+					h.titleChanged(s, *p)
+				}
+			})
+		}
+		return
+	}
 	defer h.mu.Unlock()
 	if s.title == title {
 		return
 	}
+	b, _ := json.Marshal(map[string]any{"title": map[string]any{"f": s.freq, "t": title}})
+	s.titleAt = time.Now()
 	s.title = title
 	h.content.Add(1) // в кеше полного списка — старый трек
 	if h.st[s.freq] != s {
@@ -731,6 +760,7 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 	go h.writeListener(conn, l, done)
 
 	conn.SetReadLimit(maxMessage)
+	tunes := &bucket{rate: tuneRate, burst: tuneBurst, tokens: tuneBurst, last: time.Now()}
 	for {
 		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 		_, data, err := conn.ReadMessage()
@@ -747,6 +777,12 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if m.Tune != nil {
+			// ручка шлёт tune, только когда поймала другую станцию: человеку хватает с запасом;
+			// чаще — это скрипт, и каждый tune берёт общую блокировку хаба
+			if !tunes.allow() {
+				h.rejected.Inc("tune_flood")
+				break
+			}
 			h.tune(l, *m.Tune)
 		}
 		if m.Like {
@@ -1009,3 +1045,6 @@ func sameSite(r *http.Request) bool {
 	}
 	return strings.EqualFold(u.Hostname(), host)
 }
+
+// titleEvery — название трека уходит приёмникам не чаще (titleChanged); переменная — для тестов.
+var titleEvery = 2 * time.Second
