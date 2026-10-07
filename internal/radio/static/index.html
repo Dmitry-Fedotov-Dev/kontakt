@@ -254,11 +254,12 @@ button, input { font: inherit; color: inherit; }
 .fader .cap::after { content: ""; position: absolute; left: 6px; right: 6px; top: 7px; height: 2px; background: var(--ink); }
 .fader .lbl { font-size: 11px; font-weight: 600; letter-spacing: .04em; }
 .fader .val { font-size: 11px; color: #C9B6E4; }
-.vu { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 22px; }
+.vu { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 22px; margin-left: 8px; }
 .vu .track { position: relative; width: 12px; height: 140px; background: var(--ink); box-shadow: inset 2px 2px 0 #000; }
 .vu i { position: absolute; left: 2px; right: 2px; bottom: 2px; height: 0; background: repeating-linear-gradient(0deg, var(--mint) 0 4px, transparent 4px 6px); }
 .vu i.hot { background: repeating-linear-gradient(0deg, var(--red) 0 4px, transparent 4px 6px); }
 .vu .lbl { font-size: 11px; font-weight: 600; }
+.vu .val { font-size: 11px; } /* пустая строка под подписью, как число у фейдеров: полосы на одной высоте */
 
 .btn {
   border: 0; cursor: pointer; padding: 5px 10px 6px; font-size: 13px; font-weight: 600; letter-spacing: .03em;
@@ -348,7 +349,7 @@ button, input { font: inherit; color: inherit; }
         <div class="fader" id="fMusic" tabindex="0" role="slider" aria-label="Громкость музыки" data-i-aria="fMusicAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fMusic">MUSIC</span><span class="val"></span></div>
         <div class="fader" id="fAir" tabindex="0" role="slider" aria-label="Громкость эфира" data-i-aria="fAirAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fAir">AIR</span><span class="val"></span></div>
         <div class="fader" id="fMon" tabindex="0" role="slider" aria-label="Громкость монитора" data-i-aria="fMonAria"><div class="track"><div class="fill"></div><div class="cap"></div></div><span class="lbl" data-i="fMon">MON</span><span class="val"></span></div>
-        <div class="vu" aria-hidden="true"><div class="track"><i id="vu"></i></div><span class="lbl" data-i="fOut">OUT</span></div>
+        <div class="vu" aria-hidden="true"><div class="track"><i id="vu"></i></div><span class="lbl" data-i="fOut">OUT</span><span class="val">&nbsp;</span></div>
       </div>
     </div>
 
