@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/gorilla/websocket"
 )
 
 // Постоянные станции с сервера: модератор загружает файлы и включает эфир со страницы /stations/
@@ -48,11 +50,27 @@ type castStation struct {
 	Order []string `json:"order"` // имена файлов в порядке эфира
 	Pos   int      `json:"pos"`   // с какого файла продолжать после перезапуска
 	ID    string   `json:"id"`    // кука ведущего: за ней держатся модерация и логотип
+	Mix   *castMix `json:"mix,omitempty"`
 
-	now    string // сейчас играет
-	errMsg string // почему остановилась (бан)
+	cast   *caster // идёт эфир — его caster
+	now    string  // сейчас играет
+	errMsg string  // почему остановилась (бан)
 	cancel context.CancelFunc
 	done   chan struct{}
+}
+
+// castMix — фейдеры станции, сохраняются между перезапусками.
+type castMix struct {
+	Music float64 `json:"music"`
+	Mic   float64 `json:"mic"`
+	Air   float64 `json:"air"`
+}
+
+func (s *castStation) mix() castMix {
+	if s.Mix == nil {
+		return castMix{1, 1, 1}
+	}
+	return *s.Mix
 }
 
 // Casts — постоянные станции с сервера.
@@ -117,7 +135,10 @@ func (c *Casts) startLocked(s *castStation) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel, s.done, s.errMsg = cancel, make(chan struct{}), ""
-	cs := &caster{freq: s.F, name: s.Name, url: c.url, id: s.ID, ffmpeg: c.ffmpeg, src: &castSrc{c: c, f: s.F}}
+	cs := newCaster(s.F, s.Name, c.url, s.ID, c.ffmpeg, &castSrc{c: c, f: s.F})
+	m := s.mix()
+	cs.gains.set(m.Music, m.Mic, m.Air)
+	s.cast = cs
 	go func(s *castStation, done chan struct{}) {
 		defer close(done)
 		err := cs.run(ctx)
@@ -128,7 +149,7 @@ func (c *Casts) startLocked(s *castStation) {
 			c.saveLocked(s)
 			log.Printf("станция %s снята модерацией — эфир с сервера остановлен", FormatFreq(s.F))
 		}
-		s.cancel, s.now = nil, ""
+		s.cancel, s.now, s.cast = nil, "", nil
 	}(s, s.done)
 }
 
@@ -176,14 +197,14 @@ func (p *castSrc) castPos() int {
 	return 0
 }
 
-func (p *castSrc) castPlayed(i int) {
+func (p *castSrc) castSetPos(i int) {
 	p.c.mu.Lock()
 	defer p.c.mu.Unlock()
 	if s := p.c.st[p.f]; s != nil {
-		s.Pos = i + 1
 		if n := len(p.c.orderLocked(s)); n > 0 {
-			s.Pos %= n
+			i = ((i % n) + n) % n
 		}
+		s.Pos = i
 		p.c.saveLocked(s)
 	}
 }
@@ -306,6 +327,10 @@ func (c *Casts) Handler() http.Handler {
 	mux.HandleFunc("POST /stations/api/upload", c.apiUpload)
 	mux.HandleFunc("DELETE /stations/api/file", c.apiDeleteFile)
 	mux.HandleFunc("POST /stations/api/order", c.apiOrder)
+	mux.HandleFunc("POST /stations/api/ctl", c.apiCtl)
+	mux.HandleFunc("POST /stations/api/mix", c.apiMix)
+	mux.HandleFunc("GET /stations/api/mic", c.apiMic)
+	mux.HandleFunc("GET /stations/api/monitor", c.apiMonitor)
 	mux.HandleFunc("POST /stations/api/on", func(w http.ResponseWriter, r *http.Request) { c.apiOnOff(w, r, true) })
 	mux.HandleFunc("POST /stations/api/off", func(w http.ResponseWriter, r *http.Request) { c.apiOnOff(w, r, false) })
 	return mux
@@ -317,16 +342,20 @@ type castFileJSON struct {
 }
 
 type castJSON struct {
-	F     int            `json:"f"`
-	Freq  string         `json:"freq"`
-	Name  string         `json:"name"`
-	On    bool           `json:"on"`
-	OnAir bool           `json:"onAir"`
-	Busy  bool           `json:"busy"` // волна занята другим ведущим
-	Now   string         `json:"now"`
-	Error string         `json:"error,omitempty"`
-	Logo  string         `json:"logo,omitempty"`
-	Files []castFileJSON `json:"files"`
+	F      int            `json:"f"`
+	Freq   string         `json:"freq"`
+	Name   string         `json:"name"`
+	On     bool           `json:"on"`
+	OnAir  bool           `json:"onAir"`
+	Busy   bool           `json:"busy"` // волна занята другим ведущим
+	Now    string         `json:"now"`
+	Error  string         `json:"error,omitempty"`
+	Logo   string         `json:"logo,omitempty"`
+	Files  []castFileJSON `json:"files"`
+	Index  int            `json:"index"`  // какой файл играет
+	Paused bool           `json:"paused"` // музыка на паузе
+	MicOn  bool           `json:"micOn"`  // модератор в эфире с микрофона
+	Mix    castMix        `json:"mix"`
 }
 
 func (c *Casts) apiList(w http.ResponseWriter, _ *http.Request) {
@@ -339,7 +368,11 @@ func (c *Casts) apiList(w http.ResponseWriter, _ *http.Request) {
 	c.mu.Lock()
 	var out []castJSON
 	for _, s := range c.st {
-		j := castJSON{F: s.F, Freq: FormatFreq(s.F), Name: s.Name, On: s.On, Now: s.now, Error: s.errMsg, Files: []castFileJSON{}}
+		j := castJSON{F: s.F, Freq: FormatFreq(s.F), Name: s.Name, On: s.On, Now: s.now, Error: s.errMsg, Files: []castFileJSON{},
+			Index: s.Pos, Mix: s.mix()}
+		if cs := s.cast; cs != nil {
+			j.Index, j.Paused, j.MicOn = int(cs.index.Load()), cs.paused.Load(), cs.micOn.Load()
+		}
 		if ls := live[s.F]; ls != nil {
 			c.hub.mu.Lock()
 			j.OnAir, j.Busy, j.Logo = ls.host == s.ID, ls.host != s.ID, ls.logo
@@ -541,12 +574,7 @@ func (c *Casts) apiOnOff(w http.ResponseWriter, r *http.Request, on bool) {
 		return
 	}
 	c.mu.Lock()
-	if len(c.orderLocked(s)) == 0 {
-		c.mu.Unlock()
-		http.Error(w, "сначала загрузите файлы", http.StatusConflict)
-		return
-	}
-	s.On = true
+	s.On = true // без файлов станция выходит в эфир, когда включат микрофон
 	c.saveLocked(s)
 	c.startLocked(s)
 	c.mu.Unlock()
@@ -557,4 +585,144 @@ func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(v)
+}
+
+// live — caster станции в эфире; нет — ответ 409.
+func (c *Casts) live(w http.ResponseWriter, r *http.Request) (*castStation, *caster) {
+	s := c.station(w, r)
+	if s == nil {
+		return nil, nil
+	}
+	c.mu.Lock()
+	cs := s.cast
+	c.mu.Unlock()
+	if cs == nil {
+		http.Error(w, "станция не в эфире — нажмите «В эфир»", http.StatusConflict)
+		return nil, nil
+	}
+	return s, cs
+}
+
+// apiCtl — очередь: next, prev, pause, play, jump (&i=номер).
+func (c *Casts) apiCtl(w http.ResponseWriter, r *http.Request) {
+	_, cs := c.live(w, r)
+	if cs == nil {
+		return
+	}
+	op := r.URL.Query().Get("op")
+	var i int
+	fmt.Sscan(r.URL.Query().Get("i"), &i)
+	switch op {
+	case "next", "prev", "pause", "play", "jump":
+	default:
+		http.Error(w, "op: next, prev, pause, play, jump", http.StatusBadRequest)
+		return
+	}
+	select {
+	case cs.ctl <- castCmd{op: op, i: i}:
+	default:
+		http.Error(w, "станция занята, повторите", http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// apiMix — фейдеры станции {music, mic, air}, 0…1,5; сохраняются.
+func (c *Casts) apiMix(w http.ResponseWriter, r *http.Request) {
+	s := c.station(w, r)
+	if s == nil {
+		return
+	}
+	var m castMix
+	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&m) != nil {
+		http.Error(w, "нужен JSON {music, mic, air}", http.StatusBadRequest)
+		return
+	}
+	cl := func(v float64) float64 { return max(0, min(1.5, v)) }
+	m = castMix{cl(m.Music), cl(m.Mic), cl(m.Air)}
+	c.mu.Lock()
+	s.Mix = &m
+	if s.cast != nil {
+		s.cast.gains.set(m.Music, m.Mic, m.Air)
+	}
+	c.saveLocked(s)
+	c.mu.Unlock()
+	writeJSON(w, m)
+}
+
+// Сокеты страницы. Origin проверил LocalOnly — здесь только апгрейд.
+var castUpgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096,
+	CheckOrigin: func(*http.Request) bool { return true }}
+
+// apiMic — микрофон модератора: двоичные сообщения — кадры μ-law по 160 байт (можно пачкой).
+func (c *Casts) apiMic(w http.ResponseWriter, r *http.Request) {
+	_, cs := c.live(w, r)
+	if cs == nil {
+		return
+	}
+	conn, err := castUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	cs.micOn.Store(true)
+	defer cs.micOn.Store(false)
+	conn.SetReadLimit(64 << 10)
+	for {
+		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		typ, b, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		if typ != websocket.BinaryMessage {
+			continue
+		}
+		for len(b) >= FrameBytes {
+			f := make([]byte, FrameBytes)
+			copy(f, b)
+			cs.pushMic(f)
+			b = b[FrameBytes:]
+		}
+	}
+}
+
+// apiMonitor — готовый эфир станции на страницу: пачками по 5 кадров.
+func (c *Casts) apiMonitor(w http.ResponseWriter, r *http.Request) {
+	_, cs := c.live(w, r)
+	if cs == nil {
+		return
+	}
+	conn, err := castUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	ch, unsub := cs.subscribe()
+	defer unsub()
+	gone := make(chan struct{})
+	go func() { // читаем, чтобы увидеть закрытие страницей
+		defer close(gone)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+	var pend []byte
+	for {
+		select {
+		case <-gone:
+			return
+		case f := <-ch:
+			pend = append(pend, f...)
+			if len(pend) >= batchFrames*FrameBytes {
+				conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				if conn.WriteMessage(websocket.BinaryMessage, pend) != nil {
+					return
+				}
+				pend = nil
+			}
+		case <-time.After(2 * time.Second): // станция замолчала — держим соединение
+		}
+	}
 }

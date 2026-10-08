@@ -37,6 +37,20 @@ li.playing .n { color: var(--mint); }
 .drop.over { border-color: var(--amber); color: var(--amber); }
 .prog { font-size: 13px; color: var(--amber); min-height: 1.3em; margin-top: 6px; }
 .err { color: var(--red); }
+/* студия: микшер и микрофон одной станции; панель не перерисовывается вместе со списком */
+.studio { position: sticky; top: 0; z-index: 5; background: #2A1B3C; padding: 12px 14px; margin-bottom: 16px; box-shadow: 0 0 0 3px var(--amber); }
+.studio[hidden] { display: none; }
+.studio h2 { margin: 0; font-size: 17px; color: var(--amber); display: flex; gap: 10px; align-items: center; }
+.studio h2 .x { margin-left: auto; }
+.mixer { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 16px; margin-top: 10px; }
+.fader label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
+.fader input { width: 100%; accent-color: var(--amber); }
+.vu { height: 10px; background: #000; margin-top: 10px; position: relative; overflow: hidden; }
+.vu i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, var(--mint) 70%, var(--amber) 85%, var(--red)); transition: width .06s; }
+.micbtn { min-width: 170px; }
+.micbtn.live { background: var(--red); color: #fff; }
+.transport button { min-width: 42px; }
+li .play { padding: 1px 6px; }
 </style>
 </head>
 <body>
@@ -44,6 +58,27 @@ li.playing .n { color: var(--mint); }
   <h1>Станции с сервера</h1>
   <p class="note">Страница админ-порта радио: открывается только через SSH-туннель (<code>ssh -N -L 8093:127.0.0.1:8093 root@сервер</code>). Файлы играются по кругу в порядке списка, название трека — имя файла. Ставьте только то, на что есть права: эфир с сервера идёт от имени сервиса. <span id="space"></span></p>
   <div id="ffwarn" class="warn" hidden>На сервере нет ffmpeg — эфир не включится и файлы не загрузятся.</div>
+
+  <section class="studio" id="studio" hidden>
+    <h2>Студия <span id="stFreq"></span> <span class="status" id="stState"></span>
+      <button class="ghost x" id="stClose">закрыть студию</button></h2>
+    <p class="now" id="stNow"></p>
+    <div class="row transport">
+      <button id="stPrev" title="предыдущий / сначала">⏮</button>
+      <button id="stPlay" title="пауза / играть">⏯</button>
+      <button id="stNext" title="следующий">⏭</button>
+      <button class="micbtn" id="stMic">Включить микрофон</button>
+    </div>
+    <div class="mixer">
+      <div class="fader"><label>МИКР <span id="vMic"></span></label><input type="range" id="gMic" min="0" max="150" step="5"></div>
+      <div class="fader"><label>МУЗЫКА <span id="vMusic"></span></label><input type="range" id="gMusic" min="0" max="150" step="5"></div>
+      <div class="fader"><label>ЭФИР <span id="vAir"></span></label><input type="range" id="gAir" min="0" max="150" step="5"></div>
+      <div class="fader"><label>МОНИТОР <span id="vMon"></span></label><input type="range" id="gMon" min="0" max="100" step="5" value="60"></div>
+    </div>
+    <div class="vu" title="уровень эфира"><i id="vu"></i></div>
+    <p class="note" style="margin:8px 0 0">Монитор — то, что слышат слушатели, с задержкой около секунды; только у вас, на эфир не влияет. Говорите в наушниках, иначе микрофон подхватит монитор.</p>
+    <div class="prog err" id="stErr"></div>
+  </section>
 
   <div class="card">
     <b>Новая станция</b>
@@ -61,6 +96,7 @@ li.playing .n { color: var(--mint); }
 "use strict";
 const $ = id => document.getElementById(id);
 const fmtSize = n => n > 1 << 30 ? (n / (1 << 30)).toFixed(1) + " ГБ" : (n / (1 << 20)).toFixed(1) + " МБ";
+let hashDone = false;
 let busy = 0; // идёт загрузка — список не перерисовываем, иначе пропадёт прогресс
 
 async function api(method, path, body, type) {
@@ -77,6 +113,11 @@ async function load() {
   $("space").textContent = "Занято " + fmtSize(d.used) + " из " + fmtSize(d.quota) + ".";
   $("ffwarn").hidden = d.ffmpeg;
   const list = $("list");
+  updateStudio(d.stations || []);
+  // ссылка #studio-934 открывает студию станции (закладка)
+  const m = !studio && !hashDone && location.hash.match(/^#studio-(\d+)$/);
+  hashDone = true;
+  if (m) { const s = (d.stations || []).find(x => x.f === +m[1] && x.on); if (s) { openStudio(s); updateStudio(d.stations); } }
   list.replaceChildren(...(d.stations || []).map(card));
   if (!d.stations || !d.stations.length) list.innerHTML = '<p class="note">Станций пока нет — создайте первую.</p>';
 }
@@ -103,6 +144,7 @@ function card(s) {
   if (s.onAir) { status = "в эфире"; cls += " on"; }
   else if (s.error) { status = s.error; cls += " err"; }
   else if (s.on && s.busy) { status = "ждёт: волна занята другим ведущим"; cls += " busy"; }
+  else if (s.on && !s.files.length && !s.micOn) { status = "ждёт: нет файлов — включите микрофон в студии"; }
   else if (s.on) { status = "выходит в эфир…"; }
 
   const logo = el("img", { class: "logo", alt: "", src: s.logo ? "/logo/" + s.logo + ".png" : "" });
@@ -123,6 +165,7 @@ function card(s) {
     load();
   } } });
   const controls = el("div", { class: "row" }, onoff,
+    el("button", { textContent: "Студия", disabled: !s.on, title: "микшер, микрофон и очередь", on: { click: () => openStudio(s) } }),
     el("button", { class: "ghost", textContent: "логотип…", disabled: !s.onAir, title: "ставится на станцию в эфире", on: { click: () => logoIn.click() } }), logoIn,
     el("button", { class: "danger", textContent: "удалить станцию", disabled: s.on, on: { click: act(async () => {
       if (confirm("Удалить станцию " + s.freq + " и все её файлы?")) await api("DELETE", "/stations/api/station" + q);
@@ -133,7 +176,9 @@ function card(s) {
     const o = names.slice(); [o[i], o[i + d]] = [o[i + d], o[i]];
     await api("POST", "/stations/api/order" + q, JSON.stringify(o), "application/json");
   });
-  const files = el("ol", {}, ...s.files.map((f, i) => el("li", { class: f.name.replace(/\.[^.]+$/, "") === s.now ? "playing" : "" },
+  const files = el("ol", {}, ...s.files.map((f, i) => el("li", { class: s.on && i === s.index ? "playing" : "" },
+    el("button", { class: "ghost play", textContent: "▶", title: "играть с этого трека", disabled: !s.on,
+      on: { click: act(() => api("POST", "/stations/api/ctl" + q + "&op=jump&i=" + i)) } }),
     el("span", { class: "n", textContent: f.name, title: f.name }),
     el("span", { class: "s", textContent: fmtSize(f.size) }),
     el("button", { class: "ghost", textContent: "↑", disabled: i === 0, on: { click: move(i, -1) } }),
@@ -191,6 +236,218 @@ async function toLogo(file) {
   c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 64, 64);
   return new Promise(res => c.toBlob(res, "image/png"));
 }
+
+// ---------- студия: микшер, микрофон, монитор ----------
+// Сводит сервер: микрофон уходит туда кадрами μ-law 8 кГц по 160 байт, фейдеры МИКР/МУЗЫКА/ЭФИР —
+// на сервер, МОНИТОР — только громкость у вас. Монитор — готовый эфир станции с сервера.
+const ULAW = new Float32Array(256);
+for (let i = 0; i < 256; i++) {
+  const u = ~i & 0xff, sign = u & 0x80, exp = (u >> 4) & 7, mant = u & 0x0f;
+  const v = (((mant << 3) + 0x84) << exp) - 0x84;
+  ULAW[i] = (sign ? -v : v) / 32768;
+}
+function ulawEncode(f32) {
+  const out = new Uint8Array(f32.length);
+  for (let i = 0; i < f32.length; i++) {
+    let s = Math.max(-1, Math.min(1, f32[i])) * 32767 | 0;
+    const sign = s < 0 ? 0x80 : 0;
+    if (sign) s = -s;
+    if (s > 32635) s = 32635;
+    s += 0x84;
+    let exp = 7;
+    for (let m = 0x4000; (s & m) === 0 && exp > 0; exp--, m >>= 1) { /* старший бит */ }
+    out[i] = ~(sign | (exp << 4) | ((s >> (exp + 3)) & 0x0f)) & 0xff;
+  }
+  return out;
+}
+const WORKLETS = `
+class TX extends AudioWorkletProcessor {
+  constructor() { super(); this.step = sampleRate / 8000; this.ph = 0; this.acc = 0; this.cnt = 0; this.out = new Float32Array(160); this.k = 0; }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (!ch) return true;
+    for (let i = 0; i < ch.length; i++) {
+      this.acc += ch[i]; this.cnt++; this.ph += 1;
+      if (this.ph >= this.step) {
+        this.ph -= this.step;
+        this.out[this.k++] = this.acc / this.cnt; this.acc = 0; this.cnt = 0;
+        if (this.k === 160) { this.port.postMessage(this.out, [this.out.buffer]); this.out = new Float32Array(160); this.k = 0; }
+      }
+    }
+    return true;
+  }
+}
+class RX extends AudioWorkletProcessor {
+  constructor() {
+    super(); this.b = new Float32Array(32768); this.w = 0; this.r = 0; this.n = 0; this.ready = false;
+    this.vol = 0.6; this.cur = 0; this.nxt = 0; this.frac = 0; this.step = 8000 / sampleRate;
+    this.port.onmessage = e => {
+      const m = e.data;
+      if (m instanceof Float32Array) {
+        for (let i = 0; i < m.length; i++) { this.b[this.w] = m[i]; this.w = (this.w + 1) & 32767; if (this.n < 32768) this.n++; else this.r = (this.r + 1) & 32767; }
+        if (this.n > 16000) { const d = this.n - 2400; this.r = (this.r + d) & 32767; this.n -= d; }
+      } else if ("vol" in m) this.vol = m.vol;
+    };
+  }
+  pop() {
+    if (!this.ready) { if (this.n < 2400) return 0; this.ready = true; }
+    if (this.n === 0) { this.ready = false; return 0; }
+    const v = this.b[this.r]; this.r = (this.r + 1) & 32767; this.n--; return v;
+  }
+  process(_, outputs) {
+    const out = outputs[0][0];
+    for (let i = 0; i < out.length; i++) {
+      this.frac += this.step;
+      while (this.frac >= 1) { this.frac -= 1; this.cur = this.nxt; this.nxt = this.pop(); }
+      out[i] = (this.cur + (this.nxt - this.cur) * this.frac) * this.vol;
+    }
+    for (let c = 1; c < outputs[0].length; c++) outputs[0][c].set(out);
+    return true;
+  }
+}
+registerProcessor("tx", TX); registerProcessor("rx", RX);`;
+
+let studio = null; // { f, freq }
+let actx = null, rxNode = null, monWs = null, micWs = null, micStream = null, micSrc = null, txNode = null, micWanted = false;
+const wsBase = () => (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
+
+async function ensureAudio() {
+  if (actx) { actx.resume(); return; }
+  actx = new AudioContext({ latencyHint: "interactive" });
+  const url = URL.createObjectURL(new Blob([WORKLETS], { type: "text/javascript" }));
+  await actx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+  rxNode = new AudioWorkletNode(actx, "rx", { numberOfInputs: 0, outputChannelCount: [2] });
+  rxNode.connect(actx.destination);
+  rxNode.port.postMessage({ vol: $("gMon").value / 100 });
+}
+
+function stErr(msg) { $("stErr").textContent = msg || ""; }
+
+async function openStudio(s) {
+  closeStudio();
+  studio = { f: s.f, freq: s.freq };
+  history.replaceState(null, "", "#studio-" + s.f);
+  $("stFreq").textContent = s.freq + " · " + s.name;
+  $("gMic").value = Math.round(s.mix.mic * 100);
+  $("gMusic").value = Math.round(s.mix.music * 100);
+  $("gAir").value = Math.round(s.mix.air * 100);
+  showGains();
+  $("studio").hidden = false;
+  stErr();
+  try { await ensureAudio(); } catch (e) { stErr("звук не включился: " + e.message); return; }
+  connectMonitor();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function closeStudio() {
+  micOff();
+  if (monWs) { monWs.onclose = null; monWs.close(); monWs = null; }
+  studio = null;
+  $("studio").hidden = true;
+  if (location.hash) history.replaceState(null, "", location.pathname);
+}
+
+function connectMonitor() {
+  if (!studio) return;
+  const f = studio.f;
+  monWs = new WebSocket(wsBase() + "/stations/api/monitor?f=" + f);
+  monWs.binaryType = "arraybuffer";
+  monWs.onmessage = e => {
+    const b = new Uint8Array(e.data), x = new Float32Array(b.length);
+    let peak = 0;
+    for (let i = 0; i < b.length; i++) { x[i] = ULAW[b[i]]; const a = Math.abs(x[i]); if (a > peak) peak = a; }
+    rxNode && rxNode.port.postMessage(x, [x.buffer]);
+    $("vu").style.width = Math.min(100, Math.round(Math.sqrt(peak) * 100)) + "%";
+  };
+  monWs.onclose = () => { $("vu").style.width = "0"; if (studio && studio.f === f) setTimeout(connectMonitor, 2000); };
+}
+
+async function micOn() {
+  if (!studio) return;
+  micWanted = true;
+  try {
+    await ensureAudio();
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) { micWanted = false; stErr("микрофон не дали: " + e.message); renderMic(); return; }
+  micSrc = actx.createMediaStreamSource(micStream);
+  txNode = new AudioWorkletNode(actx, "tx");
+  micSrc.connect(txNode);
+  // узел без пути к выходу браузер может не обрабатывать — ведём его в тишину
+  const mute = actx.createGain(); mute.gain.value = 0;
+  txNode.connect(mute); mute.connect(actx.destination);
+  txNode.port.onmessage = e => { if (micWs && micWs.readyState === 1 && micWs.bufferedAmount < 16000) micWs.send(ulawEncode(e.data)); };
+  connectMic();
+  renderMic();
+}
+
+function connectMic() {
+  if (!micWanted || !studio) return;
+  const f = studio.f;
+  micWs = new WebSocket(wsBase() + "/stations/api/mic?f=" + f);
+  micWs.binaryType = "arraybuffer";
+  micWs.onclose = () => { if (micWanted && studio && studio.f === f) setTimeout(connectMic, 1000); };
+}
+
+function micOff() {
+  micWanted = false;
+  if (micWs) { micWs.onclose = null; micWs.close(); micWs = null; }
+  if (txNode) { txNode.port.onmessage = null; txNode.disconnect(); txNode = null; }
+  if (micSrc) { micSrc.disconnect(); micSrc = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  renderMic();
+}
+
+function renderMic() {
+  const b = $("stMic");
+  b.classList.toggle("live", micWanted);
+  b.textContent = micWanted ? "● Микрофон в эфире — выключить" : "Включить микрофон";
+}
+
+function showGains() {
+  $("vMic").textContent = $("gMic").value + "%";
+  $("vMusic").textContent = $("gMusic").value + "%";
+  $("vAir").textContent = $("gAir").value + "%";
+  $("vMon").textContent = $("gMon").value + "%";
+}
+
+let mixTimer = 0;
+function sendMix() {
+  showGains();
+  clearTimeout(mixTimer);
+  mixTimer = setTimeout(() => {
+    if (!studio) return;
+    api("POST", "/stations/api/mix?f=" + studio.f, JSON.stringify({
+      mic: $("gMic").value / 100, music: $("gMusic").value / 100, air: $("gAir").value / 100,
+    }), "application/json").catch(e => stErr(e.message));
+  }, 150);
+}
+
+// updateStudio — состояние станции студии из общего списка (раз в 5 с и после нажатий).
+function updateStudio(stations) {
+  if (!studio) return;
+  const s = stations.find(x => x.f === studio.f);
+  if (!s || !s.on) { closeStudio(); return; }
+  $("stNow").textContent = s.paused ? "⏸ пауза" : s.now ? "♪ " + s.now : "";
+  $("stState").textContent = s.onAir ? "в эфире" : s.busy ? "ждёт: волна занята" : !s.files.length && !s.micOn ? "ждёт: включите микрофон" : "выходит в эфир…";
+  $("stState").className = "status" + (s.onAir ? " on" : s.busy ? " busy" : "");
+  $("stPlay").textContent = s.paused ? "▶" : "⏸";
+  $("stPlay").dataset.op = s.paused ? "play" : "pause";
+}
+
+const ctl = op => async () => {
+  if (!studio) return;
+  stErr();
+  try { await api("POST", "/stations/api/ctl?f=" + studio.f + "&op=" + op); } catch (e) { stErr(e.message); }
+  setTimeout(load, 300);
+};
+$("stPrev").addEventListener("click", ctl("prev"));
+$("stNext").addEventListener("click", ctl("next"));
+$("stPlay").addEventListener("click", () => ctl($("stPlay").dataset.op || "pause")());
+$("stMic").addEventListener("click", () => micWanted ? micOff() : micOn());
+$("stClose").addEventListener("click", closeStudio);
+["gMic", "gMusic", "gAir"].forEach(id => $(id).addEventListener("input", sendMix));
+$("gMon").addEventListener("input", () => { showGains(); rxNode && rxNode.port.postMessage({ vol: $("gMon").value / 100 }); });
 
 $("create").addEventListener("click", async () => {
   $("createErr").textContent = "";
