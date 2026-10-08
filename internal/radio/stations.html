@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Станции с сервера — Открытое радио</title>
+<link rel="icon" href="data:,">
+<style>
+:root { --sky: #2B1B3D; --box: #3A2752; --ink: #1E0F0A; --cream: #FFE9C2; --soft: #C9B6E4; --amber: #FFC24B; --red: #FF6B5E; --mint: #7FE0A8; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--sky); color: var(--cream); font: 15px/1.45 system-ui, sans-serif; padding: 24px 16px 48px; }
+main { max-width: 760px; margin: 0 auto; }
+h1 { margin: 0 0 4px; font-size: 24px; color: var(--amber); }
+.note { color: var(--soft); font-size: 13px; margin: 0 0 18px; }
+.warn { background: #5a2430; padding: 8px 12px; margin-bottom: 14px; }
+.card { background: var(--box); padding: 14px; margin-bottom: 16px; box-shadow: 0 0 0 3px var(--ink); }
+.head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.freq { font-size: 22px; font-weight: 700; color: var(--amber); min-width: 70px; }
+.logo { width: 40px; height: 40px; border-radius: 50%; image-rendering: pixelated; background: #2A1B3C; }
+.status { font-size: 13px; padding: 2px 8px; border-radius: 3px; background: #2A1B3C; }
+.status.on { background: var(--mint); color: var(--ink); }
+.status.busy, .status.err { background: var(--red); color: var(--ink); }
+.now { color: var(--soft); font-size: 13px; margin: 6px 0 0; min-height: 1.3em; }
+input[type=text] { font: inherit; padding: 5px 8px; border: 0; background: #21160B; color: var(--amber); width: 220px; }
+button { font: inherit; cursor: pointer; border: 0; padding: 5px 10px; background: var(--cream); color: var(--ink); }
+button.ghost { background: none; color: var(--soft); border: 1px solid #6B5A86; padding: 3px 8px; font-size: 13px; }
+button.danger { background: none; color: var(--red); border: 1px solid var(--red); padding: 3px 8px; font-size: 13px; }
+button:disabled { opacity: .45; cursor: default; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+ol { margin: 10px 0 0; padding: 0 0 0 26px; max-height: 320px; overflow: auto; }
+li { padding: 3px 0; border-top: 1px dashed #6B5290; display: flex; gap: 8px; align-items: center; }
+li:first-child { border-top: 0; }
+li .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+li .s { color: var(--soft); font-size: 12px; }
+li.playing .n { color: var(--mint); }
+.drop { margin-top: 10px; padding: 14px; text-align: center; color: var(--soft); border: 2px dashed #6B5290; font-size: 13px; }
+.drop.over { border-color: var(--amber); color: var(--amber); }
+.prog { font-size: 13px; color: var(--amber); min-height: 1.3em; margin-top: 6px; }
+.err { color: var(--red); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Станции с сервера</h1>
+  <p class="note">Страница админ-порта радио: открывается только через SSH-туннель (<code>ssh -N -L 8093:127.0.0.1:8093 root@сервер</code>). Файлы играются по кругу в порядке списка, название трека — имя файла. Ставьте только то, на что есть права: эфир с сервера идёт от имени сервиса. <span id="space"></span></p>
+  <div id="ffwarn" class="warn" hidden>На сервере нет ffmpeg — эфир не включится и файлы не загрузятся.</div>
+
+  <div class="card">
+    <b>Новая станция</b>
+    <div class="row">
+      <input type="text" id="newF" placeholder="частота, например 93.4" style="width:170px">
+      <input type="text" id="newName" placeholder="название (до 24 знаков)" maxlength="24">
+      <button id="create">Создать</button>
+    </div>
+    <div class="prog err" id="createErr"></div>
+  </div>
+
+  <div id="list"></div>
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const fmtSize = n => n > 1 << 30 ? (n / (1 << 30)).toFixed(1) + " ГБ" : (n / (1 << 20)).toFixed(1) + " МБ";
+let busy = 0; // идёт загрузка — список не перерисовываем, иначе пропадёт прогресс
+
+async function api(method, path, body, type) {
+  const r = await fetch(path, { method, body, headers: type ? { "Content-Type": type } : {} });
+  const text = await r.text();
+  if (!r.ok) throw new Error(text.trim() || r.statusText);
+  return text ? JSON.parse(text) : {};
+}
+
+async function load() {
+  if (busy) return;
+  let d;
+  try { d = await api("GET", "/stations/api"); } catch (e) { $("list").textContent = "Не загрузилось: " + e.message; return; }
+  $("space").textContent = "Занято " + fmtSize(d.used) + " из " + fmtSize(d.quota) + ".";
+  $("ffwarn").hidden = d.ffmpeg;
+  const list = $("list");
+  list.replaceChildren(...(d.stations || []).map(card));
+  if (!d.stations || !d.stations.length) list.innerHTML = '<p class="note">Станций пока нет — создайте первую.</p>';
+}
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "on") for (const [ev, fn] of Object.entries(v)) e.addEventListener(ev, fn);
+    else if (k === "class") e.className = v;
+    else e[k] = v;
+  }
+  e.append(...kids);
+  return e;
+}
+
+function card(s) {
+  const q = "?f=" + s.f;
+  const err = el("div", { class: "prog err" });
+  const prog = el("div", { class: "prog" });
+  const fail = e => { err.textContent = e.message; };
+  const act = fn => async () => { err.textContent = ""; try { await fn(); } catch (e) { fail(e); } load(); };
+
+  let status = "выключена", cls = "status";
+  if (s.onAir) { status = "в эфире"; cls += " on"; }
+  else if (s.error) { status = s.error; cls += " err"; }
+  else if (s.on && s.busy) { status = "ждёт: волна занята другим ведущим"; cls += " busy"; }
+  else if (s.on) { status = "выходит в эфир…"; }
+
+  const logo = el("img", { class: "logo", alt: "", src: s.logo ? "/logo/" + s.logo + ".png" : "" });
+  if (!s.logo) logo.style.visibility = "hidden";
+  const name = el("input", { type: "text", value: s.name, maxLength: 24 });
+  const head = el("div", { class: "head" },
+    el("span", { class: "freq", textContent: s.freq }), logo, name,
+    el("button", { class: "ghost", textContent: "сохранить название", on: { click: act(() => api("POST", "/stations/api/station", JSON.stringify({ f: s.freq, name: name.value }), "application/json")) } }),
+    el("span", { class: cls, textContent: status }));
+
+  const onoff = s.on
+    ? el("button", { textContent: "Снять с эфира", on: { click: act(() => api("POST", "/stations/api/off" + q)) } })
+    : el("button", { textContent: "В эфир", disabled: !s.files.length, on: { click: act(() => api("POST", "/stations/api/on" + q)) } });
+  const logoIn = el("input", { type: "file", accept: "image/*", hidden: true, on: { change: async e => {
+    const f = e.target.files[0]; if (!f) return;
+    err.textContent = "";
+    try { await api("POST", "/admin/station-logo" + q, await toLogo(f), "image/png"); } catch (x) { fail(x); }
+    load();
+  } } });
+  const controls = el("div", { class: "row" }, onoff,
+    el("button", { class: "ghost", textContent: "логотип…", disabled: !s.onAir, title: "ставится на станцию в эфире", on: { click: () => logoIn.click() } }), logoIn,
+    el("button", { class: "danger", textContent: "удалить станцию", disabled: s.on, on: { click: act(async () => {
+      if (confirm("Удалить станцию " + s.freq + " и все её файлы?")) await api("DELETE", "/stations/api/station" + q);
+    }) } }));
+
+  const names = s.files.map(f => f.name);
+  const move = (i, d) => act(async () => {
+    const o = names.slice(); [o[i], o[i + d]] = [o[i + d], o[i]];
+    await api("POST", "/stations/api/order" + q, JSON.stringify(o), "application/json");
+  });
+  const files = el("ol", {}, ...s.files.map((f, i) => el("li", { class: f.name.replace(/\.[^.]+$/, "") === s.now ? "playing" : "" },
+    el("span", { class: "n", textContent: f.name, title: f.name }),
+    el("span", { class: "s", textContent: fmtSize(f.size) }),
+    el("button", { class: "ghost", textContent: "↑", disabled: i === 0, on: { click: move(i, -1) } }),
+    el("button", { class: "ghost", textContent: "↓", disabled: i === s.files.length - 1, on: { click: move(i, 1) } }),
+    el("button", { class: "danger", textContent: "✕", on: { click: act(async () => {
+      if (confirm("Удалить " + f.name + "?")) await api("DELETE", "/stations/api/file" + q + "&name=" + encodeURIComponent(f.name));
+    }) } }))));
+
+  const pick = el("input", { type: "file", multiple: true, accept: "audio/*,.mp3,.ogg,.opus,.m4a,.aac,.flac,.wav", hidden: true,
+    on: { change: e => upload([...e.target.files]) } });
+  const drop = el("div", { class: "drop", textContent: "Перетащите сюда аудиофайлы или нажмите, чтобы выбрать",
+    on: { click: () => pick.click(),
+          dragover: e => { e.preventDefault(); drop.classList.add("over"); },
+          dragleave: () => drop.classList.remove("over"),
+          drop: e => { e.preventDefault(); drop.classList.remove("over"); upload([...e.dataTransfer.files]); } } });
+
+  async function upload(list) {
+    busy++;
+    err.textContent = "";
+    let ok = 0;
+    for (const [i, f] of list.entries()) {
+      try {
+        await put("/stations/api/upload" + q + "&name=" + encodeURIComponent(f.name), f,
+          p => { prog.textContent = (i + 1) + "/" + list.length + " · " + f.name + " · " + Math.round(p * 100) + "%"; });
+        ok++;
+      } catch (e) { err.textContent += f.name + ": " + e.message + "\n"; }
+    }
+    prog.textContent = "Загружено: " + ok + " из " + list.length;
+    busy--;
+    load();
+  }
+
+  return el("div", { class: "card" }, head,
+    el("p", { class: "now", textContent: s.now ? "♪ " + s.now : "" }),
+    controls, files, drop, pick, prog, err);
+}
+
+// put — загрузка с прогрессом (у fetch его нет)
+function put(url, file, onProgress) {
+  return new Promise((ok, fail) => {
+    const x = new XMLHttpRequest();
+    x.open("POST", url);
+    x.upload.onprogress = e => e.lengthComputable && onProgress(e.loaded / e.total);
+    x.onload = () => x.status < 300 ? ok() : fail(new Error(x.responseText.trim() || x.statusText));
+    x.onerror = () => fail(new Error("сеть"));
+    x.send(file);
+  });
+}
+
+// toLogo — квадрат 64×64 PNG из любой картинки: середина, без растяжения
+async function toLogo(file) {
+  const img = await createImageBitmap(file);
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const side = Math.min(img.width, img.height);
+  c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 64, 64);
+  return new Promise(res => c.toBlob(res, "image/png"));
+}
+
+$("create").addEventListener("click", async () => {
+  $("createErr").textContent = "";
+  try {
+    await api("POST", "/stations/api/station", JSON.stringify({ f: $("newF").value.trim(), name: $("newName").value }), "application/json");
+    $("newF").value = $("newName").value = "";
+  } catch (e) { $("createErr").textContent = e.message; }
+  load();
+});
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

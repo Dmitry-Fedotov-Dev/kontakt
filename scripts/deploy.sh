@@ -50,7 +50,7 @@ apt-get update -q
 # compose: в Ubuntu — docker-compose-v2, в Debian — docker-compose (тоже v2)
 compose=docker-compose-v2
 apt-cache policy docker-compose-v2 2>/dev/null | grep -q 'Candidate: [0-9]' || compose=docker-compose
-apt-get install -yq curl rsync ufw unattended-upgrades docker.io "$compose" >/dev/null
+apt-get install -yq curl rsync ufw unattended-upgrades ffmpeg docker.io "$compose" >/dev/null # ffmpeg — станции с сервера
 if ! command -v cloudflared >/dev/null; then
   arch=$(dpkg --print-architecture)
   curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$arch.deb" -o /tmp/cf.deb
@@ -116,7 +116,7 @@ push)
   echo "Сборка $ver (linux/amd64)…"
   rm -rf "$out" && mkdir -p "$out/bin"
   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$out/bin/" \
-    ./cmd/web ./cmd/signal ./cmd/media ./cmd/radio ./cmd/notify ./cmd/radiocast
+    ./cmd/web ./cmd/signal ./cmd/media ./cmd/radio ./cmd/notify
   cp -r monitoring "$out/monitoring"
   cp -r deploy "$out/deploy" # юниты — вместе с версией: флаги сервисов меняются вместе с кодом
   rm -f "$out"/monitoring/prometheus/targets/*.json # цели стенда разработчика серверу не нужны
@@ -142,8 +142,6 @@ ln -sfn \$R/releases/$ver \$R/current.new && mv -T \$R/current.new \$R/current
 install -m 644 \$R/current/deploy/*.service \$R/current/deploy/*.target \$R/current/deploy/*.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl restart ${SERVICES[*]} 2>/dev/null || systemctl restart kontakt.target
-# постоянные станции с сервера (kontakt-cast@<частота>) — на новый бинарник; переподключатся сами
-systemctl try-restart 'kontakt-cast@*.service' 2>/dev/null || true
 ok=0
 for i in \$(seq 30); do curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1 && { ok=1; break; }; sleep 1; done
 if [ \$ok != 1 ]; then

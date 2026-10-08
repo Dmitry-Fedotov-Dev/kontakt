@@ -34,7 +34,7 @@ TUNNEL=1 bash scripts/radio.sh                    # радио; обновить
 monitoring/stack.sh up | down                     # мониторинг: Docker / Docker Desktop / без Docker — сам
 promtool test rules monitoring/prometheus/tests/{radio,station}_test.yml   # тесты тревог (в CI — образом Prometheus)
 bin/kontakt-node -role master …                   # узел mesh, см. шапку cmd/kontakt-node
-systemctl enable --now kontakt-cast@934           # на сервере: станция 93.4 с сервера (cmd/radiocast), файлы — /opt/kontakt/stations/934/
+ssh -N -L 8093:127.0.0.1:8093 root@сервер        # затем http://localhost:8093/stations/ — станции с сервера (radio/casts.go)
 KONTAKT_URL=https://… go test ./e2e -run TestLive  # живая станция по адресу: страницы и радио (без звонков)
 ```
 

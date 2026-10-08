@@ -31,6 +31,8 @@ func main() {
 	directAddr := flag.String("direct", "", "прямой HTTPS для сокетов эфира мимо Caddy, например :8443 (нужны -cert и -key)")
 	certPath := flag.String("cert", "", "сертификат для -direct (PEM, цепочка)")
 	keyPath := flag.String("key", "", "ключ для -direct (PEM)")
+	castDir := flag.String("stations", "", "каталог постоянных станций с сервера (страница /stations/ на -admin); пусто — выключено")
+	castQuota := flag.Int64("stations-quota-gb", 10, "сколько ГБ файлов можно хранить для станций с сервера")
 	flag.Parse()
 	log.SetPrefix("[radio]  ")
 
@@ -72,7 +74,22 @@ func main() {
 			mux.Handle("/admin/", store.AdminHandler(nil)) // эфир снимается при ближайшей проверке, до 30 с
 		}
 		mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
-		go func() { log.Fatal(http.ListenAndServe(*admin, mux)) }()
+		if *castDir != "" {
+			// станции с сервера вещают в собственный сокет ведущего радио по localhost
+			host, port, _ := net.SplitHostPort(*addr)
+			if host == "" || host == "0.0.0.0" || host == "::" {
+				host = "127.0.0.1"
+			}
+			casts, err := h.OpenCasts(*castDir, "ws://"+net.JoinHostPort(host, port)+"/ws/host", *castQuota<<30)
+			if err != nil {
+				log.Fatalf("станции с сервера: %v", err)
+			}
+			mux.Handle("/stations/", casts.Handler())
+			mux.Handle("/logo/", casts.Handler())
+			log.Printf("станции с сервера: http://%s/stations/ (каталог %s)", *admin, *castDir)
+		}
+		// админ-порт — только localhost: ни DNS rebinding, ни запросов с чужих страниц (casts.go)
+		go func() { log.Fatal(http.ListenAndServe(*admin, radio.LocalOnly(mux))) }()
 		log.Printf("метрики: http://%s/metrics", *admin)
 	}
 	shown := *addr

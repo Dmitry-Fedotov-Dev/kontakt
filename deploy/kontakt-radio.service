@@ -7,14 +7,17 @@ PartOf=kontakt.target
 User=kontakt
 WorkingDirectory=/opt/kontakt
 ExecStart=/opt/kontakt/current/bin/radio -http 127.0.0.1:8083 -admin 127.0.0.1:8093 -mod http://127.0.0.1:8091 \
-  -links /opt/kontakt/data/radio-links.json -logos /opt/kontakt/data/radio-logos -max-stations 206 -max-listeners 1700
+  -links /opt/kontakt/data/radio-links.json -logos /opt/kontakt/data/radio-logos -max-stations 206 -max-listeners 1700 \
+  -stations /opt/kontakt/data/stations -stations-quota-gb 10
+# -stations: постоянные станции с сервера, страница http://127.0.0.1:8093/stations/ (только через SSH-туннель)
 # Прямой HTTPS эфира (-direct :8443 -cert /opt/kontakt/tls/cert.pem -key /opt/kontakt/tls/key.pem)
 # выключен 07.10.2026 по INC-001 (docs/incidents): эфир — через Caddy на 443, пачки остаются.
 # Вернуть — дописать флаги выше; сертификат для него копирует kontakt-tls-sync (deploy.sh https).
 # -max-listeners 1700: замер 07.10.2026 (LOAD_REPORT.md) — 2000 без потерь звука, 0,64 ядра, 185 МБ
 Restart=always
 RestartSec=1
-MemoryMax=300M
+# 450M: сверх радио (185 МБ на 2000 приёмников) — ffmpeg станций с сервера, ~20 МБ каждый
+MemoryMax=450M
 NoNewPrivileges=true
 ProtectSystem=strict
 ReadWritePaths=/opt/kontakt/data
