@@ -261,10 +261,13 @@ button, input { font: inherit; color: inherit; }
 .donateMenu a:hover, .donateMenu a:focus-visible { background: var(--amber); outline: none; }
 @media (prefers-reduced-motion: reduce) { .donateBtn, .donateBtn .bulb, .donate.hot.quiet .bulb, .donate.go .bulb, .donate.go .donateBtn { animation: none; } }
 .langSwitch { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
-/* настройки звука — неприметная шестерёнка в нижней строке; окно — как карточка письма */
-.setBtn { background: none; border: 0; padding: 2px; color: inherit; cursor: pointer; vertical-align: -2px; line-height: 0; opacity: .8; }
-.setBtn:hover { color: var(--amber); opacity: 1; }
-.setBtn svg { display: block; }
+/* настройки звука — пиксельная шестерёнка справа в строке вкладок; окно — как карточка письма */
+.tabs { position: relative; }
+.setBtn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); background: none; border: 0; padding: 2px;
+  color: #9C86BC; cursor: pointer; line-height: 0; }
+.setBtn:hover, .setBtn[aria-expanded="true"] { color: var(--amber); }
+.setBtn:active { transform: translateY(-50%) rotate(45deg); }
+.setBtn svg { display: block; image-rendering: pixelated; }
 .setBox { display: grid; gap: 6px; }
 .setRow { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; font-size: 14px; margin-top: 4px; }
 .setRow b { font-size: 13px; }
@@ -336,6 +339,7 @@ button, input { font: inherit; color: inherit; }
   <nav class="tabs" aria-label="Режим" data-i-aria="modeAria">
     <button class="tab on" id="tabRx" aria-pressed="true" data-i="listen">LISTEN</button>
     <button class="tab" id="tabTx" aria-pressed="false" data-i="broadcast">BROADCAST</button>
+    <button type="button" class="setBtn" id="setBtn" aria-label="Настройки звука" data-i-aria="setAria" aria-haspopup="dialog"><svg viewBox="0 0 13 13" width="39" height="39" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M5 0h3v1h-3zM1 1h2v1h-2zM5 1h3v1h-3zM10 1h2v1h-2zM1 2h11v1h-11zM2 3h9v1h-9zM2 4h3v1h-3zM8 4h3v1h-3zM0 5h4v1h-4zM9 5h4v1h-4zM0 6h4v1h-4zM9 6h4v1h-4zM0 7h4v1h-4zM9 7h4v1h-4zM2 8h3v1h-3zM8 8h3v1h-3zM2 9h9v1h-9zM1 10h11v1h-11zM1 11h2v1h-2zM5 11h3v1h-3zM10 11h2v1h-2zM5 12h3v1h-3z"/></svg></button>
   </nav>
 
   <!-- Приёмник: радио и ручка, больше ничего -->
@@ -434,7 +438,7 @@ button, input { font: inherit; color: inherit; }
       </div>
     </div>
   </nav>
-  <p class="links"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button> · <button type="button" class="setBtn" id="setBtn" aria-label="Настройки звука" data-i-aria="setAria" aria-haspopup="dialog"><svg viewBox="0 0 9 9" width="13" height="13" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M3 0h3v1h1v1h1v1h1v3H8v1H7v1H6v1H3V8H2V7H1V6H0V3h1V2h1V1h1zM3 3v3h3V3z"/></svg></button></p>
+  <p class="links"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></p>
 </div>
 
 <!-- Настройки звука слушателя: шум эфира и устройство вывода. Хранятся только в этом браузере. -->
