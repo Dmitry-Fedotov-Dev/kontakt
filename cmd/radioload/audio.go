@@ -55,7 +55,8 @@ func stationAudio(f int) [][]byte {
 			fr[j] = ulaw(v)
 		}
 		out[k] = fr
-		if _, dup := frameAt[string(fr)]; dup {
+		// та же станция второй раз (go test -count=2 в одном процессе) — не дубль
+		if p, dup := frameAt[string(fr)]; dup && p != (framePos{f, k}) {
 			log.Fatalf("станция %d: кадр %d не уникален", f, k)
 		}
 		frameAt[string(fr)] = framePos{f, k}
