@@ -775,11 +775,12 @@ class RX extends AudioWorkletProcessor {
       this.lfo += 0.3 / sampleRate;
       const clean = sig * s * this.fade;
       let air = (this.lp * 0.75 + (wn - this.lp) * 0.25) * noiseAmp * (1 + 0.25 * Math.sin(this.lfo * 6.283));
-      // свист биений при неточной настройке
-      if (whistleA) { this.ph += 6.283 * whistleF / sampleRate; air += Math.sin(this.ph) * whistleA; }
       // треск
       if (Math.random() < 0.00015 + 0.0015 * weak + this.scratch * 0.02) this.crk = (Math.random() * 2 - 1) * (0.3 + 0.5 * weak);
       air += this.crk; this.crk *= 0.55;
+      // свист биений при неточной настройке
+      let whistle = 0;
+      if (whistleA) { this.ph += 6.283 * whistleF / sampleRate; whistle = Math.sin(this.ph) * whistleA; }
       // шуршание ручки
       let knob = 0;
       if (this.scratch > 0.001) {
@@ -789,8 +790,9 @@ class RX extends AudioWorkletProcessor {
       // Шум и шуршание звучат как задуманы, а громкость их убавляется ПОСЛЕ огрубления: три версии
       // одного звука — чистый сигнал, с шумом, с шумом и ручкой — и подмес разниц. Если убавлять шум до
       // огрубления, его срезает округление (у слабого сигнала 8 уровней) и меняется тембр.
-      const yc = quant(clean), yn = quant(clean + air), yk = quant(clean + air + knob);
-      let y = yc + (yn - yc) * nz + (yk - yn) * KNOB;
+      // Свист — своя громкость, вдвое громче шума (не больше задуманной): по нему ловят станцию.
+      const yc = quant(clean), yn = quant(clean + air), yw = quant(clean + air + whistle), yk = quant(clean + air + whistle + knob);
+      let y = yc + (yn - yc) * nz + (yw - yn) * Math.min(1, nz * 2.5) + (yk - yw) * KNOB;
       y *= this.vol;
       out[i] = y > 1 ? 1 : y < -1 ? -1 : y;
     }
