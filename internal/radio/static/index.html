@@ -697,6 +697,7 @@ const L = 32768, H = 16384; // L — 4 с: принять догоняющую �
 // 400 мс пауза ведущего в 374 мс уже опустошала буфер (INC-001). Опустел буфер — запас растёт на
 // 200 мс, до 1,2 с: на рваной связи приёмник сам становится терпеливее, задержка радио не важна.
 const START = 4000, GROW = 1600, MAXT = 9600, MAXN = 20000; // потолок 2,5 с: сервер держит до 3 с
+const KNOB = 0.25; // громкость шуршания ручки от задуманной (−12 дБ): на полной «било по ушам» (отзывы 08.10)
 class RX extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -740,9 +741,10 @@ class RX extends AudioWorkletProcessor {
   }
   process(_, outputs) {
     const out = outputs[0][0], s = this.s, weak = 1 - s, nz = this.nz;
-    const noiseAmp = (0.03 + 0.34 * Math.pow(weak, 1.4)) * nz;
-    const q = Math.pow(2, 3 + 10 * s);
-    const whistleF = 150 + this.d * 12000, whistleA = s > 0 && s < 0.95 ? 0.07 * weak * nz : 0;
+    const noiseAmp = 0.03 + 0.34 * Math.pow(weak, 1.4);
+    const q = Math.pow(2, 3 + 10 * s), coarse = s < 0.9; // огрубление: слабый сигнал теряет разрядность
+    const quant = v => coarse ? Math.round(v * q) / q : v;
+    const whistleF = 150 + this.d * 12000, whistleA = s > 0 && s < 0.95 ? 0.07 * weak : 0;
     // Часы ведущего и слушателя расходятся на доли процента (на стенде ведущий слал 50,4 кадра/с).
     // Раньше запас копился до секунды и выкидывался прыжком — провал раз в ~100 с. Теперь скорость
     // плавно подстраивается под запас: ±2 % предел, на 0,8 % разницы часов — 0,8 %, на слух незаметно.
@@ -771,19 +773,24 @@ class RX extends AudioWorkletProcessor {
       const wn = Math.random() * 2 - 1;
       this.lp += (wn - this.lp) * 0.35;
       this.lfo += 0.3 / sampleRate;
-      let y = sig * s * this.fade + (this.lp * 0.75 + (wn - this.lp) * 0.25) * noiseAmp * (1 + 0.25 * Math.sin(this.lfo * 6.283));
+      const clean = sig * s * this.fade;
+      let air = (this.lp * 0.75 + (wn - this.lp) * 0.25) * noiseAmp * (1 + 0.25 * Math.sin(this.lfo * 6.283));
       // свист биений при неточной настройке
-      if (whistleA) { this.ph += 6.283 * whistleF / sampleRate; y += Math.sin(this.ph) * whistleA; }
+      if (whistleA) { this.ph += 6.283 * whistleF / sampleRate; air += Math.sin(this.ph) * whistleA; }
       // треск
       if (Math.random() < 0.00015 + 0.0015 * weak + this.scratch * 0.02) this.crk = (Math.random() * 2 - 1) * (0.3 + 0.5 * weak);
-      y += this.crk * nz; this.crk *= 0.55;
+      air += this.crk; this.crk *= 0.55;
       // шуршание ручки
-      // шуршание ручки — отклик на поворот, тихо: на 0,6 (как было до 08.10) «било по ушам»
+      let knob = 0;
       if (this.scratch > 0.001) {
-        if (Math.random() < 0.35) y += (Math.random() * 2 - 1) * this.scratch * 0.15;
+        if (Math.random() < 0.35) knob = (Math.random() * 2 - 1) * this.scratch * 0.6;
         this.scratch *= 0.99985;
       }
-      if (s < 0.9) y = Math.round(y * q) / q; // огрубление: слабый сигнал теряет разрядность
+      // Шум и шуршание звучат как задуманы, а громкость их убавляется ПОСЛЕ огрубления: три версии
+      // одного звука — чистый сигнал, с шумом, с шумом и ручкой — и подмес разниц. Если убавлять шум до
+      // огрубления, его срезает округление (у слабого сигнала 8 уровней) и меняется тембр.
+      const yc = quant(clean), yn = quant(clean + air), yk = quant(clean + air + knob);
+      let y = yc + (yn - yc) * nz + (yk - yn) * KNOB;
       y *= this.vol;
       out[i] = y > 1 ? 1 : y < -1 ? -1 : y;
     }
