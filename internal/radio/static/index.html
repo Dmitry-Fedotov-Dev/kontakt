@@ -261,6 +261,18 @@ button, input { font: inherit; color: inherit; }
 .donateMenu a:hover, .donateMenu a:focus-visible { background: var(--amber); outline: none; }
 @media (prefers-reduced-motion: reduce) { .donateBtn, .donateBtn .bulb, .donate.hot.quiet .bulb, .donate.go .bulb, .donate.go .donateBtn { animation: none; } }
 .langSwitch { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+/* настройки звука — неприметная шестерёнка в нижней строке; окно — как карточка письма */
+.setBtn { background: none; border: 0; padding: 2px; color: inherit; cursor: pointer; vertical-align: -2px; line-height: 0; opacity: .8; }
+.setBtn:hover { color: var(--amber); opacity: 1; }
+.setBtn svg { display: block; }
+.setBox { display: grid; gap: 6px; }
+.setRow { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; font-size: 14px; margin-top: 4px; }
+.setRow b { font-size: 13px; }
+.setNote { font-size: 12px; color: #6B4A2A; min-height: 1.2em; }
+.setBox select { width: 100%; padding: 4px 6px; font: 14px "Pixelify Sans", monospace; color: var(--ink); background: #FFF6E2; border: 0; box-shadow: inset 0 0 0 2px var(--ink); }
+.setBox #setOutMore { justify-self: start; border-color: #8A6D9E; color: #6B4A86; }
+#setNoise { width: 100%; accent-color: var(--tomato); cursor: pointer; }
+#setOutBox { display: grid; gap: 6px; }
 
 .desk { display: flex; align-items: flex-end; justify-content: center; gap: 22px; flex-wrap: wrap; }
 .micbtn { background: none; border: 0; padding: 0; cursor: pointer; text-align: center; color: var(--cream); }
@@ -422,7 +434,27 @@ button, input { font: inherit; color: inherit; }
       </div>
     </div>
   </nav>
-  <p class="links"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></p>
+  <p class="links"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button> · <button type="button" class="setBtn" id="setBtn" aria-label="Настройки звука" data-i-aria="setAria" aria-haspopup="dialog"><svg viewBox="0 0 9 9" width="13" height="13" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M3 0h3v1h1v1h1v1h1v3H8v1H7v1H6v1H3V8H2V7H1V6H0V3h1V2h1V1h1zM3 3v3h3V3z"/></svg></button></p>
+</div>
+
+<!-- Настройки звука слушателя: шум эфира и устройство вывода. Хранятся только в этом браузере. -->
+<div class="card" id="setCard" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <div class="cardBox setBox">
+    <div class="cardHead" id="setTitle" data-i="setTitle">Звук</div>
+    <label class="setRow" for="setNoise"><span data-i="setNoise">Шум эфира</span><b id="setNoiseVal">100%</b></label>
+    <input type="range" id="setNoise" min="0" max="100" step="5" value="100">
+    <div class="setNote" data-i="setNoiseNote">шорох, треск и свист между станциями</div>
+    <div id="setOutBox">
+      <label class="setRow" for="setOut"><span data-i="setOut">Вывод звука</span></label>
+      <select id="setOut"></select>
+      <div class="setNote" id="setOutNote"></div>
+      <button type="button" class="report" id="setOutMore" hidden></button>
+    </div>
+    <div class="cardBtns">
+      <button type="button" class="report" id="setReset" data-i="setReset">по умолчанию</button>
+      <button type="button" class="btn" id="setDone" data-i="setDone">ГОТОВО</button>
+    </div>
+  </div>
 </div>
 
 <div class="hearts" id="hearts" aria-hidden="true"></div>
@@ -448,6 +480,12 @@ const I18N = {
     title: "Открытое радио", other: "English", terms: "terms.html",
     support: "ПОДДЕРЖАТЬ", anyCard: "картой любой страны ♥", ruCard: "картой из России ₽",
     likeAria: "Лайк станции", likesTitle: "лайков за этот эфир",
+    setAria: "Настройки звука", setTitle: "Звук", setNoise: "Шум эфира", setNoiseNote: "шорох, треск и свист между станциями",
+    setOut: "Вывод звука", setReset: "по умолчанию", setDone: "ГОТОВО", setOutDefault: "как в системе",
+    setOutNone: "этот браузер не умеет выбирать вывод — переключи его в системе",
+    setOutHidden: "браузер прячет названия устройств, пока не дашь доступ к микрофону (он не включится)",
+    setOutAsk: "показать устройства", setOutPick: "выбрать устройство…", setOutFail: "не удалось переключить вывод",
+    setOutGone: "устройство не найдено — играет как в системе", setOutDev: n => "устройство " + n,
     logoAdd: "Логотип станции: картинка станет пиксельным значком 64×64", logoRemove: "Убрать логотип",
     logoBad: "не получилось прочитать картинку — попробуй PNG или JPG", logoSent: "логотип в эфире",
     airCount: n => n === 0 ? "в эфире пока тихо" : "в эфире: " + n + " " + (n % 10 === 1 && n % 100 !== 11 ? "станция" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "станции" : "станций"),
@@ -522,6 +560,12 @@ const I18N = {
     title: "Open Radio", other: "Русский", terms: "terms-en.html",
     support: "SUPPORT", anyCard: "any card ♥", ruCard: "Russian card ₽",
     likeAria: "Like the station", likesTitle: "likes this broadcast",
+    setAria: "Sound settings", setTitle: "Sound", setNoise: "Static", setNoiseNote: "hiss, crackle and whistle between stations",
+    setOut: "Audio output", setReset: "defaults", setDone: "DONE", setOutDefault: "system default",
+    setOutNone: "this browser can't choose an output — switch it in your system",
+    setOutHidden: "the browser hides device names until you allow the microphone (it won't be turned on)",
+    setOutAsk: "show devices", setOutPick: "choose a device…", setOutFail: "couldn't switch the output",
+    setOutGone: "device not found — playing on the system default", setOutDev: n => "device " + n,
     logoAdd: "Station logo: the picture becomes a 64×64 pixel badge", logoRemove: "Remove the logo",
     logoBad: "couldn't read the picture — try PNG or JPG", logoSent: "logo is on air",
     airCount: n => n === 0 ? "the air is quiet for now" : "on air: " + n + (n === 1 ? " station" : " stations"),
@@ -656,6 +700,7 @@ class RX extends AudioWorkletProcessor {
     this.cur = 0; this.nxt = 0; this.frac = 0; this.step = 8000 / sampleRate; this.adj = 0;
     this.s = 0; this.d = 1; this.scratch = 0; this.vol = 0; this.lp = 0; this.crk = 0; this.ph = 0;
     this.fade = 1; this.fadeTo = 1; this.fadeT = 0; this.lfo = 0;
+    this.nz = 1; // уровень шума эфира из настроек слушателя: шорох, треск, свист расстройки (0 — без них)
     this.hist = new Float32Array(H); this.hi = 0; this.stut = 0; this.stutLen = 1; this.stutAt = 0; this.stutK = 0;
     this.port.onmessage = e => {
       const m = e.data;
@@ -663,6 +708,7 @@ class RX extends AudioWorkletProcessor {
       if ("s" in m) this.s = m.s;
       if ("d" in m) this.d = m.d;
       if ("vol" in m) this.vol = m.vol;
+      if ("nz" in m) this.nz = m.nz;
       if ("scratch" in m) this.scratch = Math.min(1, this.scratch + m.scratch);
       if (m.flush) { this.n = 0; this.r = this.w; this.ready = false; this.adj = 0; }
     };
@@ -683,10 +729,10 @@ class RX extends AudioWorkletProcessor {
     const v = this.buf[this.r]; this.r = (this.r + 1) % L; this.n--; return v;
   }
   process(_, outputs) {
-    const out = outputs[0][0], s = this.s, weak = 1 - s;
-    const noiseAmp = 0.03 + 0.34 * Math.pow(weak, 1.4);
+    const out = outputs[0][0], s = this.s, weak = 1 - s, nz = this.nz;
+    const noiseAmp = (0.03 + 0.34 * Math.pow(weak, 1.4)) * nz;
     const q = Math.pow(2, 3 + 10 * s);
-    const whistleF = 150 + this.d * 12000, whistleA = s > 0 && s < 0.95 ? 0.07 * weak : 0;
+    const whistleF = 150 + this.d * 12000, whistleA = s > 0 && s < 0.95 ? 0.07 * weak * nz : 0;
     // Часы ведущего и слушателя расходятся на доли процента (на стенде ведущий слал 50,4 кадра/с).
     // Раньше запас копился до секунды и выкидывался прыжком — провал раз в ~100 с. Теперь скорость
     // плавно подстраивается под запас: ±2 % предел, на 0,8 % разницы часов — 0,8 %, на слух незаметно.
@@ -720,7 +766,7 @@ class RX extends AudioWorkletProcessor {
       if (whistleA) { this.ph += 6.283 * whistleF / sampleRate; y += Math.sin(this.ph) * whistleA; }
       // треск
       if (Math.random() < 0.00015 + 0.0015 * weak + this.scratch * 0.02) this.crk = (Math.random() * 2 - 1) * (0.3 + 0.5 * weak);
-      y += this.crk; this.crk *= 0.55;
+      y += this.crk * nz; this.crk *= 0.55;
       // шуршание ручки
       if (this.scratch > 0.001) {
         if (Math.random() < 0.35) y += (Math.random() * 2 - 1) * this.scratch * 0.6;
@@ -780,7 +826,9 @@ function ensureAudio() {
       try { await withTimeout(ctx.audioWorklet.addModule(url), 10000, TXT.errWorkletTimeout); }
       finally { URL.revokeObjectURL(url); }
       rx = new AudioWorkletNode(ctx, "rx", { numberOfInputs: 0, outputChannelCount: [2] });
+      rx.port.postMessage({ nz: prefs.noise });
       routeRx();
+      applySink(false);
       rxAn = ctx.createAnalyser(); rxAn.fftSize = 512; rx.connect(rxAn); // радио «пляшет» под звук
     }
   })();
@@ -797,8 +845,90 @@ function routeRx() {
   rx.connect(dst);
   rxEl = new Audio();
   rxEl.srcObject = dst.stream;
-  rxEl.play().catch(() => { rx.disconnect(dst); rx.connect(ctx.destination); rxEl = null; });
+  rxEl.play().catch(() => { rx.disconnect(dst); rx.connect(ctx.destination); rxEl = null; applySink(false); });
 }
+
+// ---------- настройки звука слушателя ----------
+// Шум эфира (0–1, по умолчанию 1 — как задумано) и устройство вывода ("" — как в системе). Только
+// в этом браузере: localStorage, а не сервер. Вывод переключается там, где звук реально играет:
+// у <audio> приёмника (rxEl) или, если браузер не дал играть через него, у самого AudioContext.
+const PREFS_KEY = "radio-sound", PREFS_DEF = { noise: 1, sink: "", sinkLabel: "" };
+let prefs = { ...PREFS_DEF };
+try { prefs = { ...PREFS_DEF, ...JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") }; } catch (_) { /* нет хранилища — по умолчанию */ }
+prefs.noise = Math.max(0, Math.min(1, Number(prefs.noise))); if (!isFinite(prefs.noise)) prefs.noise = 1;
+function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (_) { /* приватное окно — живут до перезагрузки */ } }
+const sinkTarget = () => rxEl && rxEl.setSinkId ? rxEl : ctx && ctx.setSinkId && !rxEl ? ctx : null;
+const canSink = () => !!(window.HTMLMediaElement && HTMLMediaElement.prototype.setSinkId) || !!(window.AudioContext && AudioContext.prototype.setSinkId);
+async function applySink(loud) {
+  const t = sinkTarget();
+  if (!t || (!loud && !prefs.sink)) return; // при запуске трогаем вывод, только если его выбирали
+  try { await t.setSinkId(prefs.sink); }
+  catch (_) {
+    // устройство отключили или браузер забыл разрешение — играем как в системе, выбор сбрасываем
+    if (prefs.sink) { prefs.sink = ""; prefs.sinkLabel = ""; savePrefs(); try { await t.setSinkId(""); } catch (_) { /* остаётся как было */ } }
+    toast(loud ? TXT.setOutFail : TXT.setOutGone);
+    if (loud) fillOutputs();
+  }
+}
+async function fillOutputs() {
+  const sel = $("setOut"), note = $("setOutNote"), more = $("setOutMore");
+  more.hidden = true; note.textContent = "";
+  if (!canSink() || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+    sel.hidden = true; note.textContent = TXT.setOutNone; return;
+  }
+  sel.hidden = false;
+  if (!sel.options.length) { sel.add(new Option(TXT.setOutDefault, "")); sel.value = ""; } // до ответа браузера
+  let outs = [];
+  try { outs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput"); } catch (_) { /* пусто — только «как в системе» */ }
+  const named = outs.filter(d => d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications");
+  const opts = [new Option(TXT.setOutDefault, "")];
+  named.forEach((d, i) => opts.push(new Option(d.label || TXT.setOutDev(i + 1), d.deviceId)));
+  if (prefs.sink && !named.some(d => d.deviceId === prefs.sink)) opts.push(new Option(prefs.sinkLabel || TXT.setOutDev(named.length + 1), prefs.sink));
+  sel.replaceChildren(...opts);
+  sel.value = prefs.sink;
+  // Firefox сам устройства не показывает — у него своё окно выбора; Chrome прячет названия до доступа к микрофону
+  if (navigator.mediaDevices.selectAudioOutput) { more.textContent = TXT.setOutPick; more.hidden = false; more.dataset.act = "pick"; }
+  else if (named.length && named.every(d => !d.label) || !named.length) { note.textContent = TXT.setOutHidden; more.textContent = TXT.setOutAsk; more.hidden = false; more.dataset.act = "ask"; }
+}
+function showNoise() {
+  $("setNoise").value = Math.round(prefs.noise * 100);
+  $("setNoiseVal").textContent = Math.round(prefs.noise * 100) + "%";
+}
+function setNoise(v) {
+  prefs.noise = v; showNoise(); savePrefs();
+  if (rx) rx.port.postMessage({ nz: v });
+}
+function openSettings() {
+  showNoise(); fillOutputs();
+  $("setCard").hidden = false; $("setNoise").focus();
+}
+function closeSettings() { $("setCard").hidden = true; $("setBtn").focus(); }
+$("setBtn").addEventListener("click", () => { keyClick(); openSettings(); });
+$("setDone").addEventListener("click", closeSettings);
+$("setCard").addEventListener("click", e => { if (e.target === $("setCard")) closeSettings(); });
+$("setCard").addEventListener("keydown", e => { if (e.key === "Escape") closeSettings(); });
+$("setNoise").addEventListener("input", e => setNoise(Number(e.target.value) / 100));
+$("setOut").addEventListener("change", e => {
+  prefs.sink = e.target.value; prefs.sinkLabel = e.target.selectedOptions[0] ? e.target.selectedOptions[0].text : "";
+  savePrefs(); applySink(true);
+});
+$("setOutMore").addEventListener("click", async () => {
+  try {
+    if ($("setOutMore").dataset.act === "pick") {
+      const d = await navigator.mediaDevices.selectAudioOutput();
+      prefs.sink = d.deviceId; prefs.sinkLabel = d.label; savePrefs(); applySink(true);
+    } else {
+      // разрешение нужно только ради названий устройств: поток сразу закрываем, микрофон не пишет
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach(t => t.stop());
+    }
+  } catch (_) { /* отказали или закрыли окно — оставляем как было */ }
+  fillOutputs();
+});
+$("setReset").addEventListener("click", () => {
+  prefs = { ...PREFS_DEF }; savePrefs();
+  setNoise(prefs.noise); applySink(true); fillOutputs();
+});
 let msKey = null;
 function mediaSession(s) {
   if (!("mediaSession" in navigator) || !window.MediaMetadata) return;
