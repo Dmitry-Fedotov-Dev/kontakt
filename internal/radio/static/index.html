@@ -726,7 +726,13 @@ class RX extends AudioWorkletProcessor {
     if (this.n > MAXN) { const drop = this.n - this.target; this.r = (this.r + drop) % L; this.n -= drop; }
   }
   pop() {
-    if (!this.ready) { if (this.n < this.target) return 0; this.ready = true; } // запас от рывков сети
+    if (!this.ready) { // запас от рывков сети
+      if (this.n < this.target) return 0;
+      this.ready = true;
+      // при настройке сервер сразу отдаёт 1,2 с станции; сверх запаса — старое: выкидываем до первого
+      // звука, иначе задержка росла бы, а подстройка скорости догоняла бы её полминуты
+      if (this.n > this.target) { const drop = this.n - this.target; this.r = (this.r + drop) % L; this.n -= drop; }
+    }
     if (this.n === 0) { // пропал поток — щелчок, и впредь запас побольше
       this.ready = false; this.crk = 0.5; this.target = Math.min(MAXT, this.target + GROW); return 0;
     }

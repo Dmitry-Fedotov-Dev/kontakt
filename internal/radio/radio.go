@@ -77,8 +77,12 @@ const (
 	listenerBuf = 150
 	// звук слушателю — пачками: batchFrames кадров (100 мс) в одном сообщении, см. writeListener
 	batchFrames = 5
-	nameRunes   = 24
-	titleRunes  = 64
+	// backlogBytes — сколько последних кадров станции приёмник получает сразу при настройке: 1,2 с,
+	// весь наибольший запас приёмника (MAXT в странице). Без этого звук начинался, только когда
+	// запас накопится из живого потока, — на 0,5–1,2 с позже, чем станция появлялась на шкале.
+	backlogBytes = 60 * FrameBytes
+	nameRunes    = 24
+	titleRunes   = 64
 
 	CloseBanned = 4003 // код закрытия сокета ведущего: эфир для него закрыт
 	CloseFull   = 4009 // код закрытия сокета приёмника: слушателей уже MaxListeners, подключиться позже
@@ -201,6 +205,9 @@ type station struct {
 	logo  string // под Hub.mu: хеш логотипа, "" — нет
 	since time.Time
 	subs  map[*listener]struct{}
+
+	recent      [][]byte // под Hub.mu: последние сообщения звука, вместе не больше backlogBytes
+	recentBytes int
 
 	host     string          // кука ведущего ("" без модерации)
 	conn     *websocket.Conn // чтобы снять с эфира
@@ -693,6 +700,13 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) broadcast(s *station, data []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	s.recent = append(s.recent, data)
+	s.recentBytes += len(data)
+	for s.recentBytes-len(s.recent[0]) >= backlogBytes {
+		s.recentBytes -= len(s.recent[0])
+		s.recent[0] = nil
+		s.recent = s.recent[1:]
+	}
 	for l := range s.subs {
 		select {
 		case l.out <- data: // data не меняется после отправки: одна копия на всех
@@ -850,9 +864,26 @@ func (h *Hub) tune(l *listener, f int) {
 	l.tuned = f
 	h.tunes.Inc()
 	l.heard = nil
+	// в очереди могли остаться кадры прежней станции — приёмник их уже сбросил
+	for drained := false; !drained; {
+		select {
+		case <-l.out:
+		default:
+			drained = true
+		}
+	}
 	if s := h.st[f]; s != nil {
 		s.subs[l] = struct{}{}
 		l.heard, l.heardSince = s, time.Now()
+		// сразу — запас станции: звук начинается вместе со шкалой, а не через 0,5–1,2 с
+		for _, b := range s.recent {
+			select {
+			case l.out <- b:
+				h.framesOut.Inc()
+				h.bytesOut.Add(uint64(len(b)))
+			default:
+			}
+		}
 	}
 	h.mu.Unlock()
 }

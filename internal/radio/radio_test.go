@@ -590,6 +590,57 @@ func TestFramesBatched(t *testing.T) {
 	}
 }
 
+// Настроился на станцию — сразу получил её последние кадры (запас приёмника), не дожидаясь новых:
+// иначе звук отставал от шкалы на весь запас приёмника, до 1,2 с. Чужие кадры в очереди — выкинуты.
+func TestTuneBacklog(t *testing.T) {
+	h := NewHub(Options{})
+	srv := httptest.NewServer(h.Handler())
+	defer srv.Close()
+	a, _, _ := dial(t, srv, "/ws/host?f=1053&name=A")
+	defer a.Close()
+	b, _, _ := dial(t, srv, "/ws/host?f=1061&name=B")
+	defer b.Close()
+	waitStations(t, h, func(s []Station) bool { return len(s) == 2 })
+	total := backlogBytes/FrameBytes + 20 // больше запаса: отдаётся только хвост
+	for i := 0; i < total; i++ {
+		a.WriteMessage(websocket.BinaryMessage, frame(byte(i)))
+		b.WriteMessage(websocket.BinaryMessage, frame(200))
+	}
+	waitFor := func(cond func() bool) bool {
+		for i := 0; i < 200 && !cond(); i++ {
+			time.Sleep(10 * time.Millisecond)
+		}
+		return cond()
+	}
+	if !waitFor(func() bool { h.mu.Lock(); defer h.mu.Unlock(); return h.st[1053].recentBytes == backlogBytes }) {
+		t.Fatal("станция не накопила запас")
+	}
+	l, _, _ := dial(t, srv, "/ws/listen")
+	defer l.Close()
+	l.WriteJSON(map[string]int{"tune": 1061})
+	waitFor(func() bool { h.mu.Lock(); defer h.mu.Unlock(); return len(h.st[1061].subs) == 1 })
+	l.WriteJSON(map[string]int{"tune": 1053})
+	var got []byte
+	deadline := time.Now().Add(2 * time.Second)
+	for len(got) < backlogBytes && time.Now().Before(deadline) {
+		got = append(got, readAudio(t, l)...)
+		for len(got) > 0 && got[0] == 200 { // хвост станции B, ушедший до перенастройки
+			got = got[FrameBytes:]
+		}
+	}
+	if len(got) < backlogBytes {
+		t.Fatalf("после перенастройки пришло %d байт, ждали запас %d сразу", len(got), backlogBytes)
+	}
+	if first, want := got[0], byte(total-backlogBytes/FrameBytes); first != want {
+		t.Fatalf("запас начинается с кадра %d, ждали %d (последние %d кадров)", first, want, backlogBytes/FrameBytes)
+	}
+	for i := 0; i < backlogBytes; i += FrameBytes {
+		if got[i] == 200 {
+			t.Fatalf("в запасе станции A кадр станции B на %d", i/FrameBytes)
+		}
+	}
+}
+
 // Сокет пускает страницы с того же домена (порт может отличаться — прямой эфир), чужие — нет.
 func TestSameSiteOrigin(t *testing.T) {
 	for origin, want := range map[string]bool{
