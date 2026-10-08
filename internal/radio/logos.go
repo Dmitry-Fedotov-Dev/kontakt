@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -247,15 +248,17 @@ func decodeB64(s string) ([]byte, error) {
 }
 
 // Закреплённые логотипы: модератор ставит логотип станции в эфире из админки (на админ-порту, он
-// только на localhost — снаружи через SSH-туннель). Логотип закрепляется за ведущим — по хешу его
-// куки, саму куку не храним, — и на следующих эфирах этого ведущего ставится сам, пока он не
-// пришлёт свой. Файл pins.json рядом с логотипами.
+// только на localhost — снаружи через SSH-туннель). Логотип закрепляется за парой «ведущий +
+// частота» — по хешу его куки и частоты, саму куку не храним, — и ставится сам, когда этот ведущий
+// снова выходит на эту частоту. Только за ведущим было нельзя: 9¾ вещали из браузера, из которого
+// запускали и другие станции, и логотип 93.4 появлялся на любой из них. Файл pins.json рядом с
+// логотипами; старые записи (без частоты) больше ни с чем не совпадают.
 
-func hostKey(host string) string {
+func hostKey(host string, f int) string {
 	if host == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte("radio-logo-pin\x00" + host))
+	sum := sha256.Sum256([]byte("radio-logo-pin\x00" + host + "\x00" + strconv.Itoa(f)))
 	return hex.EncodeToString(sum[:8])
 }
 
@@ -266,9 +269,9 @@ func (s *logoStore) pinsPath() string {
 	return filepath.Join(s.dir, "pins.json")
 }
 
-// Pinned — закреплённый за ведущим логотип ("" — нет).
-func (s *logoStore) Pinned(host string) string {
-	k := hostKey(host)
+// Pinned — логотип, закреплённый за ведущим на частоте f ("" — нет).
+func (s *logoStore) Pinned(host string, f int) string {
+	k := hostKey(host, f)
 	if k == "" {
 		return ""
 	}
@@ -278,9 +281,9 @@ func (s *logoStore) Pinned(host string) string {
 	return s.pins[k]
 }
 
-// Pin закрепляет логотип за ведущим ("" — открепить).
-func (s *logoStore) Pin(host, hash string) error {
-	k := hostKey(host)
+// Pin закрепляет логотип за ведущим на частоте f ("" — открепить).
+func (s *logoStore) Pin(host string, f int, hash string) error {
+	k := hostKey(host, f)
 	if k == "" {
 		return nil
 	}
@@ -349,7 +352,7 @@ func (h *Hub) AdminHandler() http.Handler {
 			return
 		}
 		h.applyLogo(s, hash)
-		if err := h.logos.Pin(s.host, hash); err != nil {
+		if err := h.logos.Pin(s.host, s.freq, hash); err != nil {
 			log.Printf("логотипы: закрепить: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")

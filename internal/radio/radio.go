@@ -592,7 +592,7 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 	}
 	s := &station{freq: f, name: name, since: time.Now(), subs: map[*listener]struct{}{}, host: host, reported: map[string]bool{},
 		letterFrom: map[uint64]string{}, blocked: map[string]bool{}}
-	if pin := h.logos.Pinned(host); pin != "" { // логотип, закреплённый модератором; свой — заменит
+	if pin := h.logos.Pinned(host, f); pin != "" { // логотип, закреплённый модератором; свой — заменит
 		if _, ok := h.logos.Get(pin); ok {
 			s.logo = pin
 		}

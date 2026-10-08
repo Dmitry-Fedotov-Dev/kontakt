@@ -131,7 +131,8 @@ func TestLogoOnAir(t *testing.T) {
 	waitStations(t, h, func(s []Station) bool { return len(s) == 1 && s[0].Logo == "" })
 }
 
-// Модератор ставит логотип станции из админки; он закрепляется за ведущим и возвращается на новом эфире.
+// Модератор ставит логотип станции из админки; он закрепляется за ведущим на этой частоте: возвращается
+// на новом эфире той же волны, а на другой частоте того же ведущего — нет.
 func TestLogoAdminPin(t *testing.T) {
 	dir := t.TempDir()
 	h := NewHub(Options{LogosDir: dir})
@@ -158,14 +159,24 @@ func TestLogoAdminPin(t *testing.T) {
 	h2 := NewHub(Options{LogosDir: dir}) // и после перезапуска радио
 	srv2 := httptest.NewServer(h2.Handler())
 	defer srv2.Close()
-	host2, _, err := d.Dial("ws"+strings.TrimPrefix(srv2.URL, "http")+"/ws/host?f=1000&name=X", hdr)
+	other, _, err := d.Dial("ws"+strings.TrimPrefix(srv2.URL, "http")+"/ws/host?f=1000&name=Y", hdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitStations(t, h2, func(s []Station) bool { return len(s) == 1 })
+	if g2 := h2.Stations()[0].Logo; g2 != "" { // тот же ведущий на другой частоте — без логотипа 93.4
+		t.Fatalf("логотип волны 93.4 на 100.0: %s", g2)
+	}
+	other.Close()
+	waitStations(t, h2, func(s []Station) bool { return len(s) == 0 })
+	host2, _, err := d.Dial("ws"+strings.TrimPrefix(srv2.URL, "http")+"/ws/host?f=934&name=X", hdr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer host2.Close()
 	waitStations(t, h2, func(s []Station) bool { return len(s) == 1 && s[0].Logo == g })
 	for i := 0; i < 100; i++ { // память волны пишется на диск сразу после выхода в эфир — дождаться,
-		if _, ok := h2.waves.Get(1000); ok { // иначе уборка временной папки гонится с записью
+		if _, ok := h2.waves.Get(934); ok { // иначе уборка временной папки гонится с записью
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
