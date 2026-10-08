@@ -1,0 +1,27 @@
+[Unit]
+# Постоянная станция Открытого радио, которая вещает с сервера (cmd/radiocast): папка с файлами по
+# кругу. Экземпляр — частота: kontakt-cast@934. Название — в /opt/kontakt/stations/934.env (NAME=…),
+# файлы — в /opt/kontakt/stations/934/. Включить: systemctl enable --now kontakt-cast@934.
+Description=Kontakt постоянная станция %i (вещает с сервера)
+After=kontakt-radio.service
+PartOf=kontakt.target
+
+[Service]
+User=kontakt
+WorkingDirectory=/opt/kontakt
+EnvironmentFile=/opt/kontakt/stations/%i.env
+ExecStart=/opt/kontakt/current/bin/radiocast -f %i -name ${NAME} -dir /opt/kontakt/stations/%i -id-file /opt/kontakt/data/cast-%i.id
+Restart=always
+RestartSec=5
+# 3 — станцию сняли модерацией: не поднимать, пока человек не разберётся
+RestartPreventExitStatus=3
+Nice=5
+MemoryMax=150M
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/kontakt/data
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=kontakt.target
