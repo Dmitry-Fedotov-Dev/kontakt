@@ -29,7 +29,7 @@ func TestLive(t *testing.T) {
 		t.Skip("KONTAKT_URL не задан")
 	}
 
-	for _, path := range []string{"/", "/healthz", "/terms.html", "/radio/", "/radio/terms.html", "/radio/w/87.7?n=LIVE"} {
+	for _, path := range []string{"/", "/healthz", "/terms.html", "/radio/", "/radio/terms.html", "/radio/hosts.html", "/radio/w/87.7?n=LIVE"} {
 		resp, err := http.Get(base + path)
 		if err != nil {
 			t.Fatalf("%s: %v", path, err)

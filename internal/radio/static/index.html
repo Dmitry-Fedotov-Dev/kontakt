@@ -53,6 +53,7 @@ body {
 .links { margin: 14px 0 0; text-align: center; font-size: 12px; color: #9C86BC; }
 .links a { color: inherit; }
 body:has(#rxView[hidden]) .bar { display: none; }
+body:has(#txView[hidden]) .hostsOnly { display: none; } /* советы ведущим — только на вкладке «Вещать» */
 canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 button, input { font: inherit; color: inherit; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
@@ -438,7 +439,7 @@ button, input { font: inherit; color: inherit; }
       </div>
     </div>
   </nav>
-  <p class="links"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a> · <button type="button" class="langSwitch" data-i="other">English</button></p>
+  <p class="links"><a class="termsLink" href="terms.html" target="_blank" rel="noopener" data-i="rules">правила радио</a><span class="hostsOnly"> · <a class="hostsLink" href="hosts.html" target="_blank" rel="noopener" data-i="hostsTips">советы ведущим</a></span> · <button type="button" class="langSwitch" data-i="other">English</button></p>
 </div>
 
 <!-- Настройки звука слушателя: шум эфира и устройство вывода. Хранятся только в этом браузере. -->
@@ -481,7 +482,7 @@ const $ = id => document.getElementById(id);
 // по умолчанию — по браузеру: русский для ru, uk, be, kk, ky.
 const I18N = {
   ru: {
-    title: "Открытое радио", other: "English", terms: "terms.html",
+    title: "Открытое радио", other: "English", terms: "terms.html", hosts: "hosts.html", hostsTips: "советы ведущим",
     support: "ПОДДЕРЖАТЬ", anyCard: "картой любой страны ♥", ruCard: "картой из России ₽",
     likeAria: "Лайк станции", likesTitle: "лайков за этот эфир",
     setAria: "Настройки звука", setTitle: "Звук", setNoise: "Шум эфира", setNoiseNote: "шорох, треск и свист между станциями",
@@ -561,7 +562,7 @@ const I18N = {
     slowUplink: "связь с сервером тормозит — слушатели слышат обрывы; Wi-Fi надёжнее мобильного интернета",
   },
   en: {
-    title: "Open Radio", other: "Русский", terms: "terms-en.html",
+    title: "Open Radio", other: "Русский", terms: "terms-en.html", hosts: "hosts-en.html", hostsTips: "tips for hosts",
     support: "SUPPORT", anyCard: "any card ♥", ruCard: "Russian card ₽",
     likeAria: "Like the station", likesTitle: "likes this broadcast",
     setAria: "Sound settings", setTitle: "Sound", setNoise: "Static", setNoiseNote: "hiss, crackle and whistle between stations",
@@ -1040,6 +1041,7 @@ const HERE = WAVE || location;
 const BASE = HERE.pathname.replace(/\/(w\/[^/]*(\/[^/]*)?)?$/, ""); // /w/93.4 и /w/93.4/код
 // ссылка на правила — от BASE: со страницы /w/101.7 относительная ушла бы в /w/terms.html
 document.querySelectorAll(".termsLink").forEach(a => { a.href = BASE + "/" + TXT.terms; });
+document.querySelectorAll(".hostsLink").forEach(a => { a.href = BASE + "/" + TXT.hosts; });
 // ---------- поддержка ----------
 // Кнопка видна, если в конфиге станции есть хоть одна ссылка. Одна — нажатие сразу её открывает
 // (window.open прямо в обработчике клика, иначе браузер примет за всплывающее окно); две —
