@@ -445,8 +445,8 @@ button, input { font: inherit; color: inherit; }
 <div class="card" id="setCard" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
   <div class="cardBox setBox">
     <div class="cardHead" id="setTitle" data-i="setTitle">Звук</div>
-    <label class="setRow" for="setNoise"><span data-i="setNoise">Шум эфира</span><b id="setNoiseVal">100%</b></label>
-    <input type="range" id="setNoise" min="0" max="100" step="5" value="100">
+    <label class="setRow" for="setNoise"><span data-i="setNoise">Шум эфира</span><b id="setNoiseVal">20%</b></label>
+    <input type="range" id="setNoise" min="0" max="100" step="5" value="20">
     <div class="setNote" data-i="setNoiseNote">шорох, треск и свист между станциями</div>
     <div id="setOutBox">
       <label class="setRow" for="setOut"><span data-i="setOut">Вывод звука</span></label>
@@ -704,7 +704,7 @@ class RX extends AudioWorkletProcessor {
     this.cur = 0; this.nxt = 0; this.frac = 0; this.step = 8000 / sampleRate; this.adj = 0;
     this.s = 0; this.d = 1; this.scratch = 0; this.vol = 0; this.lp = 0; this.crk = 0; this.ph = 0;
     this.fade = 1; this.fadeTo = 1; this.fadeT = 0; this.lfo = 0;
-    this.nz = 1; // уровень шума эфира из настроек слушателя: шорох, треск, свист расстройки (0 — без них)
+    this.nz = 0.2; // уровень шума эфира из настроек слушателя: шорох, треск, свист расстройки (0 — без них)
     this.hist = new Float32Array(H); this.hi = 0; this.stut = 0; this.stutLen = 1; this.stutAt = 0; this.stutK = 0;
     this.port.onmessage = e => {
       const m = e.data;
@@ -778,8 +778,9 @@ class RX extends AudioWorkletProcessor {
       if (Math.random() < 0.00015 + 0.0015 * weak + this.scratch * 0.02) this.crk = (Math.random() * 2 - 1) * (0.3 + 0.5 * weak);
       y += this.crk * nz; this.crk *= 0.55;
       // шуршание ручки
+      // шуршание ручки — отклик на поворот, тихо: на 0,6 (как было до 08.10) «било по ушам»
       if (this.scratch > 0.001) {
-        if (Math.random() < 0.35) y += (Math.random() * 2 - 1) * this.scratch * 0.6;
+        if (Math.random() < 0.35) y += (Math.random() * 2 - 1) * this.scratch * 0.15;
         this.scratch *= 0.99985;
       }
       if (s < 0.9) y = Math.round(y * q) / q; // огрубление: слабый сигнал теряет разрядность
@@ -862,10 +863,11 @@ function routeRx() {
 // Шум эфира (0–1, по умолчанию 1 — как задумано) и устройство вывода ("" — как в системе). Только
 // в этом браузере: localStorage, а не сервер. Вывод переключается там, где звук реально играет:
 // у <audio> приёмника (rxEl) или, если браузер не дал играть через него, у самого AudioContext.
-const PREFS_KEY = "radio-sound", PREFS_DEF = { noise: 1, sink: "", sinkLabel: "" };
+// Шум по умолчанию — 20 %: на полном шум между станциями резал уши (отзывы слушателей 08.10).
+const PREFS_KEY = "radio-sound", PREFS_DEF = { noise: 0.2, sink: "", sinkLabel: "" };
 let prefs = { ...PREFS_DEF };
 try { prefs = { ...PREFS_DEF, ...JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") }; } catch (_) { /* нет хранилища — по умолчанию */ }
-prefs.noise = Math.max(0, Math.min(1, Number(prefs.noise))); if (!isFinite(prefs.noise)) prefs.noise = 1;
+prefs.noise = Math.max(0, Math.min(1, Number(prefs.noise))); if (!isFinite(prefs.noise)) prefs.noise = PREFS_DEF.noise;
 function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (_) { /* приватное окно — живут до перезагрузки */ } }
 const sinkTarget = () => rxEl && rxEl.setSinkId ? rxEl : ctx && ctx.setSinkId && !rxEl ? ctx : null;
 const canSink = () => !!(window.HTMLMediaElement && HTMLMediaElement.prototype.setSinkId) || !!(window.AudioContext && AudioContext.prototype.setSinkId);
