@@ -56,7 +56,19 @@ func TestCastLettersAndLikes(t *testing.T) {
 	if w := call(t, api, "POST", "/stations/api/letter?f=934&op=block&id="+jsonNum(in.Letters[0].ID), nil); w.Code != 200 {
 		t.Fatalf("block: %d %s", w.Code, w.Body)
 	}
-	time.Sleep(200 * time.Millisecond) // действие уходит радио со следующим кадром
+	// действие уходит радио со следующим кадром, а между треками (запуск декодера) кадров нет —
+	// ждём, пока радио его применит, а не фиксированную паузу (под -race в CI 200 мс не хватало)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		h.mu.Lock()
+		n := len(h.st[934].blocked)
+		h.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("радио не применило «не принимать»")
+		}
+	}
 	l.WriteJSON(map[string]string{"letter": "второе"})
 	time.Sleep(300 * time.Millisecond)
 	get()
