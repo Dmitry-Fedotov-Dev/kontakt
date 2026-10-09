@@ -62,6 +62,9 @@ li .play { padding: 1px 6px; }
 .letter .m { color: var(--soft); font-size: 12px; display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
 .letter.blocked { opacity: .55; }
 .stline { color: var(--soft); font-size: 13px; margin-top: 4px; }
+.devices { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px 16px; margin-top: 10px; }
+.devices label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.devices select { width: 100%; font: inherit; font-size: 14px; padding: 4px 6px; background: #21160B; color: var(--amber); border: 0; }
 </style>
 </head>
 <body>
@@ -81,6 +84,12 @@ li .play { padding: 1px 6px; }
       <button id="stNext" title="следующий">⏭</button>
       <button class="micbtn" id="stMic">Включить микрофон</button>
     </div>
+    <div class="devices">
+      <div><label for="stIn">Микрофон</label><select id="stIn"></select></div>
+      <div><label for="stOut">Вывод монитора</label><select id="stOut"></select></div>
+    </div>
+    <div class="row" style="margin-top:6px"><span class="stline" id="stDevNote"></span>
+      <button class="ghost" id="stDevAsk" hidden>показать устройства</button></div>
     <div class="mixer">
       <div class="fader"><label>МИКР <span id="vMic"></span></label><input type="range" id="gMic" min="0" max="150" step="5"></div>
       <div class="fader"><label>МУЗЫКА <span id="vMusic"></span></label><input type="range" id="gMusic" min="0" max="150" step="5"></div>
@@ -324,6 +333,10 @@ class RX extends AudioWorkletProcessor {
 registerProcessor("tx", TX); registerProcessor("rx", RX);`;
 
 let studio = null; // { f, freq }
+// устройства студии — только в этом браузере
+let dev = { mic: "", out: "" };
+try { dev = { ...dev, ...JSON.parse(localStorage.getItem("stations-devices") || "{}") }; } catch (_) { /* по умолчанию */ }
+const saveDev = () => { try { localStorage.setItem("stations-devices", JSON.stringify(dev)); } catch (_) { /* не сохранится */ } };
 let actx = null, rxNode = null, monWs = null, micWs = null, micStream = null, micSrc = null, txNode = null, micWanted = false;
 const wsBase = () => (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
 
@@ -336,6 +349,51 @@ async function ensureAudio() {
   rxNode = new AudioWorkletNode(actx, "rx", { numberOfInputs: 0, outputChannelCount: [2] });
   rxNode.connect(actx.destination);
   rxNode.port.postMessage({ vol: $("gMon").value / 100 });
+  applyOut(false);
+}
+
+// fillDevices — списки микрофонов и выходов; без разрешения браузер прячет названия.
+async function fillDevices() {
+  for (const id of ["stIn", "stOut"]) if (!$(id).options.length) $(id).add(new Option("как в системе", "")); // до ответа браузера
+  let all = [];
+  try { all = await navigator.mediaDevices.enumerateDevices(); } catch (_) { /* пусто */ }
+  const named = kind => all.filter(d => d.kind === kind && d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications");
+  const fill = (sel, list, cur, word) => {
+    const opts = [new Option("как в системе", "")];
+    list.forEach((d, i) => opts.push(new Option(d.label || word + " " + (i + 1), d.deviceId)));
+    if (cur && !list.some(d => d.deviceId === cur)) opts.push(new Option(word + " (сохранённый)", cur));
+    sel.replaceChildren(...opts);
+    sel.value = cur;
+  };
+  const ins = named("audioinput"), outs = named("audiooutput");
+  fill($("stIn"), ins, dev.mic, "микрофон");
+  fill($("stOut"), outs, dev.out, "выход");
+  const canOut = !!(window.AudioContext && AudioContext.prototype.setSinkId);
+  $("stOut").disabled = !canOut;
+  const hidden = [...ins, ...outs].every(d => !d.label);
+  $("stDevNote").textContent = !canOut ? "этот браузер не выбирает вывод — переключите его в системе" :
+    hidden ? "браузер покажет названия устройств после разрешения микрофона" : "";
+  $("stDevAsk").hidden = !hidden;
+}
+
+// applyOut — куда играет монитор (Chrome, Edge: AudioContext.setSinkId)
+async function applyOut(loud) {
+  if (!actx || !actx.setSinkId) return;
+  try { await actx.setSinkId(dev.out || ""); }
+  catch (_) { dev.out = ""; saveDev(); if (loud) stErr("не удалось переключить вывод — играет как в системе"); fillDevices(); }
+}
+
+// openMicStream — выбранный микрофон; отключили — системный.
+async function openMicStream() {
+  const base = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  if (dev.mic) {
+    try { return await navigator.mediaDevices.getUserMedia({ audio: { ...base, deviceId: { exact: dev.mic } } }); }
+    catch (e) {
+      if (e && e.name !== "OverconstrainedError" && e.name !== "NotFoundError") throw e;
+      dev.mic = ""; saveDev(); stErr("выбранный микрофон не найден — взят системный");
+    }
+  }
+  return navigator.mediaDevices.getUserMedia({ audio: base });
 }
 
 function stErr(msg) { $("stErr").textContent = msg || ""; }
@@ -353,6 +411,7 @@ async function openStudio(s) {
   stErr();
   try { await ensureAudio(); } catch (e) { stErr("звук не включился: " + e.message); return; }
   connectMonitor();
+  fillDevices();
   lastLikes = -1; lettersKey = "";
   loadLetters();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -387,7 +446,7 @@ async function micOn() {
   micWanted = true;
   try {
     await ensureAudio();
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    micStream = await openMicStream();
   } catch (e) { micWanted = false; stErr("микрофон не дали: " + e.message); renderMic(); return; }
   micSrc = actx.createMediaStreamSource(micStream);
   txNode = new AudioWorkletNode(actx, "tx");
@@ -398,6 +457,20 @@ async function micOn() {
   txNode.port.onmessage = e => { if (micWs && micWs.readyState === 1 && micWs.bufferedAmount < 16000) micWs.send(ulawEncode(e.data)); };
   connectMic();
   renderMic();
+  fillDevices(); // после разрешения появляются названия
+}
+
+// switchMic — микрофон в эфире: заменить устройство, не трогая сокет
+async function switchMic() {
+  if (!micWanted || !txNode) return;
+  let stream;
+  try { stream = await openMicStream(); } catch (e) { stErr("микрофон не дали: " + e.message); return; }
+  const oldSrc = micSrc, oldStream = micStream;
+  micSrc = actx.createMediaStreamSource(stream);
+  micSrc.connect(txNode);
+  micStream = stream;
+  if (oldSrc) oldSrc.disconnect();
+  if (oldStream) oldStream.getTracks().forEach(t => t.stop());
 }
 
 function connectMic() {
@@ -505,6 +578,13 @@ $("stNext").addEventListener("click", ctl("next"));
 $("stPlay").addEventListener("click", () => ctl($("stPlay").dataset.op || "pause")());
 $("stMic").addEventListener("click", () => micWanted ? micOff() : micOn());
 $("stClose").addEventListener("click", closeStudio);
+$("stIn").addEventListener("change", e => { dev.mic = e.target.value; saveDev(); stErr(); switchMic(); });
+$("stOut").addEventListener("change", e => { dev.out = e.target.value; saveDev(); stErr(); applyOut(true); });
+$("stDevAsk").addEventListener("click", async () => {
+  try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach(t => t.stop()); }
+  catch (_) { /* не разрешили */ }
+  fillDevices();
+});
 ["gMic", "gMusic", "gAir"].forEach(id => $(id).addEventListener("input", sendMix));
 $("gMon").addEventListener("input", () => { showGains(); rxNode && rxNode.port.postMessage({ vol: $("gMon").value / 100 }); });
 
