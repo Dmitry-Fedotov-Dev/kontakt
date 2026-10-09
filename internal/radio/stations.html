@@ -125,7 +125,9 @@ li.picked { background: #3A2752; }
 const $ = id => document.getElementById(id);
 const fmtSize = n => n > 1 << 30 ? (n / (1 << 30)).toFixed(1) + " ГБ" : (n / (1 << 20)).toFixed(1) + " МБ";
 let hashDone = false;
-let busy = 0; // идёт загрузка — список не перерисовываем, иначе пропадёт прогресс
+// прогресс и ошибки загрузки/удаления — по станциям, вне карточек: список перерисовывается раз в 5 с
+// (и пока открыт диалог выбора файлов), а загрузка пишет в ту карточку, что сейчас на странице
+const notes = {};
 // выбранные треки: станция → имена; живут между перерисовками списка (раз в 5 с)
 const picked = {}, lastPick = {};
 
@@ -136,10 +138,12 @@ async function api(method, path, body, type) {
   return text ? JSON.parse(text) : {};
 }
 
+let loadSeq = 0;
 async function load() {
-  if (busy) return;
+  const my = ++loadSeq; // загрузка зовёт load() после каждого файла: опоздавший ответ не рисуем
   let d;
-  try { d = await api("GET", "/stations/api"); } catch (e) { $("list").textContent = "Не загрузилось: " + e.message; return; }
+  try { d = await api("GET", "/stations/api"); } catch (e) { if (my === loadSeq) $("list").textContent = "Не загрузилось: " + e.message; return; }
+  if (my !== loadSeq) return;
   $("space").textContent = "Занято " + fmtSize(d.used) + " из " + fmtSize(d.quota) + ".";
   $("ffwarn").hidden = d.ffmpeg;
   const list = $("list");
@@ -165,10 +169,13 @@ function el(tag, attrs, ...kids) {
 
 function card(s) {
   const q = "?f=" + s.f;
-  const err = el("div", { class: "prog err" });
-  const prog = el("div", { class: "prog" });
-  const fail = e => { err.textContent = e.message; };
-  const act = fn => async () => { err.textContent = ""; try { await fn(); } catch (e) { fail(e); } load(); };
+  const nt = notes[s.f] || (notes[s.f] = { prog: "", err: "" });
+  const err = el("div", { class: "prog err", id: "err-" + s.f, textContent: nt.err });
+  const prog = el("div", { class: "prog", id: "prog-" + s.f, textContent: nt.prog });
+  const setProg = t => { nt.prog = t; const e = $("prog-" + s.f); if (e) e.textContent = t; };
+  const setErr = t => { nt.err = t; const e = $("err-" + s.f); if (e) e.textContent = t; };
+  const fail = e => setErr(e.message);
+  const act = fn => async () => { setErr(""); try { await fn(); } catch (e) { fail(e); } load(); };
 
   let status = "выключена", cls = "status";
   if (s.onAir) { status = "в эфире"; cls += " on"; }
@@ -190,7 +197,7 @@ function card(s) {
     : el("button", { textContent: "В эфир", disabled: !s.files.length, on: { click: act(() => api("POST", "/stations/api/on" + q)) } });
   const logoIn = el("input", { type: "file", accept: "image/*", hidden: true, on: { change: async e => {
     const f = e.target.files[0]; if (!f) return;
-    err.textContent = "";
+    setErr("");
     try { await api("POST", "/admin/station-logo" + q, await toLogo(f), "image/png"); } catch (x) { fail(x); }
     load();
   } } });
@@ -223,16 +230,14 @@ function card(s) {
   const delSel = el("button", { class: "danger", on: { click: async () => {
     const list = names.filter(n => sel.has(n));
     if (!list.length || !confirm("Удалить выбранные треки (" + list.length + ")?")) return;
-    busy++;
-    err.textContent = "";
+    setErr("");
     let ok = 0;
     for (const [i, n] of list.entries()) {
-      prog.textContent = "Удаляю " + (i + 1) + "/" + list.length + " · " + n;
+      setProg("Удаляю " + (i + 1) + "/" + list.length + " · " + n);
       try { await api("DELETE", "/stations/api/file" + q + "&name=" + encodeURIComponent(n)); ok++; sel.delete(n); }
-      catch (e) { err.textContent += n + ": " + e.message + "\n"; }
+      catch (e) { setErr(nt.err + n + ": " + e.message + "\n"); }
     }
-    prog.textContent = "Удалено: " + ok + " из " + list.length;
-    busy--;
+    setProg("Удалено: " + ok + " из " + list.length);
     load();
   } } });
   const unpick = el("button", { class: "ghost", textContent: "снять выбор", on: { click: () => { sel.clear(); renderPick(); } } });
@@ -270,18 +275,17 @@ function card(s) {
           drop: e => { e.preventDefault(); drop.classList.remove("over"); upload([...e.dataTransfer.files]); } } });
 
   async function upload(list) {
-    busy++;
-    err.textContent = "";
+    setErr("");
     let ok = 0;
     for (const [i, f] of list.entries()) {
       try {
         await put("/stations/api/upload" + q + "&name=" + encodeURIComponent(f.name), f,
-          p => { prog.textContent = (i + 1) + "/" + list.length + " · " + f.name + " · " + Math.round(p * 100) + "%"; });
+          p => setProg((i + 1) + "/" + list.length + " · " + f.name + " · " + Math.round(p * 100) + "%"));
         ok++;
-      } catch (e) { err.textContent += f.name + ": " + e.message + "\n"; }
+        load(); // загруженный трек — сразу в списке
+      } catch (e) { setErr(nt.err + f.name + ": " + e.message + "\n"); }
     }
-    prog.textContent = "Загружено: " + ok + " из " + list.length;
-    busy--;
+    setProg("Загружено: " + ok + " из " + list.length);
     load();
   }
 
