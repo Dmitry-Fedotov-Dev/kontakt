@@ -291,6 +291,9 @@ body:has(#txView[hidden]) #setInBox { display: none; } /* микрофон — �
 .desk { display: flex; align-items: flex-end; justify-content: center; gap: 22px; flex-wrap: wrap; }
 .micbtn { background: none; border: 0; padding: 0; cursor: pointer; text-align: center; color: var(--cream); }
 #mic { width: 168px; height: 168px; }
+/* у холста микрофона пустые поля по бокам (место под волны) — без поправки блок на глаз уезжает вправо */
+.desk .micbtn { margin: 0 -20px 0 -52px; }
+@media (max-width: 450px) { .desk .micbtn { margin: 0 -36px; } } /* в столбик — микрофон по центру */
 .micbtn .cap { display: block; font-size: 12px; margin-top: 4px; color: #C9B6E4; }
 .micbtn[aria-pressed="true"] .cap { color: var(--red); font-weight: 600; }
 
