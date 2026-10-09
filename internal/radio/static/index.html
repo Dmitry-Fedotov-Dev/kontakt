@@ -276,7 +276,9 @@ button, input { font: inherit; color: inherit; }
 .setBox select { width: 100%; padding: 4px 6px; font: 14px "Pixelify Sans", monospace; color: var(--ink); background: #FFF6E2; border: 0; box-shadow: inset 0 0 0 2px var(--ink); }
 .setBox #setOutMore { justify-self: start; border-color: #8A6D9E; color: #6B4A86; }
 #setNoise { width: 100%; accent-color: var(--tomato); cursor: pointer; }
-#setOutBox { display: grid; gap: 6px; }
+#setOutBox, #setInBox { display: grid; gap: 6px; }
+body:has(#txView[hidden]) #setInBox { display: none; } /* микрофон — только на вкладке «Вещать» */
+.setBox #setInMore { justify-self: start; border-color: #8A6D9E; color: #6B4A86; }
 
 .desk { display: flex; align-items: flex-end; justify-content: center; gap: 22px; flex-wrap: wrap; }
 .micbtn { background: none; border: 0; padding: 0; cursor: pointer; text-align: center; color: var(--cream); }
@@ -455,6 +457,12 @@ button, input { font: inherit; color: inherit; }
       <div class="setNote" id="setOutNote"></div>
       <button type="button" class="report" id="setOutMore" hidden></button>
     </div>
+    <div id="setInBox">
+      <label class="setRow" for="setIn"><span data-i="setIn">Микрофон (для эфира)</span></label>
+      <select id="setIn"></select>
+      <div class="setNote" id="setInNote"></div>
+      <button type="button" class="report" id="setInMore" hidden data-i="setInAsk">показать микрофоны</button>
+    </div>
     <div class="cardBtns">
       <button type="button" class="report" id="setReset" data-i="setReset">по умолчанию</button>
       <button type="button" class="btn" id="setDone" data-i="setDone">ГОТОВО</button>
@@ -491,6 +499,8 @@ const I18N = {
     setOutHidden: "браузер прячет названия устройств, пока не дашь доступ к микрофону (он не включится)",
     setOutAsk: "показать устройства", setOutPick: "выбрать устройство…", setOutFail: "не удалось переключить вывод",
     setOutGone: "устройство не найдено — играет как в системе", setOutDev: n => "устройство " + n,
+    setIn: "Микрофон (для эфира)", setInHidden: "браузер покажет названия микрофонов после разрешения",
+    setInAsk: "показать микрофоны", setInGone: "микрофон не найден — взят системный", setInDev: n => "микрофон " + n,
     logoAdd: "Логотип станции: картинка станет пиксельным значком 64×64", logoRemove: "Убрать логотип",
     logoBad: "не получилось прочитать картинку — попробуй PNG или JPG", logoSent: "логотип в эфире",
     airCount: n => n === 0 ? "в эфире пока тихо" : "в эфире: " + n + " " + (n % 10 === 1 && n % 100 !== 11 ? "станция" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "станции" : "станций"),
@@ -571,6 +581,8 @@ const I18N = {
     setOutHidden: "the browser hides device names until you allow the microphone (it won't be turned on)",
     setOutAsk: "show devices", setOutPick: "choose a device…", setOutFail: "couldn't switch the output",
     setOutGone: "device not found — playing on the system default", setOutDev: n => "device " + n,
+    setIn: "Microphone (for broadcasting)", setInHidden: "the browser shows microphone names after you allow access",
+    setInAsk: "show microphones", setInGone: "microphone not found — using the system one", setInDev: n => "microphone " + n,
     logoAdd: "Station logo: the picture becomes a 64×64 pixel badge", logoRemove: "Remove the logo",
     logoBad: "couldn't read the picture — try PNG or JPG", logoSent: "logo is on air",
     airCount: n => n === 0 ? "the air is quiet for now" : "on air: " + n + (n === 1 ? " station" : " stations"),
@@ -874,7 +886,7 @@ function routeRx() {
 // в этом браузере: localStorage, а не сервер. Вывод переключается там, где звук реально играет:
 // у <audio> приёмника (rxEl) или, если браузер не дал играть через него, у самого AudioContext.
 // Шум по умолчанию — 20 %: на полном шум между станциями резал уши (отзывы слушателей 08.10).
-const PREFS_KEY = "radio-sound", PREFS_DEF = { noise: 0.2, sink: "", sinkLabel: "" };
+const PREFS_KEY = "radio-sound", PREFS_DEF = { noise: 0.2, sink: "", sinkLabel: "", mic: "", micLabel: "" };
 let prefs = { ...PREFS_DEF };
 try { prefs = { ...PREFS_DEF, ...JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") }; } catch (_) { /* нет хранилища — по умолчанию */ }
 prefs.noise = Math.max(0, Math.min(1, Number(prefs.noise))); if (!isFinite(prefs.noise)) prefs.noise = PREFS_DEF.noise;
@@ -920,8 +932,49 @@ function setNoise(v) {
   prefs.noise = v; showNoise(); savePrefs();
   if (rx) rx.port.postMessage({ nz: v });
 }
+// Микрофон для эфира: устройство ввода. Пусто — системный. В эфире смена — сразу, без остановки.
+async function fillInputs() {
+  const sel = $("setIn"), note = $("setInNote"), more = $("setInMore");
+  note.textContent = ""; more.hidden = true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) { $("setInBox").hidden = true; return; }
+  if (!sel.options.length) { sel.add(new Option(TXT.setOutDefault, "")); sel.value = ""; }
+  let ins = [];
+  try { ins = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput"); } catch (_) { /* пусто — только системный */ }
+  const named = ins.filter(d => d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications");
+  const opts = [new Option(TXT.setOutDefault, "")];
+  named.forEach((d, i) => opts.push(new Option(d.label || TXT.setInDev(i + 1), d.deviceId)));
+  if (prefs.mic && !named.some(d => d.deviceId === prefs.mic)) opts.push(new Option(prefs.micLabel || TXT.setInDev(named.length + 1), prefs.mic));
+  sel.replaceChildren(...opts);
+  sel.value = prefs.mic;
+  if (!named.length || named.every(d => !d.label)) { note.textContent = TXT.setInHidden; more.hidden = false; }
+}
+// openMic — поток выбранного микрофона; выбранного нет (отключили) — системный и подсказка.
+async function openMic() {
+  const base = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  if (prefs.mic) {
+    try { return await navigator.mediaDevices.getUserMedia({ audio: { ...base, deviceId: { exact: prefs.mic } } }); }
+    catch (e) {
+      if (e && e.name !== "OverconstrainedError" && e.name !== "NotFoundError") throw e;
+      prefs.mic = ""; prefs.micLabel = ""; savePrefs(); toast(TXT.setInGone);
+    }
+  }
+  return navigator.mediaDevices.getUserMedia({ audio: base });
+}
+let micStream = null;
+// switchMic — микрофон уже подключён к эфиру: заменить устройство на лету.
+async function switchMic() {
+  if (!micSrc) return;
+  let stream;
+  try { stream = await openMic(); } catch (_) { toast(TXT.noMic); return; }
+  const old = micSrc, oldStream = micStream;
+  micSrc = ctx.createMediaStreamSource(stream);
+  micSrc.connect(tx.mic);
+  micStream = stream;
+  old.disconnect();
+  if (oldStream) oldStream.getTracks().forEach(t => t.stop());
+}
 function openSettings() {
-  showNoise(); fillOutputs();
+  showNoise(); fillOutputs(); fillInputs();
   $("setCard").hidden = false; $("setNoise").focus();
 }
 function closeSettings() { $("setCard").hidden = true; $("setBtn").focus(); }
@@ -948,8 +1001,19 @@ $("setOutMore").addEventListener("click", async () => {
   fillOutputs();
 });
 $("setReset").addEventListener("click", () => {
+  const micWas = prefs.mic;
   prefs = { ...PREFS_DEF }; savePrefs();
-  setNoise(prefs.noise); applySink(true); fillOutputs();
+  setNoise(prefs.noise); applySink(true); fillOutputs(); fillInputs();
+  if (micWas) switchMic();
+});
+$("setIn").addEventListener("change", e => {
+  prefs.mic = e.target.value; prefs.micLabel = e.target.selectedOptions[0] ? e.target.selectedOptions[0].text : "";
+  savePrefs(); switchMic();
+});
+$("setInMore").addEventListener("click", async () => {
+  try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); }
+  catch (_) { /* не разрешили — список останется без названий */ }
+  fillInputs(); fillOutputs();
 });
 let msKey = null;
 function mediaSession(s) {
@@ -1599,8 +1663,9 @@ $("micBtn").onclick = async () => {
   if (!micSrc) {
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      stream = await openMic();
     } catch (_) { hintHold = performance.now() + 3000; hostHint(TXT.noMic, true); return; }
+    micStream = stream;
     micSrc = ctx.createMediaStreamSource(stream);
     micSrc.connect(tx.mic);
   }
