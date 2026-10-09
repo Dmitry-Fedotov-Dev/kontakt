@@ -51,6 +51,10 @@ li.playing .n { color: var(--mint); }
 .micbtn.live { background: var(--red); color: #fff; }
 .transport button { min-width: 42px; }
 li .play { padding: 1px 6px; }
+li input[type=checkbox], .pickbar input { accent-color: var(--amber); width: 16px; height: 16px; margin: 0; cursor: pointer; }
+li.picked { background: #3A2752; }
+.pickbar { margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.pickbar label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
 .stats { font-weight: 600; margin: 6px 0 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 .likes { color: var(--red); display: inline-block; }
 .likes.bump { animation: bump .5s; }
@@ -122,6 +126,8 @@ const $ = id => document.getElementById(id);
 const fmtSize = n => n > 1 << 30 ? (n / (1 << 30)).toFixed(1) + " ГБ" : (n / (1 << 20)).toFixed(1) + " МБ";
 let hashDone = false;
 let busy = 0; // идёт загрузка — список не перерисовываем, иначе пропадёт прогресс
+// выбранные треки: станция → имена; живут между перерисовками списка (раз в 5 с)
+const picked = {}, lastPick = {};
 
 async function api(method, path, body, type) {
   const r = await fetch(path, { method, body, headers: type ? { "Content-Type": type } : {} });
@@ -200,7 +206,50 @@ function card(s) {
     const o = names.slice(); [o[i], o[i + d]] = [o[i + d], o[i]];
     await api("POST", "/stations/api/order" + q, JSON.stringify(o), "application/json");
   });
+  // выбор нескольких треков: галочки, Shift — диапазон; удалённые из выбора уходят сами
+  const sel = picked[s.f] || (picked[s.f] = new Set());
+  for (const n of [...sel]) if (!names.includes(n)) sel.delete(n);
+  const pickOne = (i, e) => {
+    const on = e.target.checked, from = e.shiftKey && lastPick[s.f] != null ? lastPick[s.f] : i;
+    for (let k = Math.min(from, i); k <= Math.max(from, i); k++) on ? sel.add(names[k]) : sel.delete(names[k]);
+    lastPick[s.f] = i;
+    renderPick();
+  };
+  const all = el("input", { type: "checkbox", on: { change: e => {
+    e.target.checked ? names.forEach(n => sel.add(n)) : sel.clear();
+    renderPick();
+  } } });
+  const count = el("span", { class: "stline" });
+  const delSel = el("button", { class: "danger", on: { click: async () => {
+    const list = names.filter(n => sel.has(n));
+    if (!list.length || !confirm("Удалить выбранные треки (" + list.length + ")?")) return;
+    busy++;
+    err.textContent = "";
+    let ok = 0;
+    for (const [i, n] of list.entries()) {
+      prog.textContent = "Удаляю " + (i + 1) + "/" + list.length + " · " + n;
+      try { await api("DELETE", "/stations/api/file" + q + "&name=" + encodeURIComponent(n)); ok++; sel.delete(n); }
+      catch (e) { err.textContent += n + ": " + e.message + "\n"; }
+    }
+    prog.textContent = "Удалено: " + ok + " из " + list.length;
+    busy--;
+    load();
+  } } });
+  const unpick = el("button", { class: "ghost", textContent: "снять выбор", on: { click: () => { sel.clear(); renderPick(); } } });
+  const pickbar = el("div", { class: "pickbar" }, el("label", {}, all, "все"), count, delSel, unpick);
+  pickbar.hidden = !names.length;
+  const boxes = [];
+  function renderPick() {
+    const n = names.filter(x => sel.has(x)).length;
+    all.checked = n > 0 && n === names.length;
+    all.indeterminate = n > 0 && n < names.length;
+    count.textContent = n ? "выбрано: " + n : "отметьте треки галочками (Shift — подряд)";
+    delSel.textContent = "удалить выбранные" + (n ? " (" + n + ")" : "");
+    delSel.disabled = unpick.disabled = !n;
+    boxes.forEach((b, i) => { b.checked = sel.has(names[i]); b.parentNode.classList.toggle("picked", b.checked); });
+  }
   const files = el("ol", {}, ...s.files.map((f, i) => el("li", { class: s.on && i === s.index ? "playing" : "" },
+    boxes[i] = el("input", { type: "checkbox", title: "выбрать (Shift — диапазон)", on: { click: e => pickOne(i, e) } }),
     el("button", { class: "ghost play", textContent: "▶", title: "играть с этого трека", disabled: !s.on,
       on: { click: act(() => api("POST", "/stations/api/ctl" + q + "&op=jump&i=" + i)) } }),
     el("span", { class: "n", textContent: f.name, title: f.name }),
@@ -210,6 +259,7 @@ function card(s) {
     el("button", { class: "danger", textContent: "✕", on: { click: act(async () => {
       if (confirm("Удалить " + f.name + "?")) await api("DELETE", "/stations/api/file" + q + "&name=" + encodeURIComponent(f.name));
     }) } }))));
+  renderPick();
 
   const pick = el("input", { type: "file", multiple: true, accept: "audio/*,.mp3,.ogg,.opus,.m4a,.aac,.flac,.wav", hidden: true,
     on: { change: e => upload([...e.target.files]) } });
@@ -238,7 +288,7 @@ function card(s) {
   return el("div", { class: "card" }, head,
     el("p", { class: "now", textContent: s.now ? "♪ " + s.now : "" }),
     s.onAir ? el("p", { class: "stline", textContent: "слушают: " + s.listeners + " · ♥ " + s.likes + " · писем: " + s.letters + (s.card ? " · жёлтая карточка" : "") }) : "",
-    controls, files, drop, pick, prog, err);
+    controls, pickbar, files, drop, pick, prog, err);
 }
 
 // put — загрузка с прогрессом (у fetch его нет)
