@@ -82,6 +82,10 @@ type caster struct {
 	index  atomic.Int64 // какой файл играет
 	onAir  atomic.Bool
 
+	infoMu  sync.Mutex
+	info    castInfo
+	hostOut chan []byte // текстовые сообщения радио от студии (действия с письмами)
+
 	monMu sync.Mutex
 	mon   map[chan []byte]struct{}
 
@@ -96,7 +100,8 @@ type caster struct {
 
 func newCaster(freq int, name, wsURL, id, ffmpeg string, src castSource) *caster {
 	c := &caster{freq: freq, name: name, url: wsURL, id: id, ffmpeg: ffmpeg, src: src,
-		ctl: make(chan castCmd, 16), mic: make(chan []byte, micMax+5), mon: map[chan []byte]struct{}{}}
+		ctl: make(chan castCmd, 16), mic: make(chan []byte, micMax+5), mon: map[chan []byte]struct{}{},
+		hostOut: make(chan []byte, 32)}
 	c.gains.set(1, 1, 1)
 	return c
 }
@@ -265,6 +270,14 @@ func (c *caster) send(ctx context.Context, frame []byte) error {
 		if fresh && c.title != "" {
 			c.writeTitle(c.title)
 		}
+		for pending := true; pending; { // действия студии с письмами
+			select {
+			case b := <-c.hostOut:
+				c.write(websocket.TextMessage, b)
+			default:
+				pending = false
+			}
+		}
 		if c.write(websocket.BinaryMessage, frame) == nil {
 			c.onAir.Store(true)
 			return nil
@@ -392,22 +405,121 @@ func (c *caster) dial(ctx context.Context) error {
 		return err
 	}
 	c.conn, c.closed = conn, make(chan struct{})
+	c.infoMu.Lock()
+	c.info.Likes, c.info.Card = 0, false // у нового эфира свой счёт лайков (как у ведущего в браузере)
+	c.infoMu.Unlock()
 	go c.read(conn, c.closed)
 	return nil
 }
 
-// read — читает и выбрасывает сообщения радио (слушатели, лайки, письма), иначе не дойдут
-// управляющие кадры; видит закрытие и код бана.
+// read — сообщения радио ведущему: слушатели, лайки, письма, итог жалобы, жёлтая карточка — для
+// студии; видит закрытие и код бана.
 func (c *caster) read(conn *websocket.Conn, closed chan struct{}) {
 	defer close(closed)
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		typ, b, err := conn.ReadMessage()
+		if err != nil {
 			var ce *websocket.CloseError
 			if errors.As(err, &ce) && ce.Code == castBanCode {
 				c.banned.Store(true)
 			}
 			return
 		}
+		if typ == websocket.TextMessage {
+			c.hostMessage(b)
+		}
+	}
+}
+
+// castLetter — письмо слушателя ведущему (только в памяти, как у радио).
+type castLetter struct {
+	ID      uint64    `json:"id"`
+	Text    string    `json:"text"`
+	At      time.Time `json:"at"`
+	Blocked bool      `json:"blocked"` // письма от этого слушателя больше не принимаются
+	Report  bool      `json:"report"`  // на письмо пожаловались
+}
+
+// castInfo — что видит ведущий: слушатели, лайки за эфир, письма, итог последней жалобы.
+type castInfo struct {
+	Listeners int          `json:"listeners"`
+	Likes     int          `json:"likes"`
+	Card      bool         `json:"card"` // жёлтая карточка станции
+	Letters   []castLetter `json:"letters"`
+	Report    string       `json:"lastReport,omitempty"`
+}
+
+func (c *caster) hostMessage(b []byte) {
+	var m struct {
+		Listeners *int `json:"listeners"`
+		Total     *int `json:"total"`
+		Letter    *struct {
+			ID   uint64 `json:"id"`
+			Text string `json:"text"`
+		} `json:"letter"`
+		LetterReport string `json:"letterReport"`
+		Card         string `json:"card"`
+	}
+	if json.Unmarshal(b, &m) != nil {
+		return
+	}
+	c.infoMu.Lock()
+	defer c.infoMu.Unlock()
+	if m.Listeners != nil {
+		c.info.Listeners = *m.Listeners
+	}
+	if m.Total != nil {
+		c.info.Likes = *m.Total
+	}
+	if m.Letter != nil && m.Letter.Text != "" {
+		c.info.Letters = append([]castLetter{{ID: m.Letter.ID, Text: m.Letter.Text, At: time.Now()}}, c.info.Letters...)
+		if len(c.info.Letters) > letterMemory {
+			c.info.Letters = c.info.Letters[:letterMemory]
+		}
+	}
+	if m.LetterReport != "" {
+		c.info.Report = m.LetterReport
+	}
+	if m.Card == "yellow" {
+		c.info.Card = true
+	}
+}
+
+// snapshot — копия castInfo для страницы.
+func (c *caster) snapshot() castInfo {
+	c.infoMu.Lock()
+	defer c.infoMu.Unlock()
+	in := c.info
+	in.Letters = append([]castLetter(nil), c.info.Letters...)
+	return in
+}
+
+// letterAction — «не принимать письма от него» (block) или «пожаловаться» (report): уходит радио
+// через основной цикл станции — писать в сокет может только он.
+func (c *caster) letterAction(id uint64, report bool) bool {
+	c.infoMu.Lock()
+	found := false
+	for i := range c.info.Letters {
+		if c.info.Letters[i].ID == id {
+			found = true
+			c.info.Letters[i].Blocked = true
+			c.info.Letters[i].Report = c.info.Letters[i].Report || report
+		}
+	}
+	c.infoMu.Unlock()
+	if !found {
+		return false
+	}
+	key := "block"
+	if report {
+		key = "reportLetter"
+	}
+	b, _ := json.Marshal(map[string]uint64{key: id})
+	select {
+	case c.hostOut <- b:
+		return true
+	default:
+		return false
 	}
 }
 

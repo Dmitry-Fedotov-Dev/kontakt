@@ -329,6 +329,8 @@ func (c *Casts) Handler() http.Handler {
 	mux.HandleFunc("POST /stations/api/order", c.apiOrder)
 	mux.HandleFunc("POST /stations/api/ctl", c.apiCtl)
 	mux.HandleFunc("POST /stations/api/mix", c.apiMix)
+	mux.HandleFunc("GET /stations/api/letters", c.apiLetters)
+	mux.HandleFunc("POST /stations/api/letter", c.apiLetter)
 	mux.HandleFunc("GET /stations/api/mic", c.apiMic)
 	mux.HandleFunc("GET /stations/api/monitor", c.apiMonitor)
 	mux.HandleFunc("POST /stations/api/on", func(w http.ResponseWriter, r *http.Request) { c.apiOnOff(w, r, true) })
@@ -356,6 +358,11 @@ type castJSON struct {
 	Paused bool           `json:"paused"` // музыка на паузе
 	MicOn  bool           `json:"micOn"`  // модератор в эфире с микрофона
 	Mix    castMix        `json:"mix"`
+
+	Listeners int  `json:"listeners"` // в эфире: сколько слушают
+	Likes     int  `json:"likes"`     // лайков за этот эфир
+	Letters   int  `json:"letters"`   // писем в памяти
+	Card      bool `json:"card"`      // жёлтая карточка
 }
 
 func (c *Casts) apiList(w http.ResponseWriter, _ *http.Request) {
@@ -372,6 +379,11 @@ func (c *Casts) apiList(w http.ResponseWriter, _ *http.Request) {
 			Index: s.Pos, Mix: s.mix()}
 		if cs := s.cast; cs != nil {
 			j.Index, j.Paused, j.MicOn = int(cs.index.Load()), cs.paused.Load(), cs.micOn.Load()
+			in := cs.snapshot()
+			if cs.onAir.Load() {
+				j.Listeners, j.Likes, j.Card = in.Listeners, in.Likes, in.Card
+			}
+			j.Letters = len(in.Letters)
 		}
 		if ls := live[s.F]; ls != nil {
 			c.hub.mu.Lock()
@@ -725,4 +737,41 @@ func (c *Casts) apiMonitor(w http.ResponseWriter, r *http.Request) {
 		case <-time.After(2 * time.Second): // станция замолчала — держим соединение
 		}
 	}
+}
+
+// apiLetters — что видит ведущий: слушатели, лайки, письма (новые сверху), итог последней жалобы.
+func (c *Casts) apiLetters(w http.ResponseWriter, r *http.Request) {
+	_, cs := c.live(w, r)
+	if cs == nil {
+		return
+	}
+	in := cs.snapshot()
+	if !cs.onAir.Load() {
+		in.Listeners = 0
+	}
+	if in.Letters == nil {
+		in.Letters = []castLetter{}
+	}
+	writeJSON(w, in)
+}
+
+// apiLetter — действие с письмом: op=block (не принимать письма от отправителя) или op=report
+// (пожаловаться: жалоба идёт в модерацию, как от ведущего в браузере).
+func (c *Casts) apiLetter(w http.ResponseWriter, r *http.Request) {
+	_, cs := c.live(w, r)
+	if cs == nil {
+		return
+	}
+	var id uint64
+	fmt.Sscan(r.URL.Query().Get("id"), &id)
+	op := r.URL.Query().Get("op")
+	if id == 0 || (op != "block" && op != "report") {
+		http.Error(w, "нужны id и op=block|report", http.StatusBadRequest)
+		return
+	}
+	if !cs.letterAction(id, op == "report") {
+		http.Error(w, "нет такого письма или станция занята", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }

@@ -51,6 +51,17 @@ li.playing .n { color: var(--mint); }
 .micbtn.live { background: var(--red); color: #fff; }
 .transport button { min-width: 42px; }
 li .play { padding: 1px 6px; }
+.stats { font-weight: 600; margin: 6px 0 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.likes { color: var(--red); display: inline-block; }
+.likes.bump { animation: bump .5s; }
+@keyframes bump { 30% { transform: scale(1.5); } }
+.card-flag { background: var(--amber); color: var(--ink); font-size: 12px; padding: 1px 6px; }
+.letters { margin-top: 10px; max-height: 260px; overflow: auto; }
+.letter { background: #3A2752; padding: 8px 10px; margin-top: 6px; }
+.letter .t { white-space: pre-wrap; overflow-wrap: anywhere; }
+.letter .m { color: var(--soft); font-size: 12px; display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+.letter.blocked { opacity: .55; }
+.stline { color: var(--soft); font-size: 13px; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -63,6 +74,7 @@ li .play { padding: 1px 6px; }
     <h2>Студия <span id="stFreq"></span> <span class="status" id="stState"></span>
       <button class="ghost x" id="stClose">закрыть студию</button></h2>
     <p class="now" id="stNow"></p>
+    <div class="stats"><span id="stListeners">слушают: 0</span><span class="likes" id="stLikes">♥ 0</span><span class="card-flag" id="stCard" hidden>жёлтая карточка</span></div>
     <div class="row transport">
       <button id="stPrev" title="предыдущий / сначала">⏮</button>
       <button id="stPlay" title="пауза / играть">⏯</button>
@@ -78,6 +90,9 @@ li .play { padding: 1px 6px; }
     <div class="vu" title="уровень эфира"><i id="vu"></i></div>
     <p class="note" style="margin:8px 0 0">Монитор — то, что слышат слушатели, с задержкой около секунды; только у вас, на эфир не влияет. Говорите в наушниках, иначе микрофон подхватит монитор.</p>
     <div class="prog err" id="stErr"></div>
+    <b style="display:block;margin-top:10px">Письма слушателей</b>
+    <div class="stline" id="stReport"></div>
+    <div class="letters" id="stLetters"><p class="note">Писем пока нет.</p></div>
   </section>
 
   <div class="card">
@@ -213,6 +228,7 @@ function card(s) {
 
   return el("div", { class: "card" }, head,
     el("p", { class: "now", textContent: s.now ? "♪ " + s.now : "" }),
+    s.onAir ? el("p", { class: "stline", textContent: "слушают: " + s.listeners + " · ♥ " + s.likes + " · писем: " + s.letters + (s.card ? " · жёлтая карточка" : "") }) : "",
     controls, files, drop, pick, prog, err);
 }
 
@@ -337,12 +353,15 @@ async function openStudio(s) {
   stErr();
   try { await ensureAudio(); } catch (e) { stErr("звук не включился: " + e.message); return; }
   connectMonitor();
+  lastLikes = -1; lettersKey = "";
+  loadLetters();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function closeStudio() {
   micOff();
   if (monWs) { monWs.onclose = null; monWs.close(); monWs = null; }
+  clearTimeout(lettersTimer);
   studio = null;
   $("studio").hidden = true;
   if (location.hash) history.replaceState(null, "", location.pathname);
@@ -433,6 +452,46 @@ function updateStudio(stations) {
   $("stState").className = "status" + (s.onAir ? " on" : s.busy ? " busy" : "");
   $("stPlay").textContent = s.paused ? "▶" : "⏸";
   $("stPlay").dataset.op = s.paused ? "play" : "pause";
+}
+
+// ---------- лайки и письма (как у ведущего в браузере) ----------
+const REPORTS = {
+  yellow: "отправителю письма выдана жёлтая карточка", banned: "отправитель лишён эфира", noted: "жалоба принята",
+  already: "жалоба на него уже есть", rate_limited: "слишком много жалоб за час", error: "жалоба не дошла — попробуйте ещё раз",
+};
+let lettersTimer = 0, lastLikes = -1, lettersKey = "";
+async function loadLetters() {
+  clearTimeout(lettersTimer);
+  if (!studio) return;
+  try {
+    const d = await api("GET", "/stations/api/letters?f=" + studio.f);
+    $("stListeners").textContent = "слушают: " + d.listeners;
+    const lk = $("stLikes");
+    lk.textContent = "♥ " + d.likes;
+    if (lastLikes >= 0 && d.likes > lastLikes) { lk.classList.remove("bump"); void lk.offsetWidth; lk.classList.add("bump"); }
+    lastLikes = d.likes;
+    $("stCard").hidden = !d.card;
+    $("stReport").textContent = d.lastReport ? "Жалоба на письмо: " + (REPORTS[d.lastReport] || d.lastReport) : "";
+    const key = JSON.stringify(d.letters.map(x => [x.id, x.blocked, x.report]));
+    if (key !== lettersKey) { lettersKey = key; renderLetters(d.letters); }
+  } catch (e) { /* станция ушла с эфира — студию закроет общий список */ }
+  lettersTimer = setTimeout(loadLetters, 3000);
+}
+function renderLetters(list) {
+  const box = $("stLetters");
+  if (!list.length) { box.innerHTML = '<p class="note">Писем пока нет.</p>'; return; }
+  const act = (id, op) => async () => {
+    if (op === "report" && !confirm("Пожаловаться на отправителя? Жалоба уйдёт в модерацию, письма от него больше не придут.")) return;
+    try { await api("POST", "/stations/api/letter?f=" + studio.f + "&op=" + op + "&id=" + id); } catch (e) { stErr(e.message); }
+    setTimeout(loadLetters, 400);
+  };
+  box.replaceChildren(...list.map(x => el("div", { class: "letter" + (x.blocked ? " blocked" : "") },
+    el("div", { class: "t", textContent: x.text }),
+    el("div", { class: "m" },
+      el("span", { textContent: new Date(x.at).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" }) }),
+      x.report ? el("span", { textContent: "пожаловались" }) : x.blocked ? el("span", { textContent: "письма от него не принимаются" }) :
+        el("button", { class: "ghost", textContent: "не принимать письма от него", on: { click: act(x.id, "block") } }),
+      x.report ? "" : el("button", { class: "danger", textContent: "пожаловаться", on: { click: act(x.id, "report") } })))));
 }
 
 const ctl = op => async () => {
