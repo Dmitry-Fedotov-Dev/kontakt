@@ -973,7 +973,7 @@
   },
   {
    "type": "row",
-   "title": "Люди и ссылки",
+   "title": "Эфир по UDP (docs/UDP_BROADCAST.md)",
    "collapsed": false,
    "id": 17,
    "gridPos": {
@@ -986,8 +986,8 @@
   },
   {
    "type": "timeseries",
-   "title": "Подключения",
-   "description": "Выходы станций в эфир, подключения приёмников, перенастройки ручки — за окно.",
+   "title": "Соединения WebRTC",
+   "description": "ok — UDP у ведущего прошёл; failed — ICE не прошёл (UDP режется в его сети); bad — плохое предложение; off — UDP на сервере выключен. Главная цифра пробного режима: доля ok.",
    "id": 18,
    "datasource": {
     "type": "prometheus",
@@ -996,6 +996,196 @@
    "gridPos": {
     "x": 0,
     "y": 32,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (result) (increase(kontakt_radio_rtc_connects_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "{{result}}",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Пакеты RTP от ведущих",
+   "description": "ok — дошли; lost — потеряны и заменены (PLC); late — опоздали или повтор; bad_size — не 20 мс. Потери считаются и пока звук идёт по TCP: по ним «Авто» решает переходить.",
+   "id": 19,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 32,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (kind) (rate(kontakt_radio_rtc_packets_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "{{kind}}",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Путь звука ведущих",
+   "description": "Переключения: rtc — звук ушёл на UDP, ws — вернулся на WebSocket (сам, при потерях или обрыве, или ведущий выбрал).",
+   "id": 20,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 32,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (path) (increase(kontakt_radio_host_audio_path_total{instance=~\"$instance\"}[$window]))",
+     "legendFormat": "{{path}}",
+     "range": true,
+     "instant": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 15,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Люди и ссылки",
+   "collapsed": false,
+   "id": 21,
+   "gridPos": {
+    "x": 0,
+    "y": 40,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Подключения",
+   "description": "Выходы станций в эфир, подключения приёмников, перенастройки ручки — за окно.",
+   "id": 22,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 41,
     "w": 8,
     "h": 8
    },
@@ -1069,14 +1259,14 @@
    "type": "timeseries",
    "title": "Ссылки на волну",
    "description": "page — открыли ссылку (люди и мессенджеры, которые строят карточку); image — запросили картинку превью; нарисовано — промахи кеша.",
-   "id": 19,
+   "id": 23,
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
    },
    "gridPos": {
     "x": 8,
-    "y": 32,
+    "y": 41,
     "w": 8,
     "h": 8
    },
@@ -1139,14 +1329,14 @@
    "type": "timeseries",
    "title": "Сколько длится эфир",
    "description": "Медиана и 90-й процентиль времени в эфире у станций, закончивших вещание за последний час.",
-   "id": 20,
+   "id": 24,
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
    },
    "gridPos": {
     "x": 16,
-    "y": 32,
+    "y": 41,
     "w": 8,
     "h": 8
    },
@@ -1208,11 +1398,11 @@
   {
    "type": "alertlist",
    "title": "Тревоги радио",
-   "id": 21,
+   "id": 25,
    "description": "Правила — monitoring/prometheus/rules/radio.yml.",
    "gridPos": {
     "x": 0,
-    "y": 40,
+    "y": 49,
     "w": 24,
     "h": 6
    },

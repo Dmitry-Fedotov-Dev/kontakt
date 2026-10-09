@@ -96,7 +96,9 @@ func (r *Registry) CounterVec(name, help, label string, known ...string) *Counte
 	return c
 }
 
-func (c *CounterVec) Inc(value string) {
+func (c *CounterVec) Inc(value string) { c.Add(value, 1) }
+
+func (c *CounterVec) Add(value string, n uint64) {
 	c.mu.Lock()
 	v := c.vals[value]
 	if v == nil {
@@ -104,7 +106,7 @@ func (c *CounterVec) Inc(value string) {
 		c.vals[value] = v
 	}
 	c.mu.Unlock()
-	v.Add(1)
+	v.Add(n)
 }
 
 // Value — текущее значение для одного значения метки (0, если событий не было).

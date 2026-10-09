@@ -136,6 +136,11 @@ type Options struct {
 	Exempt []*net.IPNet
 	// Passes — пропуска kontakt_pass (nil — без них).
 	Passes *admission.Passes
+
+	// RTCUDP — UDP-адрес эфира по WebRTC (rtc.go, docs/UDP_BROADCAST.md), например ":443"; пусто —
+	// только WebSocket. RTCIPs — публичные адреса для кандидатов ICE (пусто — адреса интерфейсов).
+	RTCUDP string
+	RTCIPs []string
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
@@ -194,6 +199,11 @@ type Hub struct {
 	listenAdmit *metrics.CounterVec
 	hostAdmit   *metrics.CounterVec
 	waves       *waveMemo // последнее название и логотип каждой волны (waves.go)
+
+	rtc         *rtcServer // эфир по UDP; nil — выключен
+	rtcConnects *metrics.CounterVec
+	rtcPackets  *metrics.CounterVec
+	audioPath   *metrics.CounterVec
 }
 
 type station struct {
@@ -339,7 +349,28 @@ func NewHub(opt Options) *Hub {
 		defer h.mu.Unlock()
 		return float64(len(h.ls))
 	})
+	h.rtcConnects = h.reg.CounterVec("kontakt_radio_rtc_connects_total",
+		"Эфир по UDP (WebRTC): ok — соединилось, failed — ICE не прошёл (UDP режется в сети ведущего), "+
+			"bad — плохое предложение, off — UDP на сервере выключен", "result", "ok", "failed", "bad", "off")
+	h.rtcPackets = h.reg.CounterVec("kontakt_radio_rtc_packets_total",
+		"Пакеты RTP от ведущих: ok — дошли, lost — потеряны (заменены), late — опоздали или повтор, bad_size — не 20 мс",
+		"kind", "ok", "lost", "late", "bad_size")
+	h.audioPath = h.reg.CounterVec("kontakt_radio_host_audio_path_total",
+		"Переключения пути звука ведущего: rtc — на UDP, ws — обратно на WebSocket", "path", rtcAudioRTC, rtcAudioWS)
+	if opt.RTCUDP != "" {
+		if h.rtc, err = newRTCServer(opt.RTCUDP, opt.RTCIPs); err != nil {
+			log.Printf("эфир по UDP выключен: %v", err)
+			h.rtc = nil
+		}
+	}
 	return h
+}
+
+// Close освобождает UDP-порт эфира по WebRTC (тесты; сервер живёт до выхода процесса).
+func (h *Hub) Close() {
+	if h.rtc != nil {
+		h.rtc.Close()
+	}
 }
 
 // Handler — всё радио: страница, два WebSocket, список станций, метрики.
@@ -634,9 +665,10 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 	h.mu.Unlock()
 	h.changed()
 	h.waves.Seen(f, name, logo)
+	audio := newHostAudio(h, s)
+	defer audio.closeRTC()
 
 	conn.SetReadLimit(maxHostText)
-	tokens, last := float64(burstBytes), time.Now()
 	counted, checked := false, time.Now()
 	for {
 		if h.opt.Mod != nil {
@@ -660,6 +692,9 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if typ == websocket.TextMessage {
+			if audio.text(data) { // WebRTC и путь звука (rtc.go)
+				continue
+			}
 			var m struct {
 				Title *string `json:"title"`
 				Logo  *string `json:"logo"`
@@ -679,21 +714,7 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 		if len(data) > maxMessage { // звук — кадрами по 160 байт; длинное двоичное не раздаём
 			continue
 		}
-		// Ведро токенов: больше 64 кбит/с в эфир не уходит, что бы ни прислал браузер.
-		now := time.Now()
-		tokens += now.Sub(last).Seconds() * bytesPerSec
-		last = now
-		if tokens > burstBytes {
-			tokens = burstBytes
-		}
-		if float64(len(data)) > tokens {
-			h.dropped.Inc("host_rate")
-			continue
-		}
-		tokens -= float64(len(data))
-		h.framesIn.Add(uint64((len(data) + FrameBytes - 1) / FrameBytes))
-		h.bytesIn.Add(uint64(len(data)))
-		h.broadcast(s, data)
+		audio.frame(data, false)
 	}
 }
 

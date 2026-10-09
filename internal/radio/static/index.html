@@ -183,6 +183,9 @@ button, input { font: inherit; color: inherit; }
 .airStats { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 8px; font-weight: 600; color: var(--cream); }
 .airStats[hidden] { display: none !important; }
 .listenCount { color: var(--amber); letter-spacing: .03em; }
+.txPath { font-size: 11px; font-weight: 400; color: #C9B6E4; }
+.txPath.warn { color: var(--amber); }
+.txPath[hidden] { display: none !important; }
 .likeCount { display: flex; justify-content: center; align-items: center; gap: 6px; font-weight: 600; color: var(--cream); }
 .likeCount[hidden] { display: none !important; }
 .likeCount .heartImg { width: 18px; height: 16px; }
@@ -284,8 +287,8 @@ button, input { font: inherit; color: inherit; }
 #setNoise::-moz-range-thumb { width: 16px; height: 24px; border-radius: 0; border: 0;
   background: #4A3463; box-shadow: 0 0 0 2px var(--ink), inset 3px 3px 0 #7A6898, inset -3px -3px 0 #2A1B3C; }
 #setNoise::-moz-range-track { background: transparent; }
-#setOutBox, #setInBox { display: grid; gap: 6px; }
-body:has(#txView[hidden]) #setInBox { display: none; } /* микрофон — только на вкладке «Вещать» */
+#setOutBox, #setInBox, #setTrBox { display: grid; gap: 6px; }
+body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { display: none; } /* микрофон и путь звука — только на вкладке «Вещать» */
 .setBox #setInMore { justify-self: start; border-color: #8A6D9E; color: #6B4A86; }
 
 .desk { display: flex; align-items: flex-end; justify-content: center; gap: 22px; flex-wrap: wrap; }
@@ -393,6 +396,7 @@ body:has(#txView[hidden]) #setInBox { display: none; } /* микрофон — �
         <span class="listenCount" id="listenCount"></span>
         <span class="likeCount" id="likeCount" hidden><img class="heartImg" alt=""><span id="likeTotal">0</span></span>
         <button type="button" class="letterCount" id="letterCount" hidden><img class="envImg" alt=""><span id="letterTotal">0</span></button>
+        <span class="txPath" id="txPath" hidden></span>
       </div>
       <div class="rules" data-i-html="consentHtml">выходя в эфир, ты подтверждаешь, что тебе 18+, и принимаешь <a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила</a></div>
       <button class="btn share" id="shareTx" hidden data-i="share">SHARE ↗</button>
@@ -474,6 +478,11 @@ body:has(#txView[hidden]) #setInBox { display: none; } /* микрофон — �
       <div class="setNote" id="setInNote"></div>
       <button type="button" class="report" id="setInMore" hidden data-i="setInAsk">показать микрофоны</button>
     </div>
+    <div id="setTrBox">
+      <label class="setRow" for="setTr"><span data-i="setTr">Звук эфира — по</span></label>
+      <select id="setTr"></select>
+      <div class="setNote" data-i="setTrNote">UDP не ждёт потерянных пакетов: эфир не замирает на плохой связи. Пробный режим.</div>
+    </div>
     <div class="cardBtns">
       <button type="button" class="report" id="setReset" data-i="setReset">по умолчанию</button>
       <button type="button" class="btn" id="setDone" data-i="setDone">ГОТОВО</button>
@@ -512,6 +521,11 @@ const I18N = {
     setOutGone: "устройство не найдено — играет как в системе", setOutDev: n => "устройство " + n,
     setIn: "Микрофон (для эфира)", setInHidden: "браузер покажет названия микрофонов после разрешения",
     setInAsk: "показать микрофоны", setInGone: "микрофон не найден — взят системный", setInDev: n => "микрофон " + n,
+    setTr: "Звук эфира — по", setTrAuto: "Авто: UDP, если сеть позволяет", setTrUdp: "UDP (WebRTC)", setTrTcp: "TCP (WebSocket)",
+    setTrNote: "UDP не ждёт потерянных пакетов: эфир не замирает на плохой связи. Пробный режим.",
+    trTcp: "TCP", trUdp: n => "UDP · потери " + n + " %", trUdpWait: "UDP: соединяю…",
+    udpFail: "UDP не проходит в этой сети — эфир идёт по TCP", udpLost: "UDP оборвался — эфир идёт по TCP",
+    udpOff: "UDP на сервере выключен — эфир идёт по TCP", udpLossy: "UDP теряет пакеты — эфир вернулся на TCP",
     logoAdd: "Логотип станции: картинка станет пиксельным значком 64×64", logoRemove: "Убрать логотип",
     logoBad: "не получилось прочитать картинку — попробуй PNG или JPG", logoSent: "логотип в эфире",
     airCount: n => n === 0 ? "в эфире пока тихо" : "в эфире: " + n + " " + (n % 10 === 1 && n % 100 !== 11 ? "станция" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "станции" : "станций"),
@@ -594,6 +608,11 @@ const I18N = {
     setOutGone: "device not found — playing on the system default", setOutDev: n => "device " + n,
     setIn: "Microphone (for broadcasting)", setInHidden: "the browser shows microphone names after you allow access",
     setInAsk: "show microphones", setInGone: "microphone not found — using the system one", setInDev: n => "microphone " + n,
+    setTr: "Broadcast audio goes over", setTrAuto: "Auto: UDP if the network allows", setTrUdp: "UDP (WebRTC)", setTrTcp: "TCP (WebSocket)",
+    setTrNote: "UDP doesn't wait for lost packets, so the broadcast doesn't freeze on a bad connection. Experimental.",
+    trTcp: "TCP", trUdp: n => "UDP · loss " + n + " %", trUdpWait: "UDP: connecting…",
+    udpFail: "UDP doesn't get through on this network — broadcasting over TCP", udpLost: "UDP dropped — broadcasting over TCP",
+    udpOff: "UDP is off on the server — broadcasting over TCP", udpLossy: "UDP is losing packets — back to TCP",
     logoAdd: "Station logo: the picture becomes a 64×64 pixel badge", logoRemove: "Remove the logo",
     logoBad: "couldn't read the picture — try PNG or JPG", logoSent: "logo is on air",
     airCount: n => n === 0 ? "the air is quiet for now" : "on air: " + n + (n === 1 ? " station" : " stations"),
@@ -897,10 +916,12 @@ function routeRx() {
 // в этом браузере: localStorage, а не сервер. Вывод переключается там, где звук реально играет:
 // у <audio> приёмника (rxEl) или, если браузер не дал играть через него, у самого AudioContext.
 // Шум по умолчанию — 20 %: на полном шум между станциями резал уши (отзывы слушателей 08.10).
-const PREFS_KEY = "radio-sound", PREFS_DEF = { noise: 0.2, sink: "", sinkLabel: "", mic: "", micLabel: "" };
+// transport — путь звука эфира: tcp | udp | auto (docs/UDP_BROADCAST.md); пока пробный — по умолчанию tcp
+const PREFS_KEY = "radio-sound", PREFS_DEF = { noise: 0.2, sink: "", sinkLabel: "", mic: "", micLabel: "", transport: "tcp" };
 let prefs = { ...PREFS_DEF };
 try { prefs = { ...PREFS_DEF, ...JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") }; } catch (_) { /* нет хранилища — по умолчанию */ }
 prefs.noise = Math.max(0, Math.min(1, Number(prefs.noise))); if (!isFinite(prefs.noise)) prefs.noise = PREFS_DEF.noise;
+if (!["tcp", "udp", "auto"].includes(prefs.transport)) prefs.transport = PREFS_DEF.transport;
 function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (_) { /* приватное окно — живут до перезагрузки */ } }
 const sinkTarget = () => rxEl && rxEl.setSinkId ? rxEl : ctx && ctx.setSinkId && !rxEl ? ctx : null;
 const canSink = () => !!(window.HTMLMediaElement && HTMLMediaElement.prototype.setSinkId) || !!(window.AudioContext && AudioContext.prototype.setSinkId);
@@ -985,8 +1006,14 @@ async function switchMic() {
   old.disconnect();
   if (oldStream) oldStream.getTracks().forEach(t => t.stop());
 }
+function fillTransport() {
+  const sel = $("setTr");
+  if (!window.RTCPeerConnection) { $("setTrBox").hidden = true; return; }
+  sel.replaceChildren(new Option(TXT.setTrTcp, "tcp"), new Option(TXT.setTrUdp, "udp"), new Option(TXT.setTrAuto, "auto"));
+  sel.value = ["tcp", "udp", "auto"].includes(prefs.transport) ? prefs.transport : "tcp";
+}
 function openSettings() {
-  showNoise(); fillOutputs(); fillInputs();
+  showNoise(); fillOutputs(); fillInputs(); fillTransport();
   $("setCard").hidden = false; $("setNoise").focus();
 }
 function closeSettings() { $("setCard").hidden = true; $("setBtn").focus(); }
@@ -1013,11 +1040,17 @@ $("setOutMore").addEventListener("click", async () => {
   fillOutputs();
 });
 $("setReset").addEventListener("click", () => {
-  const micWas = prefs.mic;
+  const micWas = prefs.mic, trWas = prefs.transport;
   prefs = { ...PREFS_DEF }; savePrefs();
-  setNoise(prefs.noise); applySink(true); fillOutputs(); fillInputs();
+  setNoise(prefs.noise); applySink(true); fillOutputs(); fillInputs(); fillTransport();
   if (micWas) switchMic();
+  if (trWas !== prefs.transport) applyTransport();
 });
+$("setTr").addEventListener("change", e => {
+  if (!["tcp", "udp", "auto"].includes(e.target.value)) return;
+  prefs.transport = e.target.value; savePrefs(); applyTransport();
+});
+fillTransport();
 $("setIn").addEventListener("change", e => {
   prefs.mic = e.target.value; prefs.micLabel = e.target.selectedOptions[0] ? e.target.selectedOptions[0].text : "";
   savePrefs(); switchMic();
@@ -1525,6 +1558,7 @@ function renderHost() {
   $("onair").setAttribute("aria-pressed", String(st.onAir));
   $("airStats").hidden = !st.onAir;
   $("listenCount").textContent = TXT.listenersNow(st.hostListeners);
+  renderTxPath();
   if (performance.now() < hintHold) return;
   if (connecting) return hostHint(TXT.connecting);
   if (reconnecting) return hostHint(TXT.reconnecting, true);
@@ -1552,6 +1586,8 @@ $("fUp").onclick = () => stepFreq(1);
 
 // Смеситель: микрофон и музыка → громкость эфира → полоса телефона → компрессор → 8 кГц кадры.
 let tx = null, hws = null, micSrc = null, micOn = false, micAn = null;
+// путь звука эфира (UDP — ниже, «эфир по UDP»): audioPath — куда сейчас идут кадры, rtc — соединение WebRTC
+let rtc = null, audioPath = "ws", rtcRetry = 0, lastOfferAt = -1e9, udpWin = [];
 // mon — монитор: что слышит сам ведущий; в эфир не идёт. Помним его между сессиями.
 const vol = { mic: 0.7, music: 0.7, air: 0.8, mon: 0.6 };
 try { const m = parseFloat(localStorage.getItem("radio-monitor")); if (m >= 0 && m <= 1) vol.mon = m; } catch (_) {}
@@ -1575,7 +1611,9 @@ async function ensureTx() {
   node.port.onmessage = e => {
     const { f, p } = e.data;
     vu(p);
-    if (hws && hws.readyState === 1 && hws.bufferedAmount < 16000) { hws.send(ulawEncode(f)); st.framesTx = (st.framesTx || 0) + 1; lastTxAt = performance.now(); }
+    // путь UDP: звук идёт треком WebRTC (браузер сам кодирует PCMU), кадры ворклета — только для индикатора
+    if (audioPath === "rtc") { st.framesTx = (st.framesTx || 0) + 1; lastTxAt = performance.now(); }
+    else if (hws && hws.readyState === 1 && hws.bufferedAmount < 16000) { hws.send(ulawEncode(f)); st.framesTx = (st.framesTx || 0) + 1; lastTxAt = performance.now(); }
     // Неотправленного больше секунды — связь ведущего с сервером тормозит (часто мобильный
     // интернет): слушатели слышат обрывы, а пачка опоздавших кадров потом отбрасывается.
     if (hws && hws.bufferedAmount > 8000 && performance.now() > slowWarnUntil) {
@@ -1583,7 +1621,7 @@ async function ensureTx() {
       hintHold = performance.now() + 4000; hostHint(TXT.slowUplink, true);
     }
   };
-  tx = { mix, air, music, monitor, mic, node };
+  tx = { mix, air, music, monitor, mic, node, comp };
   applyGains();
   return tx;
 }
@@ -1716,6 +1754,7 @@ function connectHost() {
     $("likeCount").hidden = true; // у нового эфира свой счёт
     inbox.length = 0; lettersAll = 0; $("letterCount").hidden = true;
     sendTitle(); if (hostLogoData) sendLogo(); renderHost();
+    audioPath = "ws"; startRtc(); // эфир начинается по TCP сразу, UDP поднимается рядом
   };
   ws.onmessage = e => {
     if (typeof e.data !== "string") return;
@@ -1728,10 +1767,12 @@ function connectHost() {
       if (m.letterReport) toast(TXT.reports[m.letterReport] || TXT.reportFail);
       if (typeof m.logo === "string") st.hostLogo = m.logo;
       if (m.logoError) { setLogo(""); toast(TXT.logoBad); }
+      if (m.rtc) onRtcAnswer(m.rtc);
+      if (m.udp) onUdpReport(m.udp);
     } catch (_) {}
   };
   ws.onclose = e => {
-    if (hws === ws) hws = null;
+    if (hws === ws) { hws = null; stopRtc(); audioPath = "ws"; }
     if (e.code === 4003) { // модерация: эфир закрыт, переподключаться незачем
       me.banned = true;
       wantAir = false; reconnecting = false; st.onAir = false; $("name").disabled = false;
@@ -1754,6 +1795,122 @@ function connectHost() {
   };
 }
 function shake(el) { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); }
+
+// ---------- эфир по UDP (docs/UDP_BROADCAST.md, на сервере — rtc.go) ----------
+// Звук идёт одним путём: кадрами по /ws/host (TCP) или треком WebRTC — RTP PCMU 20 мс по UDP, без
+// ожидания потерянного. /ws/host открыт всегда: управление, сигналинг WebRTC и запасной путь.
+// Смена пути — командой {"audio":…} по тому же сокету: она приходит после последнего кадра TCP,
+// поэтому на сервере нет ни дыры, ни дубля. Режимы: tcp — только сокет; udp — UDP сразу, как
+// соединится; auto — на UDP после двух отчётов сервера без потерь (4 с), обратно — при потерях
+// больше 5 % за 10 с. Не вышло — эфир идёт по TCP, новая попытка через минуту.
+const RTC_WAIT = 5000, RTC_RETRY = 60000, RTC_OFFER_GAP = 2100, AUTO_CLEAN = 2, AUTO_LOSS = 0.05, LOSS_WINDOW = 5;
+function setAudioPath(p) {
+  if (audioPath === p) return;
+  audioPath = p;
+  if (hws && hws.readyState === 1) hws.send(JSON.stringify({ audio: p }));
+  renderTxPath();
+}
+function startRtc() {
+  clearTimeout(rtcRetry); rtcRetry = 0;
+  if (rtc || !hws || hws.readyState !== 1 || !tx || prefs.transport === "tcp" || !window.RTCPeerConnection) return renderTxPath();
+  const wait = lastOfferAt + RTC_OFFER_GAP - performance.now(); // сервер принимает предложение не чаще раза в 2 с
+  if (wait > 0) { rtcRetry = setTimeout(startRtc, wait); return; }
+  const ws = hws, pc = new RTCPeerConnection({ bundlePolicy: "max-bundle" });
+  const dest = ctx.createMediaStreamDestination();
+  dest.channelCount = 1;
+  tx.comp.connect(dest); // та же смесь, что идёт в ворклет: полоса телефона и компрессор уже позади
+  const tr = pc.addTransceiver(dest.stream.getAudioTracks()[0], { direction: "sendonly", streams: [dest.stream] });
+  try { // только PCMU: формат эфира — μ-law, сервер переупаковывать не будет
+    const pcmu = RTCRtpSender.getCapabilities("audio").codecs.filter(c => /^audio\/PCMU$/i.test(c.mimeType));
+    if (pcmu.length && tr.setCodecPreferences) tr.setCodecPreferences(pcmu);
+  } catch (_) { /* сервер и так ответит только PCMU */ }
+  const me = rtc = { pc, dest, up: false, clean: 0 };
+  me.timer = setTimeout(() => { if (rtc === me && !me.up) rtcFail("udpFail"); }, RTC_WAIT);
+  pc.onconnectionstatechange = () => {
+    if (rtc !== me) return;
+    const s = pc.connectionState;
+    if (s === "connected") {
+      me.up = true; clearTimeout(me.timer);
+      if (prefs.transport === "udp") setAudioPath("rtc");
+    } else if (s === "disconnected") { // пропадала связь: переждать на TCP, вернётся — снова UDP
+      me.clean = 0;
+      if (audioPath === "rtc") setAudioPath("ws");
+    } else if (s === "failed" || s === "closed") rtcFail(me.up ? "udpLost" : "udpFail");
+    renderTxPath();
+  };
+  lastOfferAt = performance.now();
+  (async () => {
+    try {
+      await pc.setLocalDescription(await pc.createOffer());
+      await new Promise(ok => { // без trickle: кандидаты браузера — сразу в предложении (не дольше 1 с)
+        if (pc.iceGatheringState === "complete") return ok();
+        const t = setTimeout(ok, 1000);
+        pc.addEventListener("icegatheringstatechange", () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); ok(); } });
+      });
+      if (rtc === me && hws === ws && ws.readyState === 1) ws.send(JSON.stringify({ rtc: { offer: pc.localDescription.sdp } }));
+    } catch (_) { if (rtc === me) rtcFail("udpFail"); }
+  })();
+  renderTxPath();
+}
+function stopRtc() {
+  clearTimeout(rtcRetry); rtcRetry = 0;
+  udpWin = [];
+  if (!rtc) return;
+  const r = rtc; rtc = null;
+  clearTimeout(r.timer);
+  if (audioPath === "rtc") setAudioPath("ws");
+  try { r.pc.close(); } catch (_) { /* уже закрыто */ }
+  try { tx.comp.disconnect(r.dest); } catch (_) { /* уже отключено */ }
+  r.dest.stream.getTracks().forEach(t => t.stop());
+  renderTxPath();
+}
+function rtcFail(why) {
+  stopRtc();
+  if (prefs.transport === "tcp") return;
+  toast(TXT[why]);
+  rtcRetry = setTimeout(() => { rtcRetry = 0; if (wantAir) startRtc(); }, RTC_RETRY);
+}
+function onRtcAnswer(m) {
+  if (!rtc) return;
+  if (m.error === "off") { stopRtc(); toast(TXT.udpOff); return; } // до перезагрузки страницы не пробуем
+  if (m.error) return rtcFail("udpFail");
+  if (m.answer) rtc.pc.setRemoteDescription({ type: "answer", sdp: m.answer }).catch(() => rtcFail("udpFail"));
+}
+// onUdpReport — раз в 2 с от сервера: сколько пакетов дошло и потеряно за период
+function onUdpReport(u) {
+  if (!rtc || !rtc.up) return;
+  const n = (u.ok || 0) + (u.lost || 0);
+  if (!n) return;
+  udpWin.push([u.lost || 0, n]);
+  if (udpWin.length > LOSS_WINDOW) udpWin.shift();
+  if (prefs.transport === "auto") {
+    if (audioPath === "ws") {
+      rtc.clean = u.lost ? 0 : rtc.clean + 1;
+      if (rtc.clean >= AUTO_CLEAN) setAudioPath("rtc");
+    } else if (udpWin.length >= LOSS_WINDOW && udpLoss() > AUTO_LOSS) rtcFail("udpLossy");
+  }
+  renderTxPath();
+}
+function udpLoss() {
+  let lost = 0, n = 0;
+  for (const [l, k] of udpWin) { lost += l; n += k; }
+  return n ? lost / n : 0;
+}
+function renderTxPath() {
+  const el = $("txPath");
+  el.hidden = !st.onAir || (prefs.transport === "tcp" && audioPath === "ws");
+  const loss = Math.round(udpLoss() * 1000) / 10;
+  el.textContent = audioPath === "rtc" ? TXT.trUdp(loss) : rtc && !rtc.up ? TXT.trUdpWait : TXT.trTcp;
+  el.classList.toggle("warn", audioPath === "rtc" && loss > 2);
+}
+// applyTransport — режим сменили в шестерёнке во время эфира
+function applyTransport() {
+  stopRtc();
+  if (wantAir && hws) startRtc();
+  renderTxPath();
+}
+// /ws/host молчит, пока звук идёт по UDP, — сервер закрыл бы его через 30 с тишины
+setInterval(() => { if (audioPath === "rtc" && hws && hws.readyState === 1) hws.send('{"ping":1}'); }, 10000);
 
 // ---------- логотип станции ----------
 // Картинку браузер сам обрезает по центру до квадрата и уменьшает до 64×64 — в эфир уходит PNG

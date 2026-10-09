@@ -33,6 +33,8 @@ func main() {
 	keyPath := flag.String("key", "", "ключ для -direct (PEM)")
 	castDir := flag.String("stations", "", "каталог постоянных станций с сервера (страница /stations/ на -admin); пусто — выключено")
 	castQuota := flag.Int64("stations-quota-gb", 10, "сколько ГБ файлов можно хранить для станций с сервера")
+	rtcUDP := flag.String("rtc-udp", "", "UDP-адрес эфира по WebRTC (docs/UDP_BROADCAST.md), например :443; пусто — звук ведущего только по WebSocket")
+	rtcIP := flag.String("rtc-ip", "", "публичный IPv4 для кандидатов WebRTC, если сервер за NAT (через запятую); пусто — адреса интерфейсов")
 	flag.Parse()
 	log.SetPrefix("[radio]  ")
 
@@ -61,7 +63,8 @@ func main() {
 		}
 	}
 	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod,
-		LinksPath: *linksPath, DirectPort: directPort, LogosDir: *logosDir, HostLogos: *hostLogos})
+		LinksPath: *linksPath, DirectPort: directPort, LogosDir: *logosDir, HostLogos: *hostLogos,
+		RTCUDP: *rtcUDP, RTCIPs: splitList(*rtcIP)})
 	if *directAddr != "" {
 		go func() { log.Fatal(radio.ServeDirect(*directAddr, *certPath, *keyPath, h.Handler())) }()
 		log.Printf("прямой HTTPS для эфира: %s", *directAddr)
@@ -98,4 +101,14 @@ func main() {
 	}
 	log.Printf("Открытое радио: http://%s", shown)
 	log.Fatal(http.ListenAndServe(*addr, h.Handler()))
+}
+
+// splitList — «a, b» → [a b]; пусто — nil.
+func splitList(s string) (out []string) {
+	for _, v := range strings.Split(s, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }

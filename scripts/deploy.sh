@@ -190,6 +190,12 @@ cat > /etc/caddy/Caddyfile <<'CFG'
 # scripts/deploy.sh https — разводка путей как у туннеля: /sip, /api → signal, /media → media,
 # сокеты радио /radio/ws/* → радио; остальное (и страницы /radio/) → web. Журнал запросов Caddy
 # не ведёт: IP посетителей никуда не пишутся.
+# Без HTTP/3: UDP 443 — эфир радио по WebRTC (docs/UDP_BROADCAST.md); QUIC к серверу из РФ и так режется.
+{
+	servers {
+		protocols h1 h2
+	}
+}
 $domain {
 	@signal path /sip /api/*
 	reverse_proxy @signal 127.0.0.1:8081

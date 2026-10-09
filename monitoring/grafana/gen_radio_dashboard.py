@@ -83,6 +83,18 @@ ts("Перезапуски", "Время запуска сервера: ступ
    [(f'max(kontakt_radio_start_time_seconds{{{I}}}) * 1000', "запущен")], 16, 8, unit="dateTimeAsIso")
 y[0] += 8
 
+row("Эфир по UDP (docs/UDP_BROADCAST.md)")
+ts("Соединения WebRTC", "ok — UDP у ведущего прошёл; failed — ICE не прошёл (UDP режется в его сети); bad — плохое "
+   "предложение; off — UDP на сервере выключен. Главная цифра пробного режима: доля ok.",
+   [(f'sum by (result) (increase(kontakt_radio_rtc_connects_total{{{I}}}[{W}]))', "{{result}}")], 0, 8, unit="short")
+ts("Пакеты RTP от ведущих", "ok — дошли; lost — потеряны и заменены (PLC); late — опоздали или повтор; bad_size — "
+   "не 20 мс. Потери считаются и пока звук идёт по TCP: по ним «Авто» решает переходить.",
+   [(f'sum by (kind) (rate(kontakt_radio_rtc_packets_total{{{I}}}[{W}]))', "{{kind}}")], 8, 8, unit="short")
+ts("Путь звука ведущих", "Переключения: rtc — звук ушёл на UDP, ws — вернулся на WebSocket (сам, при потерях или обрыве, "
+   "или ведущий выбрал).",
+   [(f'sum by (path) (increase(kontakt_radio_host_audio_path_total{{{I}}}[{W}]))', "{{path}}")], 16, 8, unit="short")
+y[0] += 8
+
 row("Люди и ссылки")
 ts("Подключения", "Выходы станций в эфир, подключения приёмников, перенастройки ручки — за окно.",
    [(f'sum(increase(kontakt_radio_host_sessions_total{{{I}}}[{W}]))', "станций вышло в эфир"),
