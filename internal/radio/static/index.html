@@ -132,6 +132,9 @@ button, input { font: inherit; color: inherit; }
 .logoDel { position: absolute; left: -6px; top: -9px; width: 16px; height: 16px; padding: 0; border: 0; cursor: pointer;
   background: var(--ink); color: var(--cream); font-size: 10px; line-height: 16px; }
 .logoDel[hidden] { display: none; }
+/* логотип по доступу из бота вещателей: ссылка в Telegram под названием */
+.logoAuth { display: block; text-align: center; font-size: 12px; color: var(--amber); margin-top: 8px; }
+.logoAuth[hidden] { display: none; }
 .name {
   display: block; width: min(260px, 100%); margin: 12px auto 0; padding: 5px 8px; border: 0; text-align: center;
   background: var(--lcd); color: var(--amber); box-shadow: 0 0 0 3px var(--ink);
@@ -390,6 +393,7 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
         <button type="button" class="logoDel" id="logoDel" hidden aria-label="Убрать логотип" data-i-aria="logoRemove">✕</button>
       </div>
       <input type="file" id="logoFile" accept="image/*" hidden>
+      <a class="logoAuth" id="logoAuth" target="_blank" rel="noopener" hidden></a>
       <div class="hint" id="hostHint">&nbsp;</div>
       <!-- в эфире: сколько слушают и лайки за эфир — отдельной строкой, подсказку перебивают другие сообщения -->
       <div class="airStats" id="airStats" hidden>
@@ -528,6 +532,8 @@ const I18N = {
     udpOff: "UDP на сервере выключен — эфир идёт по TCP", udpLossy: "UDP теряет пакеты — эфир вернулся на TCP",
     logoAdd: "Логотип станции: картинка станет пиксельным значком 64×64", logoRemove: "Убрать логотип",
     logoBad: "не получилось прочитать картинку — попробуй PNG или JPG", logoSent: "логотип в эфире",
+    logoAuth: "логотип — по доступу из Telegram: открыть бота →", logoAuthFail: "бот сейчас не на связи — попробуй позже",
+    logoGranted: "доступ к логотипу выдан", logoRevoked: "доступ к логотипу отозван",
     airCount: n => n === 0 ? "в эфире пока тихо" : "в эфире: " + n + " " + (n % 10 === 1 && n % 100 !== 11 ? "станция" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "станции" : "станций"),
     letterAria: "Письмо ведущему с лайком", letterTitle: "Письмо ведущему", letterPh: "Пару слов ведущему — он увидит, но не узнает от кого",
     letterSend: "ОТПРАВИТЬ ♥", cancel: "ОТМЕНА", close: "ЗАКРЫТЬ", nextLetter: "СЛЕДУЮЩЕЕ",
@@ -615,6 +621,8 @@ const I18N = {
     udpOff: "UDP is off on the server — broadcasting over TCP", udpLossy: "UDP is losing packets — back to TCP",
     logoAdd: "Station logo: the picture becomes a 64×64 pixel badge", logoRemove: "Remove the logo",
     logoBad: "couldn't read the picture — try PNG or JPG", logoSent: "logo is on air",
+    logoAuth: "the logo needs access via Telegram: open the bot →", logoAuthFail: "the bot is offline — try later",
+    logoGranted: "logo access granted", logoRevoked: "logo access revoked",
     airCount: n => n === 0 ? "the air is quiet for now" : "on air: " + n + (n === 1 ? " station" : " stations"),
     letterAria: "Letter to the host with a like", letterTitle: "Letter to the host", letterPh: "A few words to the host — they'll see it but won't know who sent it",
     letterSend: "SEND ♥", cancel: "CANCEL", close: "CLOSE", nextLetter: "NEXT",
@@ -1767,6 +1775,7 @@ function connectHost() {
       if (m.letterReport) toast(TXT.reports[m.letterReport] || TXT.reportFail);
       if (typeof m.logo === "string") st.hostLogo = m.logo;
       if (m.logoError) { setLogo(""); toast(TXT.logoBad); }
+      if (typeof m.logoAccess === "boolean") gotLogoAccess(m.logoAccess, true);
       if (m.rtc) onRtcAnswer(m.rtc);
       if (m.udp) onUdpReport(m.udp);
     } catch (_) {}
@@ -1915,8 +1924,11 @@ setInterval(() => { if (audioPath === "rtc" && hws && hws.readyState === 1) hws.
 // ---------- логотип станции ----------
 // Картинку браузер сам обрезает по центру до квадрата и уменьшает до 64×64 — в эфир уходит PNG
 // в пару килобайт (logos.go на сервере). Логотип помним между эфирами в этом браузере.
-// Пока логотипы ставит только модератор, сервер не отдаёт метатег host-logos — ячейки нет.
-const HOST_LOGOS = !!document.querySelector('meta[name="host-logos"]');
+// Метатег host-logos: "1" — логотип ставит любой ведущий, "bot" — по доступу, который выдаёт владелец
+// в боте вещателей (castbot.go на сервере); без метатега логотипы ставит только модератор — ячейки нет.
+const LOGO_MODE = (document.querySelector('meta[name="host-logos"]') || {}).content || "";
+const HOST_LOGOS = !!LOGO_MODE;
+let logoOK = LOGO_MODE === "1", logoPoll = 0;
 let hostLogoData = "";
 try { if (HOST_LOGOS) hostLogoData = localStorage.getItem("radio-logo") || ""; } catch (_) {}
 function renderLogo() {
@@ -1928,8 +1940,43 @@ function renderLogo() {
   $("logoDel").hidden = !has;
 }
 function sendLogo() {
-  if (hws && hws.readyState === 1) hws.send(JSON.stringify({ logo: hostLogoData }));
+  if (logoOK && hws && hws.readyState === 1) hws.send(JSON.stringify({ logo: hostLogoData }));
 }
+// Доступ к логотипу через бота: ссылку показываем по нажатию «+», а открывает её сам человек —
+// окно, открытое после запроса к серверу, браузер счёл бы всплывающим. Пока ссылка на экране,
+// спрашиваем сервер, не выдан ли доступ (и сразу — когда человек вернулся из Telegram).
+function checkLogoAccess() {
+  if (LOGO_MODE !== "bot") return Promise.resolve(logoOK);
+  return fetch(BASE + "/api/logo-access", { cache: "no-store" }).then(r => r.json())
+    .then(m => { gotLogoAccess(!!m.ok, false); return logoOK; }).catch(() => logoOK);
+}
+function gotLogoAccess(ok, live) {
+  const was = logoOK, waiting = !!logoPoll || live; // при открытии страницы — без «выдан»
+  logoOK = ok;
+  if (ok) {
+    $("logoAuth").hidden = true;
+    clearInterval(logoPoll); logoPoll = 0;
+    if (!was) { if (waiting) toast(TXT.logoGranted); sendLogo(); }
+  } else if (was && live) {
+    toast(TXT.logoRevoked);
+  }
+}
+async function askLogoAccess() {
+  if (await checkLogoAccess()) return $("logoFile").click(); // мог быть выдан в другой вкладке
+  try {
+    const r = await fetch(BASE + "/api/logo-access", { method: "POST", cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    const m = await r.json();
+    $("logoAuth").href = m.link;
+    $("logoAuth").textContent = TXT.logoAuth;
+    $("logoAuth").hidden = false;
+    clearInterval(logoPoll);
+    const until = Date.now() + 15 * 60 * 1000;
+    logoPoll = setInterval(() => { if (Date.now() > until) { clearInterval(logoPoll); logoPoll = 0; } else checkLogoAccess(); }, 3000);
+  } catch (_) { toast(TXT.logoAuthFail); }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && logoPoll) checkLogoAccess(); });
+if (LOGO_MODE === "bot") checkLogoAccess();
 function setLogo(data) {
   hostLogoData = data;
   if (!data) st.hostLogo = "";
@@ -1983,7 +2030,7 @@ async function toLogo(file) {
     return data;
   } finally { URL.revokeObjectURL(url); }
 }
-$("logoSlot").onclick = () => $("logoFile").click();
+$("logoSlot").onclick = () => logoOK ? $("logoFile").click() : askLogoAccess();
 $("logoDel").onclick = () => setLogo("");
 $("logoFile").onchange = async e => {
   const f = e.target.files && e.target.files[0];

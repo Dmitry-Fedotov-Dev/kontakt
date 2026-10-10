@@ -141,6 +141,12 @@ type Options struct {
 	// только WebSocket. RTCIPs — публичные адреса для кандидатов ICE (пусто — адреса интерфейсов).
 	RTCUDP string
 	RTCIPs []string
+
+	// BotToken — бот вещателей (castbot.go): доступ к логотипу выдаёт владелец BotOwner (его id в
+	// Telegram) кнопкой в боте. Пусто — бота нет. С HostLogos бот не нужен: логотип открыт всем.
+	BotToken string
+	BotOwner int64
+	BotAPI   string // https://api.telegram.org; в тестах — подделка
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
@@ -199,6 +205,10 @@ type Hub struct {
 	listenAdmit *metrics.CounterVec
 	hostAdmit   *metrics.CounterVec
 	waves       *waveMemo // последнее название и логотип каждой волны (waves.go)
+
+	access     *logoAccess // кому бот выдал логотип (logoaccess.go)
+	bot        *castBot    // nil — бота нет
+	logoAccess *metrics.CounterVec
 
 	rtc         *rtcServer // эфир по UDP; nil — выключен
 	rtcConnects *metrics.CounterVec
@@ -363,11 +373,22 @@ func NewHub(opt Options) *Hub {
 			h.rtc = nil
 		}
 	}
+	h.access = openLogoAccess(h.logos.dir)
+	h.logoAccess = h.reg.CounterVec("kontakt_radio_logo_access_total",
+		"Доступ к логотипу через бота: link — ссылка в бота, request — запрос владельцу, granted / denied — его решение, "+
+			"rejoined — тот же аккаунт из нового браузера, revoked — отозван", "event", "link", "request", "granted", "denied", "rejoined", "revoked")
+	if opt.BotToken != "" && !opt.HostLogos {
+		h.bot = newCastBot(h, opt.BotAPI, opt.BotToken, opt.BotOwner)
+		go h.bot.run()
+	}
 	return h
 }
 
 // Close освобождает UDP-порт эфира по WebRTC (тесты; сервер живёт до выхода процесса).
 func (h *Hub) Close() {
+	if h.bot != nil {
+		h.bot.Close()
+	}
 	if h.rtc != nil {
 		h.rtc.Close()
 	}
@@ -388,6 +409,7 @@ func (h *Hub) Handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(h.Stations())
 	})
+	mux.HandleFunc("/api/logo-access", h.serveLogoAccess)
 	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
 		out := map[string]any{"moderation": h.opt.Mod != nil, "banned": false, "cards": 0}
 		if h.opt.Mod != nil {
@@ -703,8 +725,10 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 				h.titleChanged(s, clean(*m.Title, titleRunes))
 			}
 			if m.Logo != nil {
-				if h.opt.HostLogos {
+				if h.canLogo(s.host) {
 					h.setLogo(s, *m.Logo)
+				} else if h.bot != nil {
+					s.sayHost(map[string]bool{"logoAccess": false})
 				}
 				continue
 			}

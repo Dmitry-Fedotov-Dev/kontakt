@@ -6,6 +6,9 @@ PartOf=kontakt.target
 [Service]
 User=kontakt
 WorkingDirectory=/opt/kontakt
+# RADIO_BOT_TOKEN — бот вещателей (логотип по доступу, internal/radio/castbot.go), TELEGRAM_CHAT_ID — кто
+# выдаёт доступ. Файла нет или токена в нём нет — бота нет, логотип ставит только модератор.
+EnvironmentFile=-/opt/kontakt/.env
 ExecStart=/opt/kontakt/current/bin/radio -http 127.0.0.1:8083 -admin 127.0.0.1:8093 -mod http://127.0.0.1:8091 \
   -links /opt/kontakt/data/radio-links.json -logos /opt/kontakt/data/radio-logos -max-stations 206 -max-listeners 1700 \
   -stations /opt/kontakt/data/stations -stations-quota-gb 10 -rtc-udp :443

@@ -1,8 +1,9 @@
 // Package notify — Telegram-бот владельца: тревоги Prometheus, события модерации и команды
 // модерации из одного чата.
 //
-// Пишет только в чат владельца (TELEGRAM_CHAT_ID) и слушает только его: сообщения из других
-// чатов молча пропускаются. В сообщениях — ключи записей модерации (хеш куки), зоны и
+// Бот владельца пишет только в его чат (TELEGRAM_CHAT_ID) и слушает только его: сообщения из
+// других чатов молча пропускаются. Клиент Bot ниже общий — им же говорит бот вещателей радио
+// (internal/radio/castbot.go), которому писать приходится и чужим чатам (SendTo). В сообщениях — ключи записей модерации (хеш куки), зоны и
 // названия тревог; ни кук, ни IP, ни названий станций.
 package notify
 
@@ -38,6 +39,7 @@ type Update struct {
 		Chat struct {
 			ID int64 `json:"id"`
 		} `json:"chat"`
+		From *User  `json:"from"`
 		Text string `json:"text"`
 	} `json:"message"`
 	Callback *struct {
@@ -51,6 +53,14 @@ type Update struct {
 			} `json:"chat"`
 		} `json:"message"`
 	} `json:"callback_query"`
+}
+
+// User — отправитель сообщения.
+type User struct {
+	ID        int64  `json:"id"`
+	Username  string `json:"username"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
 }
 
 func (b *Bot) call(method string, params, out any) error {
@@ -85,8 +95,11 @@ func keyboard(rows [][]Button) any {
 }
 
 // Send — сообщение в чат владельца (HTML: экранирует вызывающий).
-func (b *Bot) Send(html string, rows ...[]Button) error {
-	p := map[string]any{"chat_id": b.Chat, "text": html, "parse_mode": "HTML", "disable_web_page_preview": true}
+func (b *Bot) Send(html string, rows ...[]Button) error { return b.SendTo(b.Chat, html, rows...) }
+
+// SendTo — сообщение в любой чат, где бота уже открыли (HTML: экранирует вызывающий).
+func (b *Bot) SendTo(chat int64, html string, rows ...[]Button) error {
+	p := map[string]any{"chat_id": chat, "text": html, "parse_mode": "HTML", "disable_web_page_preview": true}
 	if k := keyboard(rows); k != nil {
 		p["reply_markup"] = k
 	}
@@ -109,4 +122,13 @@ func (b *Bot) Updates(offset int64, wait time.Duration) ([]Update, error) {
 	err := b.call("getUpdates", map[string]any{"offset": offset, "timeout": int(wait.Seconds()),
 		"allowed_updates": []string{"message", "callback_query"}}, &u)
 	return u, err
+}
+
+// Me — имя бота (@username без @): из него собирается ссылка t.me/имя?start=….
+func (b *Bot) Me() (string, error) {
+	var u User
+	if err := b.call("getMe", map[string]any{}, &u); err != nil {
+		return "", err
+	}
+	return u.Username, nil
 }

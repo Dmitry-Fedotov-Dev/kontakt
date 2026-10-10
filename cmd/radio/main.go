@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -35,8 +36,16 @@ func main() {
 	castQuota := flag.Int64("stations-quota-gb", 10, "сколько ГБ файлов можно хранить для станций с сервера")
 	rtcUDP := flag.String("rtc-udp", "", "UDP-адрес эфира по WebRTC (docs/UDP_BROADCAST.md), например :443; пусто — звук ведущего только по WebSocket")
 	rtcIP := flag.String("rtc-ip", "", "публичный IPv4 для кандидатов WebRTC, если сервер за NAT (через запятую); пусто — адреса интерфейсов")
+	botAPI := flag.String("bot-api", "https://api.telegram.org", "Bot API бота вещателей (токен — RADIO_BOT_TOKEN, владелец — TELEGRAM_CHAT_ID, оба из окружения)")
 	flag.Parse()
 	log.SetPrefix("[radio]  ")
+
+	// Бот вещателей (доступ к логотипу): токен — только из окружения, в флагах его видно в списке процессов.
+	botToken := os.Getenv("RADIO_BOT_TOKEN")
+	botOwner, _ := strconv.ParseInt(os.Getenv("TELEGRAM_CHAT_ID"), 10, 64)
+	if botToken != "" && botOwner == 0 {
+		log.Fatal("RADIO_BOT_TOKEN без TELEGRAM_CHAT_ID: запросы на логотип некому выдавать")
+	}
 
 	var mod moderation.Moderator
 	var store *moderation.Store
@@ -64,7 +73,7 @@ func main() {
 	}
 	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod,
 		LinksPath: *linksPath, DirectPort: directPort, LogosDir: *logosDir, HostLogos: *hostLogos,
-		RTCUDP: *rtcUDP, RTCIPs: splitList(*rtcIP)})
+		RTCUDP: *rtcUDP, RTCIPs: splitList(*rtcIP), BotToken: botToken, BotOwner: botOwner, BotAPI: *botAPI})
 	if *directAddr != "" {
 		go func() { log.Fatal(radio.ServeDirect(*directAddr, *certPath, *keyPath, h.Handler())) }()
 		log.Printf("прямой HTTPS для эфира: %s", *directAddr)

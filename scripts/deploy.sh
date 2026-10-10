@@ -101,12 +101,13 @@ EOS
   ;;
 
 env)
-  [ -f .env ] || { echo "нет .env в корне репозитория (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)"; exit 1; }
+  [ -f .env ] || { echo "нет .env в корне репозитория (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, RADIO_BOT_TOKEN)"; exit 1; }
   remote 'umask 077; cat > /tmp/kontakt.env' <.env
   sudo_remote <<'EOS'
 install -m 600 -o kontakt -g kontakt /tmp/kontakt.env /opt/kontakt/.env && rm -f /tmp/kontakt.env
 systemctl restart kontakt-notify 2>/dev/null || true
 echo ".env на месте (600, kontakt), бот перезапущен"
+echo "бот вещателей (RADIO_BOT_TOKEN) — при следующем перезапуске радио: systemctl restart kontakt-radio (эфиры прервутся)"
 EOS
   ;;
 

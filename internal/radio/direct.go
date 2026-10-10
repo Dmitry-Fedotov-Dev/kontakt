@@ -77,14 +77,15 @@ func ServeDirect(addr, certPath, keyPath string, handler http.Handler) error {
 }
 
 // airPortMeta — порт прямого эфира для страницы (пусто — его нет, сокеты через web/Caddy); заодно —
-// можно ли ведущему ставить логотип самому (без метатега ячейка логотипа скрыта).
+// можно ли ведущему ставить логотип самому: "1" — всем, "bot" — по доступу из бота вещателей, без
+// метатега ячейка логотипа скрыта.
 func (h *Hub) airPortMeta() string {
 	m := ""
 	if h.opt.DirectPort != 0 {
 		m = fmt.Sprintf(`<meta name="air-port" content="%d">`+"\n", h.opt.DirectPort)
 	}
-	if h.opt.HostLogos {
-		m += `<meta name="host-logos" content="1">` + "\n"
+	if mode := h.logoMode(); mode != "" {
+		m += `<meta name="host-logos" content="` + mode + `">` + "\n"
 	}
 	return m
 }

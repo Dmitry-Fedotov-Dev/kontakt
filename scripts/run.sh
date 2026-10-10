@@ -13,7 +13,8 @@
 # пока стенд должен работать.
 #
 # Telegram-бот (cmd/notify): если в .env есть TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID — тревоги,
-# карточки и баны приходят в чат. Упавший бот стенд не останавливает.
+# карточки и баны приходят в чат. Упавший бот стенд не останавливает. RADIO_BOT_TOKEN в .env — бот
+# вещателей внутри радио (логотип по доступу); NOTIFY=0 выключает и его.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -52,6 +53,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 notify=""
+[ "${NOTIFY:-1}" != 0 ] || unset RADIO_BOT_TOKEN # бот вещателей — тот же запрет: его токен у прода
 # NOTIFY=0 — без бота: второй стенд рядом (Telegram отдаёт обновления только одному боту с токеном)
 if [ "${NOTIFY:-1}" != 0 ] && [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
   ./bin/notify -http "127.0.0.1:$NOTIFY_HTTP" -admin "http://127.0.0.1:$SIGNAL_ADMIN" \
