@@ -83,9 +83,14 @@ button, input { font: inherit; color: inherit; }
 }
 .sticker { display: flex; align-items: center; gap: 10px; }
 .stText { min-width: 0; }
-/* логотип станции — пиксельный значок 64×64 без сглаживания и без рамки: форма — его собственная */
-.stLogo { width: 44px; height: 44px; flex: none; image-rendering: pixelated; border-radius: 50%; } /* любой логотип — в круге */
+/* логотип станции — круг слева от наклейки: значок 64×64, увеличенный без сглаживания; нет логотипа —
+   наклейка одна по центру */
+.stRow { display: flex; align-items: center; justify-content: center; gap: 22px; margin-top: 14px; }
+.stRow .sticker { margin: 0; min-width: 0; }
+.stLogo { width: 120px; height: 120px; flex: none; image-rendering: pixelated; border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--ink), 4px 4px 0 3px rgba(0,0,0,.35); }
 .stLogo[hidden] { display: none; }
+@media (max-width: 600px) { .stRow { gap: 14px; } .stLogo { width: 100px; height: 100px; } }
 .sticker b { display: block; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sticker span { display: block; font-size: 13px; color: #6B4A2A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sticker.glitch b, .sticker.glitch span { animation: tear .12s steps(1) infinite; }
@@ -369,7 +374,7 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
               aria-label="Ручка настройки: крутите, чтобы переключать станции" data-i-aria="knobAria"
               aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100.0"></canvas>
     </div>
-    <div class="sticker" id="sticker" aria-live="polite"><img class="stLogo" id="stLogo" alt="" hidden><div class="stText"><b id="st1" data-i="stickerIdle">крутни ручку</b><span id="st2">&nbsp;</span></div></div>
+    <div class="stRow"><img class="stLogo" id="stLogo" alt="" hidden><div class="sticker" id="sticker" aria-live="polite"><div class="stText"><b id="st1" data-i="stickerIdle">крутни ручку</b><span id="st2">&nbsp;</span></div></div></div>
     <div class="shareRow"><button class="btn share" id="shareRx" hidden data-i="share">SHARE ↗</button></div>
     <div class="rxRow">
       <button class="btn likeBtn" id="likeRx" hidden aria-label="Like" data-i-aria="likeAria"><img class="heartImg" alt=""></button>
@@ -2485,6 +2490,7 @@ let shared = null;
   }
 }
 $("sticker").addEventListener("pointerdown", () => powerOn());
+$("stLogo").addEventListener("pointerdown", () => powerOn());
 st.knobAngle = (st.dial - MIN) / TURN_MHZ * 2 * Math.PI;
 setInterval(() => { if (st.mode === "tx") renderHost(); }, 1000);
 renderQueue();
