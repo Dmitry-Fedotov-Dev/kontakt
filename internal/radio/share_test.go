@@ -104,9 +104,9 @@ func TestOGImage(t *testing.T) {
 // Пустое имя в ссылке берётся у станции в эфире; трек — только из ссылки.
 func TestShareUsesLiveName(t *testing.T) {
 	hub := NewHub(Options{})
-	hub.st[1017] = &station{freq: 1017, name: "Живая", title: "сейчас играет"}
+	hub.st[1017] = &station{freq: 1017, name: "Живая", title: "Трек-из-эфира"}
 	_, body, _ := get(t, hub.Handler(), "/w/101.7", nil)
-	if !strings.Contains(body, "Живая · 101.7 МГц") || strings.Contains(body, "сейчас играет") {
+	if !strings.Contains(body, "Живая · 101.7 МГц") || strings.Contains(body, "Трек-из-эфира") {
 		t.Fatal("имя живой станции не подставилось или подставился трек")
 	}
 }

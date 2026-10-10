@@ -85,14 +85,27 @@ button, input { font: inherit; color: inherit; }
 .stText { min-width: 0; }
 /* логотип станции — круг слева от наклейки: значок 64×64, увеличенный без сглаживания; нет логотипа —
    наклейка одна по центру */
-.stRow { display: flex; align-items: center; justify-content: center; gap: 22px; margin-top: 14px; }
-.stRow .sticker { margin: 0; min-width: 0; }
-.stLogo { width: 120px; height: 120px; flex: none; image-rendering: pixelated; border-radius: 50%;
-  box-shadow: 0 0 0 3px var(--ink), 4px 4px 0 3px rgba(0,0,0,.35); }
+/* Ручка гоняет станции с логотипом и без: высота строки — всегда по логотипу, наклейка — всегда по
+   центру (средняя колонка), логотип — в левой и на узком экране сжимается. Иначе на телефоне всё ниже
+   прыгало вверх-вниз, а наклейка — вбок. */
+.stRow { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center;
+  column-gap: 22px; margin-top: 14px; min-height: 126px; }
+.stRow .sticker { grid-column: 2; margin: 0; min-width: 0; width: 260px; justify-content: center; } /* ширина — постоянная: длинное название — с многоточием */
+.stLogo { grid-column: 1; grid-row: 1; justify-self: end; width: 120px; max-width: 100%; height: auto; aspect-ratio: 1;
+  min-width: 0; image-rendering: pixelated; border-radius: 50%; box-shadow: 0 0 0 3px var(--ink), 4px 4px 0 3px rgba(0,0,0,.35); }
 .stLogo[hidden] { display: none; }
-@media (max-width: 600px) { .stRow { gap: 14px; } .stLogo { width: 100px; height: 100px; } }
+/* Телефон: по центру логотипу 100 px места нет — место под круг слева есть всегда (пустое — кружок, как
+   ячейка логотипа на «Вещать»), наклейка — на всю оставшуюся ширину: ни размер, ни место не зависят
+   от станции под ручкой. */
+@media (max-width: 600px) {
+  .stRow { grid-template-columns: 100px minmax(0, 1fr); column-gap: 14px; min-height: 106px; }
+  .stRow::before { content: ""; grid-column: 1; grid-row: 1; width: 100px; height: 100px; border-radius: 50%;
+    background: #2A1B3C; outline: 2px dashed #6B5290; outline-offset: -8px; }
+  .stLogo { width: 100px; justify-self: stretch; }
+  .stRow .sticker { width: auto; justify-self: stretch; justify-content: center; }
+}
 .sticker b { display: block; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sticker span { display: block; font-size: 13px; color: #6B4A2A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sticker span { display: block; font-size: 13px; line-height: 16px; min-height: 16px; color: #6B4A2A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sticker.glitch b, .sticker.glitch span { animation: tear .12s steps(1) infinite; }
 @keyframes tear {
   0% { transform: translateX(0); text-shadow: 2px 0 #E0352B, -2px 0 #3BA7FF; }
