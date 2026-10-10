@@ -435,6 +435,8 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
         </div>
       </div>
       <div class="drop" id="drop" data-i="drop">кинь сюда mp3 или целую папку</div>
+      <!-- звук ПК: что играет — вручную (название чужой вкладки браузер странице не отдаёт) -->
+      <input class="search" id="pcTrack" hidden maxlength="64" autocomplete="off" placeholder="что сейчас играет — увидят слушатели" aria-label="Что сейчас играет" data-i-ph="pcTrackPh" data-i-aria="pcTrackAria">
       <div id="libBox" hidden>
         <input class="search" id="search" type="search" placeholder="поиск по найденному…" aria-label="Поиск mp3 в выбранной папке" data-i-ph="searchPh" data-i-aria="searchAria" autocomplete="off">
         <ol class="lib" id="lib"></ol>
@@ -560,6 +562,7 @@ const I18N = {
     fMicAria: "Громкость микрофона", fMusicAria: "Громкость музыки", fAirAria: "Громкость эфира",
     fMonAria: "Громкость монитора: что слышите вы, в эфир не влияет",
     addPc: "+ ЗВУК ПК", stopPc: "■ СТОП ЗВУК ПК", pcTitle: "Звук ПК", pcNow: "▶ звук ПК в эфире",
+    pcTrackPh: "что сейчас играет — увидят слушатели", pcTrackAria: "Что сейчас играет",
     pcNoAudio: "звука нет: в окне выбора отметь «Поделиться звуком» (вкладка) или «Системный звук» (экран)",
     pcDenied: "браузер не дал звук — попробуй ещё раз", pcEnded: "звук ПК больше не в эфире",
     pcHelp: "Вкладка — только её звук; весь экран — весь звук компьютера (Chrome и Edge на Windows)",
@@ -649,6 +652,7 @@ const I18N = {
     fMicAria: "Microphone volume", fMusicAria: "Music volume", fAirAria: "On-air volume",
     fMonAria: "Monitor volume: what you hear, doesn't affect the air",
     addPc: "+ PC AUDIO", stopPc: "■ STOP PC AUDIO", pcTitle: "PC audio", pcNow: "▶ PC audio on air",
+    pcTrackPh: "what's playing — listeners will see it", pcTrackAria: "What's playing",
     pcNoAudio: "no sound: in the picker tick “Share audio” (tab) or “Share system audio” (screen)",
     pcDenied: "the browser didn't share audio — try again", pcEnded: "PC audio is off the air",
     pcHelp: "A tab — only its sound; the whole screen — all computer sound (Chrome and Edge on Windows)",
@@ -2061,10 +2065,11 @@ function enqueue(files) {
   return n;
 }
 function nowTitle() {
-  const track = current && playing ? current.name : pc ? TXT.pcTitle : "";
+  const track = current && playing ? current.name : pc ? pcTrack() || TXT.pcTitle : "";
   return micOn ? (track ? TXT.fMic + " · " + track : TXT.fMic) : track;
 }
 function sendTitle() { if (hws && hws.readyState === 1) hws.send(JSON.stringify({ title: nowTitle() })); }
+const pcTrack = () => $("pcTrack").value.trim();
 
 function renderQueue() {
   const list = $("queue");
@@ -2080,7 +2085,7 @@ function renderQueue() {
     li.append(n, up, rm);
     list.append(li);
   });
-  $("now").textContent = current ? (playing ? "▶ " : "❚❚ ") + current.name : pc ? TXT.pcNow : TXT.silenceNow;
+  $("now").textContent = current ? (playing ? "▶ " : "❚❚ ") + current.name : pc ? (pcTrack() ? "▶ " + pcTrack() : TXT.pcNow) : TXT.silenceNow;
   $("play").textContent = playing ? TXT.pause : TXT.play;
 }
 function stopCurrent() {
@@ -2129,6 +2134,7 @@ function stopPc(msg) {
   pc.src.disconnect();
   pc = null;
   $("addPc").textContent = TXT.addPc;
+  $("pcTrack").hidden = true;
   if (msg) toast(msg);
   renderQueue(); sendTitle(); renderHost();
 }
@@ -2156,9 +2162,17 @@ $("addPc").onclick = async () => {
   pc = { stream, src };
   audio.addEventListener("ended", () => stopPc(TXT.pcEnded)); // «Закрыть доступ» в панели браузера
   $("addPc").textContent = TXT.stopPc;
+  $("pcTrack").hidden = false;
   renderQueue(); sendTitle(); renderHost();
   if (surface === "monitor" || surface === "window") { hintHold = performance.now() + 9000; hostHint(TXT.pcLoop, true); }
 };
+
+// Название — слушателям, когда человек перестал печатать (или Enter): недописанное не уходит.
+let pcTrackT = 0;
+const pcTrackSend = () => { clearTimeout(pcTrackT); renderQueue(); sendTitle(); };
+$("pcTrack").oninput = () => { clearTimeout(pcTrackT); pcTrackT = setTimeout(pcTrackSend, 1200); };
+$("pcTrack").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); pcTrackSend(); } };
+$("pcTrack").onblur = pcTrackSend;
 
 $("addFiles").onclick = () => $("files").click();
 $("addDir").onclick = () => $("dir").click();
