@@ -94,15 +94,15 @@ button, input { font: inherit; color: inherit; }
 .stLogo { grid-column: 1; grid-row: 1; justify-self: end; width: 120px; max-width: 100%; height: auto; aspect-ratio: 1;
   min-width: 0; image-rendering: pixelated; border-radius: 50%; box-shadow: 0 0 0 3px var(--ink), 4px 4px 0 3px rgba(0,0,0,.35); }
 .stLogo[hidden] { display: none; }
-/* Телефон: по центру логотипу 100 px места нет — место под круг слева есть всегда (пустое — кружок, как
-   ячейка логотипа на «Вещать»), наклейка — на всю оставшуюся ширину: ни размер, ни место не зависят
-   от станции под ручкой. */
+/* Телефон: по центру логотипу 100 px места нет. С логотипом (.withLogo, ставит setSticker) — круг слева,
+   наклейка на оставшуюся ширину; без — наклейка той же ширины по центру под радио. Высота строки
+   постоянная: что ниже, не прыгает. */
 @media (max-width: 600px) {
-  .stRow { grid-template-columns: 100px minmax(0, 1fr); column-gap: 14px; min-height: 106px; }
-  .stRow::before { content: ""; grid-column: 1; grid-row: 1; width: 100px; height: 100px; border-radius: 50%;
-    background: #2A1B3C; outline: 2px dashed #6B5290; outline-offset: -8px; }
+  .stRow { grid-template-columns: minmax(0, 1fr); column-gap: 14px; min-height: 106px; }
+  .stRow .sticker { grid-column: 1; width: calc(100% - 114px); justify-self: center; justify-content: center; }
+  .stRow.withLogo { grid-template-columns: 100px minmax(0, 1fr); }
+  .stRow.withLogo .sticker { grid-column: 2; width: auto; justify-self: stretch; }
   .stLogo { width: 100px; justify-self: stretch; }
-  .stRow .sticker { width: auto; justify-self: stretch; justify-content: center; }
 }
 .sticker b { display: block; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sticker span { display: block; font-size: 13px; line-height: 16px; min-height: 16px; color: #6B4A2A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1533,6 +1533,7 @@ const logoURL = g => /^[0-9a-f]{16}$/.test(g || "") ? BASE + "/logo/" + g + ".pn
 function setSticker(a, b, glitch, logo) {
   const img = $("stLogo"), src = logoURL(logo);
   if (src) { if (img.getAttribute("src") !== src) img.src = src; img.hidden = false; } else img.hidden = true;
+  img.parentNode.classList.toggle("withLogo", !!src); // телефон: без логотипа наклейка — по центру
   if ($("st1").textContent !== a) $("st1").textContent = a;
   const b2 = b || " ";
   if ($("st2").textContent !== b2) $("st2").textContent = b2;
