@@ -73,6 +73,9 @@ button, input { font: inherit; color: inherit; }
 /* ---------- приёмник: только радио и его ручка ---------- */
 .stage { position: relative; }
 #radio { width: 100%; height: auto; touch-action: none; transform-origin: 50% 100%; cursor: pointer; }
+/* радио не выше, чем позволяет окно: под ним наклейка и строки кнопок (~360 px) и счётчик станций —
+   на ноутбуке (1080p при масштабе 125 %, окно ~730 px) счётчик уходил за край. 16/11 — пропорции холста 128×88 */
+#radio { max-width: max(280px, calc((100dvh - 372px) * 16 / 11)); margin: 0 auto; }
 #radio.grab { cursor: grab; }
 #radio.grabbing { cursor: grabbing; }
 .sticker {
