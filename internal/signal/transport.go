@@ -15,6 +15,7 @@ import (
 
 	"kontakt/internal/identity"
 	"kontakt/internal/moderation"
+	"kontakt/internal/netutil"
 	"kontakt/internal/sip"
 )
 
@@ -96,7 +97,7 @@ func (t *wsTransport) Contact() string  { return "<sip:kontakt@kontakt.invalid;t
 func (t *wsTransport) Name() string     { return "веб-трубка" }
 func (t *wsTransport) Identity() string { return t.id }
 
-var upgrader = websocket.Upgrader{Subprotocols: []string{"sip"}, CheckOrigin: func(*http.Request) bool { return true }}
+var upgrader = websocket.Upgrader{Subprotocols: []string{"sip"}, CheckOrigin: netutil.SameSite}
 
 func (s *Server) ServeWS(w http.ResponseWriter, r *http.Request) {
 	id := identity.FromRequest(r)

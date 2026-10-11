@@ -94,7 +94,7 @@ func (f *fakeTelegram) message(from int64, text string) {
 }
 
 func (f *fakeTelegram) press(chat int64, data string) {
-	f.ups <- map[string]any{"callback_query": map[string]any{"id": "cb", "data": data,
+	f.ups <- map[string]any{"callback_query": map[string]any{"id": "cb", "data": data, "from": map[string]any{"id": chat},
 		"message": map[string]any{"message_id": 7, "text": "запрос", "chat": map[string]any{"id": chat}}}}
 }
 
@@ -197,6 +197,12 @@ func TestLogoAccessBot(t *testing.T) {
 	}
 	code := strings.TrimPrefix(link, "https://t.me/cast_bot?start=logo_")
 	tg.message(botUserID, "/start logo_"+code)
+	ask := tg.waitSent(t, botUserID, "открыть его для браузера")
+	if len(ask.Data) != 2 || ask.Data[0] != "a:"+code || ask.Data[1] != "x:"+code {
+		t.Fatalf("кнопки ведущему: %v", ask.Data)
+	}
+	tg.press(777, "a:"+code) // чужой не подтвердит за ведущего
+	tg.press(botUserID, "a:"+code)
 	tg.waitSent(t, botUserID, "Запрос отправлен")
 	card := tg.waitSent(t, botOwnerID, "просит доступ")
 	if len(card.Data) != 2 || card.Data[0] != "g:"+code {
@@ -216,9 +222,25 @@ func TestLogoAccessBot(t *testing.T) {
 	id2 := strings.Repeat("cd", 16)
 	code2 := strings.TrimPrefix(logoLink(t, srv, id2), "https://t.me/cast_bot?start=logo_")
 	tg.message(botUserID, "/start logo_"+code2)
+	if logoAccessOK(t, srv, id2) {
+		t.Fatal("«Старт» сам выдал доступ браузеру — без «это мой браузер»")
+	}
+	tg.press(botUserID, "a:"+code2)
 	tg.waitSent(t, botUserID, "Логотип открыт")
 	if !logoAccessOK(t, srv, id2) {
 		t.Fatal("второй браузер того же аккаунта без доступа")
+	}
+
+	// чужую ссылку прислали одобренному ведущему: «Нет» — доступа нет, ссылка мертва
+	id3 := strings.Repeat("ef", 16)
+	code3 := strings.TrimPrefix(logoLink(t, srv, id3), "https://t.me/cast_bot?start=logo_")
+	tg.message(botUserID, "/start logo_"+code3)
+	tg.press(botUserID, "x:"+code3)
+	tg.press(botUserID, "a:"+code3) // передумал — поздно
+	tg.message(botUserID, "/start logo_"+code3)
+	tg.waitSent(t, botUserID, "Ссылка устарела")
+	if logoAccessOK(t, srv, id3) {
+		t.Fatal("браузер по чужой ссылке получил доступ")
 	}
 
 	// перезапуск: доступ на диске

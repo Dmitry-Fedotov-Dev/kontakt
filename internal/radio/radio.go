@@ -37,7 +37,6 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"net/url"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -55,6 +54,7 @@ import (
 	"kontakt/internal/identity"
 	"kontakt/internal/metrics"
 	"kontakt/internal/moderation"
+	"kontakt/internal/netutil"
 )
 
 const (
@@ -195,6 +195,7 @@ type Hub struct {
 
 	links     *shortLinks
 	shortRate *bucket
+	shortPer  perKey // тот же лимит на один браузер: один человек не выберет общий
 
 	listMu    sync.Mutex // кеш списка станций для сокета: один JSON на версию, а не на слушателя
 	listVer   uint64     // content, для которого собран listJSON
@@ -327,6 +328,7 @@ func NewHub(opt Options) *Hub {
 	h.logoChanges = h.reg.CounterVec("kontakt_radio_logo_changes_total",
 		"Логотипы станций от ведущих: set — поставлен, removed — убран, bad — не PNG 64×64", "result", "set", "removed", "bad")
 	h.shortRate = &bucket{rate: 20, burst: 40, tokens: 40, last: time.Now()} // защита диска от потока POST
+	h.shortPer = perKey{rate: 0.5, burst: 10}                                // человек жмёт «Поделиться» не чаще
 	h.reg.Gauge("kontakt_radio_short_links", "Сохранённые короткие ссылки на волну", func() float64 { return float64(h.links.Len()) })
 	h.ogRenders = h.reg.Counter("kontakt_radio_og_renders_total", "Нарисованные картинки превью (промахи кеша)")
 	h.onAir = h.reg.Histogram("kontakt_radio_on_air_seconds", "Сколько станция пробыла в эфире",
@@ -447,6 +449,12 @@ func (h *Hub) Handler() http.Handler {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "microphone=(self), camera=(), geolocation=()")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// Не встраивать в чужие страницы: иначе кликджекинг — чужой сайт кладёт радио во фрейм с
+		// allow="microphone" и подводит к «в эфир»; разрешение на микрофон для openline.one уже дано —
+		// голос ушёл бы в эфир без вопроса (Permissions-Policy: microphone=(self) тут не спасает:
+		// во фрейме «self» — тот же openline.one). X-Frame-Options — для старых браузеров.
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+		w.Header().Set("X-Frame-Options", "DENY")
 		mux.ServeHTTP(w, r)
 	})
 }
@@ -1116,6 +1124,32 @@ type bucket struct {
 	last                time.Time
 }
 
+// perKey — вёдра по ключу (браузеру); старые выбрасываются, когда их набирается perKeyMax.
+type perKey struct {
+	mu          sync.Mutex
+	rate, burst float64
+	m           map[string]*bucket
+}
+
+const perKeyMax = 10000
+
+func (p *perKey) allow(key string) bool {
+	if key == "" {
+		return true // без куки — только общий лимит
+	}
+	p.mu.Lock()
+	if p.m == nil || len(p.m) >= perKeyMax {
+		p.m = map[string]*bucket{} // полное ведро у всех — то же, что новое
+	}
+	b := p.m[key]
+	if b == nil {
+		b = &bucket{rate: p.rate, burst: p.burst, tokens: p.burst, last: time.Now()}
+		p.m[key] = b
+	}
+	p.mu.Unlock()
+	return b.allow()
+}
+
 func (b *bucket) allow() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -1135,21 +1169,7 @@ var batchWait = 100 * time.Millisecond
 
 // sameSite — сокет открывает страница с того же домена; порт может отличаться: страница —
 // с 443 (Caddy), прямой эфир — с DirectPort. Чужие сайты сокет с кукой посетителя не откроют.
-func sameSite(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return true // не браузер (приложения, генератор нагрузки)
-	}
-	u, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	host := r.Host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	return strings.EqualFold(u.Hostname(), host)
-}
+var sameSite = netutil.SameSite
 
 // titleEvery — название трека уходит приёмникам не чаще (titleChanged); переменная — для тестов.
 var titleEvery = 2 * time.Second

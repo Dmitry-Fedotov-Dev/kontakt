@@ -44,6 +44,7 @@ type Update struct {
 	} `json:"message"`
 	Callback *struct {
 		ID      string `json:"id"`
+		From    *User  `json:"from"`
 		Data    string `json:"data"`
 		Message *struct {
 			ID   int64  `json:"message_id"`
@@ -107,8 +108,11 @@ func (b *Bot) SendTo(chat int64, html string, rows ...[]Button) error {
 }
 
 // Edit заменяет текст сообщения и убирает кнопки.
-func (b *Bot) Edit(msgID int64, html string) error {
-	return b.call("editMessageText", map[string]any{"chat_id": b.Chat, "message_id": msgID, "text": html,
+func (b *Bot) Edit(msgID int64, html string) error { return b.EditIn(b.Chat, msgID, html) }
+
+// EditIn — то же в любом чате (бот вещателей правит и сообщения ведущим).
+func (b *Bot) EditIn(chat, msgID int64, html string) error {
+	return b.call("editMessageText", map[string]any{"chat_id": chat, "message_id": msgID, "text": html,
 		"parse_mode": "HTML", "disable_web_page_preview": true}, nil)
 }
 

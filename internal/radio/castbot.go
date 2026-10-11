@@ -123,10 +123,10 @@ const (
 
 func (b *castBot) handle(u notify.Update) {
 	if c := u.Callback; c != nil {
-		if c.Message == nil || c.Message.Chat.ID != b.owner {
+		if c.Message == nil || c.From == nil || c.From.ID != c.Message.Chat.ID { // только личный чат с ботом
 			return
 		}
-		b.callback(c.ID, c.Data, c.Message.ID, c.Message.Text)
+		b.callback(c.From.ID, c.ID, c.Data, c.Message.ID, c.Message.Text)
 		return
 	}
 	m := u.Message
@@ -141,7 +141,7 @@ func (b *castBot) handle(u notify.Update) {
 	}
 	switch {
 	case cmd == "/start" && len(f) == 2 && strings.HasPrefix(f[1], botStartPrefix):
-		b.start(m.Chat.ID, m.From, strings.TrimPrefix(f[1], botStartPrefix), owner)
+		b.start(m.Chat.ID, m.From, strings.TrimPrefix(f[1], botStartPrefix))
 	case owner && cmd == "/list":
 		b.list()
 	case owner:
@@ -151,33 +151,67 @@ func (b *castBot) handle(u notify.Update) {
 	}
 }
 
-func (b *castBot) start(chat int64, from *notify.User, code string, owner bool) {
-	name := userName(from)
-	res, key := b.h.access.Start(code, from.ID, name, owner)
-	switch res {
+const botLinkStale = "Ссылка устарела. Нажми «+» у названия станции ещё раз — будет новая."
+
+func (b *castBot) start(chat int64, from *notify.User, code string) {
+	switch b.h.access.Start(code, from.ID, userName(from)) {
 	case startBad:
-		b.say(chat, "Ссылка устарела. Нажми «+» у названия станции ещё раз — будет новая.")
-	case startGranted:
-		b.h.logoAccess.Inc("rejoined")
-		b.h.accessChanged(key, true)
-		b.say(chat, "✅ Логотип открыт. Вернись на страницу радио — можно ставить.")
+		b.say(chat, botLinkStale)
 	case startAsked:
 		b.say(chat, "Запрос уже у владельца радио — напишу сюда, когда решит.")
+	case startConfirm:
+		b.say(chat, "🖼 <b>Логотип станции</b> — открыть его для браузера, в котором ты нажал «+» у названия станции?\n\n"+
+			"Если эту ссылку тебе прислал кто-то другой — нажми «Нет»: иначе логотип будет ставить его браузер.",
+			[]notify.Button{{Text: "Да, это мой браузер", Data: "a:" + code}, {Text: "Нет", Data: "x:" + code}})
+	}
+}
+
+// confirm — ведущий ответил на вопрос из start: браузер его или нет.
+func (b *castBot) confirm(from int64, code string, yes bool, answer func(res, mark string)) {
+	if !yes {
+		if b.h.access.Cancel(code, from) {
+			answer("отменено", "✖ нет — этот браузер доступа не получил")
+		} else {
+			answer("ссылка устарела", "")
+		}
+		return
+	}
+	name := b.h.access.codeName(code)
+	res, key := b.h.access.Confirm(code, from, from == b.owner)
+	switch res {
+	case startBad:
+		answer("ссылка устарела", "⌛ ссылка устарела")
+		b.say(from, botLinkStale)
+	case startAsked:
+		answer("запрос уже у владельца", "")
+	case startGranted:
+		answer("открыто", "✅ да")
+		b.h.logoAccess.Inc("rejoined")
+		b.h.accessChanged(key, true)
+		b.say(from, "✅ Логотип открыт. Вернись на страницу радио — можно ставить.")
 	case startNew:
+		answer("отправлено", "✅ да")
 		b.h.logoAccess.Inc("request")
-		b.say(chat, "Запрос отправлен владельцу радио. Напишу сюда, когда решит.")
-		b.say(b.owner, fmt.Sprintf("🖼 <b>Логотип станции</b> — просит доступ\n%s · id <code>%d</code>", html.EscapeString(name), from.ID),
+		b.say(from, "Запрос отправлен владельцу радио. Напишу сюда, когда решит.")
+		b.say(b.owner, fmt.Sprintf("🖼 <b>Логотип станции</b> — просит доступ\n%s · id <code>%d</code>", html.EscapeString(name), from),
 			[]notify.Button{{Text: "Выдать", Data: "g:" + code}, {Text: "Отказать", Data: "d:" + code}})
 	}
 }
 
-func (b *castBot) callback(id, data string, msgID int64, msgText string) {
+func (b *castBot) callback(from int64, id, data string, msgID int64, msgText string) {
 	kind, arg, _ := strings.Cut(data, ":")
 	answer := func(res, mark string) {
 		b.bot.Answer(id, res)
 		if mark != "" {
-			b.bot.Edit(msgID, html.EscapeString(msgText)+"\n\n"+mark)
+			b.bot.EditIn(from, msgID, html.EscapeString(msgText)+"\n\n"+mark)
 		}
+	}
+	if kind == "a" || kind == "x" { // ведущий — о своём браузере
+		b.confirm(from, arg, kind == "a", answer)
+		return
+	}
+	if from != b.owner { // остальные кнопки — владельца
+		return
 	}
 	switch kind {
 	case "g", "d":

@@ -64,6 +64,8 @@ func Handler(up Upstreams) http.Handler {
 			w.Header().Set("Referrer-Policy", "no-referrer")
 			w.Header().Set("Permissions-Policy", "microphone=(self), camera=(), geolocation=()")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'") // трубка во фрейме чужого сайта — тот же кликджекинг с микрофоном, что у радио
+			w.Header().Set("X-Frame-Options", "DENY")
 		}
 		mux.ServeHTTP(w, r)
 	})

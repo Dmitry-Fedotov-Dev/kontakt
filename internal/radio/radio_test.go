@@ -288,6 +288,10 @@ func TestPageServed(t *testing.T) {
 	if err != nil || r.StatusCode != 200 {
 		t.Fatalf("страница: %v %v", err, r)
 	}
+	// не встраивается в чужие страницы (кликджекинг с микрофоном)
+	if r.Header.Get("Content-Security-Policy") != "frame-ancestors 'none'" || r.Header.Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("заголовки против фрейма: %q %q", r.Header.Get("Content-Security-Policy"), r.Header.Get("X-Frame-Options"))
+	}
 }
 
 // texts читает сокет в своей горутине (после тайм-аута чтения gorilla/websocket соединение уже

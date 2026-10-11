@@ -21,6 +21,7 @@ import (
 	"kontakt/internal/dsp"
 	"kontakt/internal/mediaapi"
 	"kontakt/internal/metrics"
+	"kontakt/internal/netutil"
 	"kontakt/internal/sip"
 )
 
@@ -332,7 +333,7 @@ func (ep *endpoint) readUDP() {
 // ---------- WebSocket-медиа ----------
 // Браузер открывает /media?ep=<токен> и шлёт RTP-пакеты бинарными кадрами.
 
-var upgrader = websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+var upgrader = websocket.Upgrader{CheckOrigin: netutil.SameSite} // чужая страница сокет не откроет (CSWSH)
 
 func (e *Engine) ServeWS(w http.ResponseWriter, r *http.Request) {
 	e.mu.Lock()

@@ -61,7 +61,7 @@ func main() {
 		log.Printf("SIP/UDP: sip:kontakt@%s:%d — звонить с любого софтфона", *ip, u.Port)
 	}
 	go func() {
-		log.Fatal(http.ListenAndServe(*adminAddr, srv.AdminHandler(func() (any, error) { return mc.Stats() })))
+		log.Fatal(http.ListenAndServe(*adminAddr, netutil.LocalOnly(srv.AdminHandler(func() (any, error) { return mc.Stats() }))))
 	}()
 	go func() { log.Fatal(http.ListenAndServe(*httpAddr, srv.HTTPHandler())) }()
 	c := cfg.Get()

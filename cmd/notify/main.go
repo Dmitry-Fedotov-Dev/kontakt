@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"syscall"
 
+	"kontakt/internal/netutil"
 	"kontakt/internal/notify"
 )
 
@@ -37,7 +38,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/event", s.EventHandler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
-	go func() { log.Fatal(http.ListenAndServe(*addr, mux)) }()
+	go func() { log.Fatal(http.ListenAndServe(*addr, netutil.LocalOnly(mux))) }() // события шлёт signal с localhost
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

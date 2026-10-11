@@ -39,6 +39,7 @@ type accessCode struct {
 	exp  time.Time
 	tg   int64 // кто нажал «Старт» (0 — ещё никто)
 	name string
+	sure bool // tg подтвердил, что браузер его (Confirm): только тогда — доступ или запрос владельцу
 }
 
 type logoAccess struct {
@@ -128,33 +129,74 @@ func (a *logoAccess) NewCode(host string) string {
 // Результаты Start.
 const (
 	startBad     = "bad"     // кода нет или истёк
+	startConfirm = "confirm" // спросить человека, его ли это браузер
 	startGranted = "granted" // аккаунту доступ уже выдан — браузер добавлен
 	startAsked   = "asked"   // запрос уже у владельца
 	startNew     = "new"     // новый запрос: показать владельцу
 )
 
-// Start — человек tg нажал «Старт» по ссылке с кодом. owner — владелец: ему доступ сразу.
-func (a *logoAccess) Start(code string, tg int64, name string, owner bool) (res, key string) {
+// Start — человек tg нажал «Старт» по ссылке с кодом. Сам по себе «Старт» ничего не выдаёт: код
+// связан с браузером того, кто сделал ссылку, а её могли прислать — тогда одно нажатие отдало бы
+// доступ чужому браузеру (уже одобренного аккаунта — молча). Сначала человек подтверждает, что
+// браузер его (Confirm).
+func (a *logoAccess) Start(code string, tg int64, name string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	c := a.codes[code]
+	if c == nil || time.Now().After(c.exp) {
+		return startBad
+	}
+	if c.tg != 0 && c.tg != tg {
+		return startBad // ссылку переслали другому: она уже у первого
+	}
+	if c.sure {
+		return startAsked
+	}
+	c.tg, c.name = tg, name
+	return startConfirm
+}
+
+// Confirm — tg подтвердил, что браузер его. Аккаунту доступ уже выдан или это владелец — браузер
+// добавляется сразу (startGranted), иначе запрос ждёт владельца (startNew).
+func (a *logoAccess) Confirm(code string, tg int64, owner bool) (res, key string) {
 	now := time.Now()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	c := a.codes[code]
-	if c == nil || now.After(c.exp) {
+	if c == nil || now.After(c.exp) || c.tg != tg {
 		return startBad, ""
 	}
+	if c.sure {
+		return startAsked, ""
+	}
 	if _, ok := a.users[tg]; ok || owner {
-		a.grantLocked(tg, name, c.key)
+		a.grantLocked(tg, c.name, c.key)
 		delete(a.codes, code)
 		return startGranted, c.key
 	}
-	if c.tg != 0 {
-		if c.tg != tg {
-			return startBad, "" // ссылку переслали другому: запрос уже от первого
-		}
-		return startAsked, ""
-	}
-	c.tg, c.name, c.exp = tg, name, now.Add(accessAskTTL)
+	c.sure, c.exp = true, now.Add(accessAskTTL)
 	return startNew, ""
+}
+
+// codeName — имя того, кто нажал «Старт» по коду (для карточки владельцу).
+func (a *logoAccess) codeName(code string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if c := a.codes[code]; c != nil {
+		return c.name
+	}
+	return ""
+}
+
+// Cancel — tg ответил, что браузер не его: ссылка больше не работает.
+func (a *logoAccess) Cancel(code string, tg int64) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if c := a.codes[code]; c != nil && c.tg == tg && !c.sure {
+		delete(a.codes, code)
+		return true
+	}
+	return false
 }
 
 // Decide — решение владельца по коду; tg — кому сообщить, key — чей браузер ждёт.
@@ -162,7 +204,7 @@ func (a *logoAccess) Decide(code string, grant bool) (tg int64, key string, ok b
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	c := a.codes[code]
-	if c == nil || c.tg == 0 || time.Now().After(c.exp) {
+	if c == nil || !c.sure || time.Now().After(c.exp) {
 		return 0, "", false
 	}
 	delete(a.codes, code)

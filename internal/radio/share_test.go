@@ -169,3 +169,31 @@ func TestShareLanguage(t *testing.T) {
 		t.Error("картинки на двух языках одинаковые")
 	}
 }
+
+// Один браузер не выбирает общий лимит коротких ссылок: после своего лимита — 429, другим — можно.
+func TestShortLinkPerBrowserLimit(t *testing.T) {
+	srv := httptest.NewServer(NewHub(Options{}).Handler())
+	defer srv.Close()
+	post := func(id string) int {
+		req, _ := http.NewRequest("POST", srv.URL+"/api/short", strings.NewReader(`{"f":996,"n":"K"}`))
+		req.Header.Set("Cookie", "kontakt_id="+id)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	a, b := strings.Repeat("ab", 16), strings.Repeat("cd", 16)
+	for i := 0; i < 10; i++ {
+		if c := post(a); c != http.StatusOK {
+			t.Fatalf("запрос %d: %d", i+1, c)
+		}
+	}
+	if c := post(a); c != http.StatusTooManyRequests {
+		t.Fatalf("сверх лимита браузера: %d", c)
+	}
+	if c := post(b); c != http.StatusOK {
+		t.Fatalf("другой браузер: %d", c)
+	}
+}

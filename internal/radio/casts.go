@@ -10,9 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -24,6 +22,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
+
+	"kontakt/internal/netutil"
 )
 
 // Постоянные станции с сервера: модератор загружает файлы и включает эфир со страницы /stations/
@@ -279,29 +279,8 @@ func newCastID() string {
 	return hex.EncodeToString(b)
 }
 
-// LocalOnly — защита админ-порта: он слушает только localhost, но браузер модератора с открытым
-// SSH-туннелем могла бы попросить о запросе любая открытая страница. Host — только localhost
-// (иначе DNS rebinding), запрос с Origin — только со своей страницы (иначе CSRF). curl и Prometheus
-// Origin не шлют — им можно.
-func LocalOnly(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host := r.Host
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			host = h
-		}
-		if host != "localhost" && host != "127.0.0.1" && host != "::1" && host != "[::1]" {
-			http.Error(w, "только через localhost", http.StatusForbidden)
-			return
-		}
-		if o := r.Header.Get("Origin"); o != "" {
-			if u, err := url.Parse(o); err != nil || u.Host != r.Host {
-				http.Error(w, "чужая страница", http.StatusForbidden)
-				return
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
-}
+// LocalOnly — защита админ-порта, см. netutil.LocalOnly.
+var LocalOnly = netutil.LocalOnly
 
 // Handler — страница /stations/ и её API (вешать на админ-порт под LocalOnly).
 //

@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"kontakt/internal/identity"
 )
 
 // Ссылка на волну: /w/93.4/k7Q2xb — частота и код, за которым сервер хранит станцию, трек, игравший
@@ -236,7 +238,7 @@ func (h *Hub) serveShortNew(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"f":1017,"n":"station","t":"track","l":"en"}`, http.StatusBadRequest)
 		return
 	}
-	if !h.shortRate.allow() {
+	if !h.shortPer.allow(identity.FromRequest(r)) || !h.shortRate.allow() {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
