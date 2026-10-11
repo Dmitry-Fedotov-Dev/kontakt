@@ -558,7 +558,9 @@ const I18N = {
     udpFail: "UDP не проходит в этой сети — эфир идёт по TCP", udpLost: "UDP оборвался — эфир идёт по TCP",
     udpOff: "UDP на сервере выключен — эфир идёт по TCP", udpLossy: "UDP теряет пакеты — эфир вернулся на TCP",
     logoAdd: "Логотип станции: картинка станет пиксельным значком 64×64", logoRemove: "Убрать логотип",
-    logoBad: "не получилось прочитать картинку — попробуй PNG или JPG", logoSent: "логотип в эфире",
+    logoBad: "не получилось прочитать картинку — попробуй PNG, JPG или GIF", logoSent: "логотип в эфире",
+    logoGifBig: "гифка больше 4 МБ — возьми покороче или поменьше", logoGifWait: "гифки — не чаще раза в 10 секунд, попробуй чуть позже",
+    logoGifStill: "гифку не получилось оживить — поставил первый кадр",
     logoAuth: "логотип — по доступу из Telegram: открыть бота →", logoAuthFail: "бот сейчас не на связи — попробуй позже",
     logoGranted: "доступ к логотипу выдан", logoRevoked: "доступ к логотипу отозван",
     airCount: n => n === 0 ? "в эфире пока тихо" : "в эфире: " + n + " " + (n % 10 === 1 && n % 100 !== 11 ? "станция" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "станции" : "станций"),
@@ -648,7 +650,9 @@ const I18N = {
     udpFail: "UDP doesn't get through on this network — broadcasting over TCP", udpLost: "UDP dropped — broadcasting over TCP",
     udpOff: "UDP is off on the server — broadcasting over TCP", udpLossy: "UDP is losing packets — back to TCP",
     logoAdd: "Station logo: the picture becomes a 64×64 pixel badge", logoRemove: "Remove the logo",
-    logoBad: "couldn't read the picture — try PNG or JPG", logoSent: "logo is on air",
+    logoBad: "couldn't read the picture — try PNG, JPG or GIF", logoSent: "logo is on air",
+    logoGifBig: "the GIF is over 4 MB — try a shorter or smaller one", logoGifWait: "one GIF per 10 seconds — try again in a moment",
+    logoGifStill: "couldn't animate the GIF — set its first frame",
     logoAuth: "the logo needs access via Telegram: open the bot →", logoAuthFail: "the bot is offline — try later",
     logoGranted: "logo access granted", logoRevoked: "logo access revoked",
     airCount: n => n === 0 ? "the air is quiet for now" : "on air: " + n + (n === 1 ? " station" : " stations"),
@@ -1953,7 +1957,8 @@ setInterval(() => { if (audioPath === "rtc" && hws && hws.readyState === 1) hws.
 
 // ---------- логотип станции ----------
 // Картинку браузер сам обрезает по центру до квадрата и уменьшает до 64×64 — в эфир уходит PNG
-// в пару килобайт (logos.go на сервере). Логотип помним между эфирами в этом браузере.
+// в пару килобайт (logos.go на сервере). Гифку холст не оживит: квадрат обрезки браузер выбирает
+// по первому кадру, а уменьшает её сервер (/api/logo-gif, logogif.go) — в эфир уходит GIF 64×64. Логотип помним между эфирами в этом браузере.
 // Метатег host-logos: "1" — логотип ставит любой ведущий, "bot" — по доступу, который выдаёт владелец
 // в боте вещателей (castbot.go на сервере); без метатега логотипы ставит только модератор — ячейки нет.
 const LOGO_MODE = (document.querySelector('meta[name="host-logos"]') || {}).content || "";
@@ -2015,39 +2020,43 @@ function setLogo(data) {
   sendLogo();
 }
 // toLogo — квадрат 64×64 из картинки; шумная фотография не влезает в 16 КБ — тогда меньше оттенков.
+// logoBox — квадрат значка на картинке: поля однотонного фона обрезаются.
+function logoBox(img) {
+  const W = img.naturalWidth, H = img.naturalHeight;
+  if (!W || !H) throw new Error("empty");
+  // Однотонные поля (белый лист, прозрачность) обрезаем: рисунок должен заполнить значок, а не
+  // утонуть в середине. Фон — цвет углов; рамка рисунка — где пиксели заметно от него отличаются.
+  const k = Math.min(1, 256 / Math.max(W, H)), aw = Math.max(1, Math.round(W * k)), ah = Math.max(1, Math.round(H * k));
+  const a = document.createElement("canvas"); a.width = aw; a.height = ah;
+  const ag = a.getContext("2d", { willReadFrequently: true });
+  ag.drawImage(img, 0, 0, aw, ah);
+  const d = ag.getImageData(0, 0, aw, ah).data, at = (x, y) => (y * aw + x) * 4;
+  const bg = [0, 1, 2, 3].map(c => (d[at(0, 0) + c] + d[at(aw - 1, 0) + c] + d[at(0, ah - 1) + c] + d[at(aw - 1, ah - 1) + c]) / 4);
+  let x0 = aw, y0 = ah, x1 = -1, y1 = -1;
+  for (let y = 0; y < ah; y++) for (let x = 0; x < aw; x++) {
+    const i = at(x, y);
+    const diff = bg[3] < 32 ? d[i + 3] : Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) + Math.abs(d[i + 3] - bg[3]);
+    if (diff > 48) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  let cx = W / 2, cy = H / 2, side = Math.min(W, H);
+  if (x1 >= 0) { // рисунок нашёлся — квадрат вокруг него с полями в 6 %
+    cx = (x0 + x1 + 1) / 2 / k; cy = (y0 + y1 + 1) / 2 / k;
+    side = Math.min(Math.max(W, H), Math.max(x1 - x0 + 1, y1 - y0 + 1) / k * 1.12);
+  }
+  const fit = (c, L) => side > L ? (L - side) / 2 : Math.max(0, Math.min(L - side, c - side / 2)); // шире картинки — по центру
+  return { W, H, sx: fit(cx, W), sy: fit(cy, H), side, bg, found: x1 >= 0 };
+}
 async function toLogo(file) {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
     img.src = url;
     await img.decode();
-    const W = img.naturalWidth, H = img.naturalHeight;
-    if (!W || !H) throw new Error("empty");
-    // Однотонные поля (белый лист, прозрачность) обрезаем: рисунок должен заполнить значок, а не
-    // утонуть в середине. Фон — цвет углов; рамка рисунка — где пиксели заметно от него отличаются.
-    const k = Math.min(1, 256 / Math.max(W, H)), aw = Math.max(1, Math.round(W * k)), ah = Math.max(1, Math.round(H * k));
-    const a = document.createElement("canvas"); a.width = aw; a.height = ah;
-    const ag = a.getContext("2d", { willReadFrequently: true });
-    ag.drawImage(img, 0, 0, aw, ah);
-    const d = ag.getImageData(0, 0, aw, ah).data, at = (x, y) => (y * aw + x) * 4;
-    const bg = [0, 1, 2, 3].map(c => (d[at(0, 0) + c] + d[at(aw - 1, 0) + c] + d[at(0, ah - 1) + c] + d[at(aw - 1, ah - 1) + c]) / 4);
-    let x0 = aw, y0 = ah, x1 = -1, y1 = -1;
-    for (let y = 0; y < ah; y++) for (let x = 0; x < aw; x++) {
-      const i = at(x, y);
-      const diff = bg[3] < 32 ? d[i + 3] : Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) + Math.abs(d[i + 3] - bg[3]);
-      if (diff > 48) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    }
-    let cx = W / 2, cy = H / 2, side = Math.min(W, H);
-    if (x1 >= 0) { // рисунок нашёлся — квадрат вокруг него с полями в 6 %
-      cx = (x0 + x1 + 1) / 2 / k; cy = (y0 + y1 + 1) / 2 / k;
-      side = Math.min(Math.max(W, H), Math.max(x1 - x0 + 1, y1 - y0 + 1) / k * 1.12);
-    }
-    const fit = (c, L) => side > L ? (L - side) / 2 : Math.max(0, Math.min(L - side, c - side / 2)); // шире картинки — по центру
-    const sx = fit(cx, W), sy = fit(cy, H);
+    const { sx, sy, side, bg, found } = logoBox(img);
     const c = document.createElement("canvas"); c.width = c.height = 64;
     const g = c.getContext("2d");
     g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
-    if (bg[3] >= 32 && x1 >= 0) { g.fillStyle = `rgb(${bg[0]},${bg[1]},${bg[2]})`; g.fillRect(0, 0, 64, 64); } // квадрат шире картинки — поля цветом фона
+    if (bg[3] >= 32 && found) { g.fillStyle = `rgb(${bg[0]},${bg[1]},${bg[2]})`; g.fillRect(0, 0, 64, 64); } // квадрат шире картинки — поля цветом фона
     g.drawImage(img, sx, sy, side, side, 0, 0, 64, 64);
     let data = c.toDataURL("image/png");
     for (let levels = 32; data.length > 21000 && levels >= 4; levels /= 2) {
@@ -2062,10 +2071,32 @@ async function toLogo(file) {
 }
 $("logoSlot").onclick = () => logoOK ? $("logoFile").click() : askLogoAccess();
 $("logoDel").onclick = () => setLogo("");
+// gifLogo — анимированный значок с сервера; квадрат — внутри картинки (сервер полей не дорисовывает).
+async function gifLogo(file) {
+  const url = URL.createObjectURL(file);
+  let b;
+  try { const img = new Image(); img.src = url; await img.decode(); b = logoBox(img); }
+  finally { URL.revokeObjectURL(url); }
+  const s = Math.max(1, Math.min(b.W, b.H, Math.round(b.side)));
+  const x = Math.max(0, Math.min(b.W - s, Math.round(b.sx))), y = Math.max(0, Math.min(b.H - s, Math.round(b.sy)));
+  const r = await fetch(BASE + "/api/logo-gif?x=" + x + "&y=" + y + "&s=" + s, { method: "POST", body: file, cache: "no-store" });
+  if (!r.ok) throw new Error(String(r.status));
+  return (await r.json()).logo;
+}
 $("logoFile").onchange = async e => {
   const f = e.target.files && e.target.files[0];
   e.target.value = "";
   if (!f) return;
+  if (f.type === "image/gif") {
+    try { setLogo(await gifLogo(f)); if (st.onAir) toast(TXT.logoSent); return; }
+    catch (err) {
+      if (err && err.message === "413") return toast(TXT.logoGifBig);
+      if (err && err.message === "429") return toast(TXT.logoGifWait);
+      // не вышло оживить — ставим первый кадр, как обычную картинку
+      try { setLogo(await toLogo(f)); toast(TXT.logoGifStill); } catch (_) { toast(TXT.logoBad); }
+      return;
+    }
+  }
   try { setLogo(await toLogo(f)); if (st.onAir) toast(TXT.logoSent); }
   catch (_) { toast(TXT.logoBad); }
 };

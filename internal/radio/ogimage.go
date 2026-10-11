@@ -276,7 +276,7 @@ func OGImage(freq int, name, track, lang string, logo []byte) []byte {
 
 	var li image.Image
 	if logo != nil {
-		li, _ = png.Decode(bytes.NewReader(logo))
+		li, _ = decodeLogo(logo)
 	}
 	y := 56
 	if li != nil {

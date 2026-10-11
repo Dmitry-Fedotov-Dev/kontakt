@@ -62,8 +62,8 @@ const (
 
 	FrameBytes = 160  // 20 мс μ-law при 8 кГц
 	maxMessage = 2048 // больше в одном сообщении не нужно никогда — кроме логотипа ведущего
-	// maxHostText — текст от ведущего: логотип в base64 (PNG до logoMaxBytes) с запасом на JSON
-	maxHostText = logoMaxBytes*2*4/3 + 512
+	// maxHostText — текст от ведущего: логотип в base64 (GIF до logoGifMax, PNG меньше) с запасом на JSON
+	maxHostText = logoGifMax*4/3 + 512
 	// Ведущему разрешено 64 кбит/с + 10 %: браузер считает кадры по часам звуковой карты, а они
 	// расходятся с часами сервера на проценты (на стенде страница слала 50,4–51,2 кадра/с). Без
 	// запаса ведро всё время пусто и режет каждый лишний кадр. Подушка 3 с: после рывка сети
@@ -194,7 +194,9 @@ type Hub struct {
 
 	links     *shortLinks
 	shortRate *bucket
-	shortPer  perKey // тот же лимит на один браузер: один человек не выберет общий
+	shortPer  perKey        // тот же лимит на один браузер: один человек не выберет общий
+	gifPer    perKey        // гифки в логотип от одного ведущего (logogif.go)
+	gifJobs   chan struct{} // одновременно обрабатываемые гифки
 
 	listMu    sync.Mutex // кеш списка станций для сокета: один JSON на версию, а не на слушателя
 	listVer   uint64     // content, для которого собран listJSON
@@ -324,7 +326,9 @@ func NewHub(opt Options) *Hub {
 	h.logoChanges = h.reg.CounterVec("kontakt_radio_logo_changes_total",
 		"Логотипы станций от ведущих: set — поставлен, removed — убран, bad — не PNG 64×64", "result", "set", "removed", "bad")
 	h.shortRate = &bucket{rate: 20, burst: 40, tokens: 40, last: time.Now()} // защита диска от потока POST
-	h.shortPer = perKey{rate: 0.5, burst: 10}                                // человек жмёт «Поделиться» не чаще
+	h.gifPer = perKey{rate: 0.1, burst: 3}
+	h.gifJobs = make(chan struct{}, gifJobs)
+	h.shortPer = perKey{rate: 0.5, burst: 10} // человек жмёт «Поделиться» не чаще
 	h.reg.Gauge("kontakt_radio_short_links", "Сохранённые короткие ссылки на волну", func() float64 { return float64(h.links.Len()) })
 	h.ogRenders = h.reg.Counter("kontakt_radio_og_renders_total", "Нарисованные картинки превью (промахи кеша)")
 	h.onAir = h.reg.Histogram("kontakt_radio_on_air_seconds", "Сколько станция пробыла в эфире",
@@ -412,6 +416,7 @@ func (h *Hub) Handler() http.Handler {
 		json.NewEncoder(w).Encode(h.Stations())
 	})
 	mux.HandleFunc("/api/logo-access", h.serveLogoAccess)
+	mux.HandleFunc("POST /api/logo-gif", h.serveLogoGIF)
 	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
 		out := map[string]any{"moderation": h.opt.Mod != nil, "banned": false, "cards": 0}
 		if h.opt.Mod != nil {

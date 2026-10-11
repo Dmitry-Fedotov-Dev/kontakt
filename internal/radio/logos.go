@@ -23,10 +23,11 @@ import (
 	"time"
 )
 
-// Логотипы станций: PNG 64×64, который ведущий выбирает на вкладке «Вещать». Браузер сам обрезает
-// картинку до квадрата и уменьшает — в эфир уходит пиксельный значок в пару килобайт. Сервер
-// проверяет, что это ровно PNG 64×64, и перекодирует его: всё лишнее (метаданные, скрытые блоки)
-// отбрасывается.
+// Логотипы станций: PNG 64×64, который ведущий выбирает на вкладке «Вещать», или анимированный GIF
+// 64×64 (logogif.go). Браузер сам обрезает картинку до квадрата и уменьшает — в эфир уходит
+// пиксельный значок в пару килобайт; гифку уменьшает сервер. Сервер проверяет, что это ровно 64×64,
+// и перекодирует: всё лишнее (метаданные, скрытые блоки) отбрасывается. Адрес — /logo/{хеш}.png и
+// для гифки: тип отдаётся по содержимому.
 //
 // Логотип хранится по хешу содержимого и переживает эфир: ссылка на волну несёт хеш (g=…), и превью
 // в мессенджере показывает тот логотип, с которым ею поделились, даже когда станция уже ушла, а волну
@@ -40,7 +41,7 @@ const (
 
 var logoHashOK = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
-var errBadLogo = errors.New("логотип: нужен PNG 64×64")
+var errBadLogo = errors.New("логотип: нужен PNG или GIF 64×64")
 
 type logoStore struct {
 	mu    sync.Mutex
@@ -61,8 +62,11 @@ func openLogos(dir string, max int) (*logoStore, error) {
 	return s, nil
 }
 
-// normalizeLogo — PNG 64×64 заново, без всего, что прислали сверх пикселей.
+// normalizeLogo — PNG или GIF 64×64 заново, без всего, что прислали сверх пикселей.
 func normalizeLogo(b []byte) ([]byte, error) {
+	if isGIF(b) {
+		return normalizeGIF(b)
+	}
 	if len(b) == 0 || len(b) > logoMaxBytes*2 {
 		return nil, errBadLogo
 	}
@@ -97,7 +101,7 @@ func (s *logoStore) Put(b []byte) (string, error) {
 	if s.dir == "" {
 		return hash, nil
 	}
-	p := filepath.Join(s.dir, hash+".png")
+	p := filepath.Join(s.dir, hash+logoExt(nb))
 	if _, err := os.Stat(p); err == nil {
 		now := time.Now() // снова в эфире — свежий, вытесняться не должен
 		os.Chtimes(p, now, now)
@@ -129,7 +133,9 @@ func (s *logoStore) Get(hash string) ([]byte, bool) {
 	}
 	b, err := os.ReadFile(filepath.Join(s.dir, hash+".png"))
 	if err != nil {
-		return nil, false
+		if b, err = os.ReadFile(filepath.Join(s.dir, hash+".gif")); err != nil {
+			return nil, false
+		}
 	}
 	s.remember(hash, b)
 	return b, true
@@ -145,7 +151,16 @@ func (s *logoStore) Delete(hash string) {
 	delete(s.mem, hash)
 	if s.dir != "" {
 		os.Remove(filepath.Join(s.dir, hash+".png"))
+		os.Remove(filepath.Join(s.dir, hash+".gif"))
 	}
+}
+
+// logoExt — расширение файла по содержимому.
+func logoExt(b []byte) string {
+	if isGIF(b) {
+		return ".gif"
+	}
+	return ".png"
 }
 
 // remember держит в памяти не больше max (без диска) или 512 (кеш) логотипов.
@@ -177,14 +192,14 @@ func (s *logoStore) pruneLocked() {
 	}
 	var fs []f
 	for _, e := range ents {
-		if info, err := e.Info(); err == nil && strings.HasSuffix(e.Name(), ".png") {
+		if info, err := e.Info(); err == nil && (strings.HasSuffix(e.Name(), ".png") || strings.HasSuffix(e.Name(), ".gif")) {
 			fs = append(fs, f{e.Name(), info.ModTime()})
 		}
 	}
 	sort.Slice(fs, func(i, j int) bool { return fs[i].mod.Before(fs[j].mod) })
 	for i := 0; i < len(fs)-s.max; i++ {
 		os.Remove(filepath.Join(s.dir, fs[i].name))
-		delete(s.mem, strings.TrimSuffix(fs[i].name, ".png"))
+		delete(s.mem, strings.TrimSuffix(strings.TrimSuffix(fs[i].name, ".png"), ".gif"))
 	}
 }
 
@@ -197,6 +212,9 @@ func (h *Hub) serveLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
+	if isGIF(b) {
+		w.Header().Set("Content-Type", "image/gif")
+	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Write(b)
 }
@@ -239,7 +257,7 @@ func (h *Hub) applyLogo(s *station, hash string) {
 	}
 }
 
-// decodeB64 — base64 из браузера, можно с префиксом data:image/png;base64,.
+// decodeB64 — base64 из браузера, можно с префиксом data:image/png;base64, (или gif).
 func decodeB64(s string) ([]byte, error) {
 	if i := strings.Index(s, ","); i >= 0 && strings.HasPrefix(s, "data:") {
 		s = s[i+1:]
