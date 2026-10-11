@@ -33,7 +33,7 @@ import (
 
 const (
 	logoGifMax    = 64 << 10 // готовый GIF 64×64
-	logoFrames    = 40
+	logoFrames    = 60
 	logoGifUpload = 4 << 20  // исходная гифка
 	gifMaxSide    = 1024     // сторона исходника
 	gifMaxPixels  = 40 << 20 // кадры × площадь исходника: столько байт займут раскодированные кадры
