@@ -88,15 +88,18 @@ button, input { font: inherit; color: inherit; }
 .stText { min-width: 0; }
 /* логотип станции — круг слева от наклейки: значок 64×64, увеличенный без сглаживания; нет логотипа —
    наклейка одна по центру */
-/* Ручка гоняет станции с логотипом и без: высота строки — всегда по логотипу, наклейка — всегда по
-   центру (средняя колонка), логотип — в левой и на узком экране сжимается. Иначе на телефоне всё ниже
-   прыгало вверх-вниз, а наклейка — вбок. */
+/* Ручка гоняет станции с логотипом и без: высота строки — всегда по логотипу, иначе всё ниже прыгало
+   вверх-вниз. Без логотипа наклейка по центру под радио; с логотипом (.withLogo, ставит setSticker) по
+   центру — пара «круг + наклейка». */
 .stRow { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center;
   column-gap: 22px; margin-top: 14px; min-height: 126px; }
-.stRow .sticker { grid-column: 2; margin: 0; min-width: 0; width: 260px; justify-content: center; } /* ширина — постоянная: длинное название — с многоточием */
+.stRow .sticker { grid-column: 2; grid-row: 1; margin: 0; min-width: 0; width: 260px; justify-content: center; } /* ширина — постоянная: длинное название — с многоточием */
 .stLogo { grid-column: 1; grid-row: 1; justify-self: end; width: 120px; max-width: 100%; height: auto; aspect-ratio: 1;
   min-width: 0; image-rendering: pixelated; border-radius: 50%; box-shadow: 0 0 0 3px var(--ink), 4px 4px 0 3px rgba(0,0,0,.35); }
 .stLogo[hidden] { display: none; }
+.stRow.withLogo { grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr); }
+.stRow.withLogo .stLogo { grid-column: 2; }
+.stRow.withLogo .sticker { grid-column: 3; }
 /* Телефон: по центру логотипу 100 px места нет. С логотипом (.withLogo, ставит setSticker) — круг слева,
    наклейка на оставшуюся ширину; без — наклейка той же ширины по центру под радио. Высота строки
    постоянная: что ниже, не прыгает. */
@@ -105,6 +108,7 @@ button, input { font: inherit; color: inherit; }
   .stRow .sticker { grid-column: 1; width: calc(100% - 114px); justify-self: center; justify-content: center; }
   .stRow.withLogo { grid-template-columns: 100px minmax(0, 1fr); }
   .stRow.withLogo .sticker { grid-column: 2; width: auto; justify-self: stretch; }
+  .stRow.withLogo .stLogo { grid-column: 1; }
   .stLogo { width: 100px; justify-self: stretch; }
 }
 .sticker b { display: block; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
