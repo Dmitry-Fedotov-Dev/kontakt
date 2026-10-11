@@ -38,6 +38,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -209,6 +210,8 @@ type Hub struct {
 	access     *logoAccess // кому бот выдал логотип (logoaccess.go)
 	bot        *castBot    // nil — бота нет
 	logoAccess *metrics.CounterVec
+	streams    *metrics.Counter // фоновые приёмники (stream.go)
+	ffmpeg     string           // кодер фоновых приёмников; пусто — его нет
 
 	rtc         *rtcServer // эфир по UDP; nil — выключен
 	rtcConnects *metrics.CounterVec
@@ -307,6 +310,7 @@ func NewHub(opt Options) *Hub {
 		"Байты списков станций, отправленные приёмникам (служебный трафик сверх звука)")
 	h.hosts = h.reg.Counter("kontakt_radio_host_sessions_total", "Выходы станций в эфир")
 	h.sessions = h.reg.Counter("kontakt_radio_listener_sessions_total", "Подключения приёмников")
+	h.streams = h.reg.Counter("kontakt_radio_stream_sessions_total", "Фоновые приёмники: волна аудиопотоком, пока экран погашен (stream.go)")
 	h.tunes = h.reg.Counter("kontakt_radio_tunes_total", "Перенастройки приёмников (ручка поймала или потеряла станцию)")
 	h.shares = h.reg.CounterVec("kontakt_radio_share_views_total",
 		"Открытия ссылок на волну: page — страница (люди и мессенджеры), short — по короткой ссылке /r/, image — картинка превью",
@@ -373,6 +377,9 @@ func NewHub(opt Options) *Hub {
 			h.rtc = nil
 		}
 	}
+	if ff, err := exec.LookPath("ffmpeg"); err == nil {
+		h.ffmpeg = ff
+	}
 	h.access = openLogoAccess(h.logos.dir)
 	h.logoAccess = h.reg.CounterVec("kontakt_radio_logo_access_total",
 		"Доступ к логотипу через бота: link — ссылка в бота, request — запрос владельцу, granted / denied — его решение, "+
@@ -430,6 +437,7 @@ func (h *Hub) Handler() http.Handler {
 	mux.HandleFunc("GET /r/{code}", h.serveShort)
 	mux.HandleFunc("POST /api/short", h.serveShortNew)
 	mux.HandleFunc("GET /og/{freq}", h.serveOG)
+	mux.HandleFunc("GET /stream/{freq}", h.serveStream)
 	mux.HandleFunc("GET /logo/{file}", h.serveLogo)
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
