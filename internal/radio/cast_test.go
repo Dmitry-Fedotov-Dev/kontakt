@@ -3,7 +3,6 @@ package radio
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,10 +26,6 @@ func TestMain(m *testing.M) {
 			if a == "-i" && i+1 < len(os.Args) {
 				in = os.Args[i+1]
 			}
-		}
-		if in == "pipe:0" { // кодер фонового приёмника (stream.go): звук насквозь
-			io.Copy(os.Stdout, os.Stdin)
-			os.Exit(0)
 		}
 		b, _ := os.ReadFile(in)
 		if strings.HasPrefix(string(b), "bad") {

@@ -1122,32 +1122,6 @@ async function holdScreen(on) {
   } catch (_) { /* не дали (энергосбережение, старый браузер) — эфир идёт и так */ }
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") holdScreen(st.onAir); });
-// ---------- фоновый приёмник (Android, погашенный экран) ----------
-// Android Chrome глушит Web Audio, как только гаснет экран: воспроизведение из Web Audio (и <audio>
-// с MediaStream) он медиаплеером не считает. Пока страница спрятана, станция играет обычным
-// аудиопотоком с сервера (stream.go) — как любое интернет-радио, с плеером на экране блокировки;
-// вернулись — снова Web Audio. Шума между станциями в фоне нет: потоку нужна станция. В приложении
-// фон держит его служба (appAir), ведущему экран не даёт погаснуть holdScreen.
-let bgEl = null, bgOn = false;
-function bgStart() {
-  const { s, d } = nearest(st.dial);
-  if (bgOn || !/Android/i.test(navigator.userAgent) || appRadio || !st.power || st.onAir || !s || d >= CATCH) return;
-  bgOn = true;
-  bgEl = bgEl || new Audio();
-  bgEl.src = BASE + "/stream/" + s.f;
-  bgEl.play().then(() => {
-    if (!bgOn) return;
-    if (rxEl) rxEl.muted = true; else ctx.suspend().catch(() => {}); // не дать звуку задвоиться
-  }).catch(() => bgStop());
-}
-function bgStop() {
-  if (!bgOn) return;
-  bgOn = false;
-  bgEl.pause(); bgEl.removeAttribute("src"); bgEl.load(); // поток закрывается — сервер освобождает место
-  if (rxEl) rxEl.muted = false;
-  if (ctx && ctx.state !== "running") ctx.resume().catch(() => {});
-}
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") bgStart(); else bgStop(); });
 // ---------- приложение (Android) ----------
 // В приложении страница та же. Пока звук включён — слушаешь или ведёшь эфир, — Android держит
 // процесс сервисом с уведомлением, и эфир идёт в фоне. «Стоп» в уведомлении глушит звук до
