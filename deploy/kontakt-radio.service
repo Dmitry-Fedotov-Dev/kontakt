@@ -12,9 +12,9 @@ EnvironmentFile=-/opt/kontakt/.env
 ExecStart=/opt/kontakt/current/bin/radio -http 127.0.0.1:8083 -admin 127.0.0.1:8093 -mod http://127.0.0.1:8091 \
   -links /opt/kontakt/data/radio-links.json -logos /opt/kontakt/data/radio-logos -max-stations 206 -max-listeners 1700 \
   -stations /opt/kontakt/data/stations -stations-quota-gb 10 -rtc-udp :443 \
-  -secret http://rx.linkfanel.net/kiwisdr_com.js -secret-sure-until 2026-10-12T16:45:37Z
-# -secret: секретная волна — зеркало УВБ-76 с публичных KiwiSDR (internal/radio/secret.go), шанс 0,13 на визит;
-# -secret-sure-until: до этого времени — на каждом визите (проверка после выкладки), потом — 0,13.
+  -secret http://rx.linkfanel.net/kiwisdr_com.js -secret-chance 0.7
+# -secret: секретная волна — зеркало УВБ-76 с публичных KiwiSDR (internal/radio/secret.go); -secret-chance — шанс
+# на визит (по умолчанию 0,13); -secret-sure-until <RFC 3339> — до этого времени на каждом визите (проверка).
 # -rtc-udp :443: эфир по UDP (WebRTC, docs/UDP_BROADCAST.md). UDP 443 должен быть свободен — у Caddy
 # выключен HTTP/3 (servers { protocols h1 h2 }); занят — радио работает без UDP и пишет об этом в журнал.
 # -stations: постоянные станции с сервера, страница http://127.0.0.1:8093/stations/ (только через SSH-туннель)

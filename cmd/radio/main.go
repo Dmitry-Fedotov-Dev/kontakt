@@ -38,7 +38,8 @@ func main() {
 	rtcUDP := flag.String("rtc-udp", "", "UDP-адрес эфира по WebRTC (docs/UDP_BROADCAST.md), например :443; пусто — звук ведущего только по WebSocket")
 	rtcIP := flag.String("rtc-ip", "", "публичный IPv4 для кандидатов WebRTC, если сервер за NAT (через запятую); пусто — адреса интерфейсов")
 	secretList := flag.String("secret", "", "список KiwiSDR для секретной волны (зеркало УВБ-76), например http://rx.linkfanel.net/kiwisdr_com.js; пусто — её нет")
-	secretSure := flag.String("secret-sure-until", "", "до этого времени (RFC 3339) секретная волна прячется на каждом визите — проверка; потом — с шансом 0,13")
+	secretChance := flag.Float64("secret-chance", 0.13, "шанс, что на визите спрячется секретная волна (0–1)")
+	secretSure := flag.String("secret-sure-until", "", "до этого времени (RFC 3339) секретная волна прячется на каждом визите — проверка; потом — с шансом -secret-chance")
 	botAPI := flag.String("bot-api", "https://api.telegram.org", "Bot API бота вещателей (токен — RADIO_BOT_TOKEN, владелец — TELEGRAM_CHAT_ID, оба из окружения)")
 	flag.Parse()
 	log.SetPrefix("[radio]  ")
@@ -76,7 +77,7 @@ func main() {
 	}
 	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod,
 		LinksPath: *linksPath, DirectPort: directPort, LogosDir: *logosDir, HostLogos: *hostLogos,
-		RTCUDP: *rtcUDP, RTCIPs: splitList(*rtcIP), BotToken: botToken, BotOwner: botOwner, BotAPI: *botAPI, SecretList: *secretList, SecretSureUntil: parseTime(*secretSure)})
+		RTCUDP: *rtcUDP, RTCIPs: splitList(*rtcIP), BotToken: botToken, BotOwner: botOwner, BotAPI: *botAPI, SecretList: *secretList, SecretChance: *secretChance, SecretSureUntil: parseTime(*secretSure)})
 	if *directAddr != "" {
 		go func() { log.Fatal(radio.ServeDirect(*directAddr, *certPath, *keyPath, h.Handler())) }()
 		log.Printf("прямой HTTPS для эфира: %s", *directAddr)
