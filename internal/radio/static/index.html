@@ -1513,9 +1513,40 @@ for (const [ev, on] of [["mouseenter", true], ["mouseleave", false], ["focusin",
 
 // ---------- ручка: бесконечная, в обе стороны ----------
 const TURN_MHZ = 2; // оборот — 2 МГц
+// Секретная волна ловит ручку: жест, прошедший через точку, встаёт ровно на неё и дальше не крутит.
+// Уйти — только новым жестом: отпустить и снова тронуть ручку, для колёсика — пауза и новый прокрут,
+// для стрелок — новое нажатие. Так волну не проскочить случайно и не сорваться с неё.
+let gesture = 0, caught = -1, gestureFrom = 0;
+const newGesture = () => { gesture++; gestureFrom = st.dial; };
+function catchSecret(from, delta) {
+  if (!SECRET || secretD() >= 1e9 || caught === gesture) return false;
+  const s0 = SECRET / 10;
+  // жест начался на точке — он уводит с неё; поймает снова, только отойдя и вернувшись
+  if (ringDist(gestureFrom, s0) < 0.02 && ringDist(from, s0) < 0.3) return false;
+  let s = s0;
+  while (s - from > SPAN / 2) s -= SPAN;
+  while (from - s > SPAN / 2) s += SPAN;
+  const to = from + delta;
+  const eps = 1e-6; // шаги по 0,05 копят погрешность: 88,2999… — это уже 88,3
+  return delta > 0 ? s >= from - eps && s <= to + eps : s <= from + eps && s >= to - eps;
+}
 function turn(rad) {
   const before = st.dial;
-  st.dial = wrapF(st.dial + rad / (2 * Math.PI) * TURN_MHZ);
+  if (caught === gesture) return; // поймана секретной волной — до нового жеста ручка стоит
+  const delta = rad / (2 * Math.PI) * TURN_MHZ;
+  if (st.power && st.mode === "rx" && catchSecret(before, delta)) {
+    caught = gesture;
+    let s = SECRET / 10;
+    while (s - before > SPAN / 2) s -= SPAN;
+    while (before - s > SPAN / 2) s += SPAN;
+    st.knobAngle += (s - before) / TURN_MHZ * 2 * Math.PI;
+    st.dial = wrapF(s);
+    scratch(0.8);
+    R.setAttribute("aria-valuenow", st.dial.toFixed(1));
+    retune();
+    return;
+  }
+  st.dial = wrapF(st.dial + delta);
   st.knobAngle += rad;
   const moved = Math.abs(rad / (2 * Math.PI) * TURN_MHZ);
   if (moved) scratch(moved * 3);
@@ -1542,6 +1573,7 @@ R.addEventListener("pointerdown", e => {
   const [x, y] = toLocal(e);
   if (!onKnob(x, y)) return;
   R.setPointerCapture(e.pointerId);
+  newGesture();
   dragA = Math.atan2(y - KY, x - KX);
   R.classList.add("grabbing");
 });
@@ -1558,8 +1590,16 @@ R.addEventListener("pointermove", e => {
 const endDrag = () => { dragA = null; R.classList.remove("grabbing"); };
 R.addEventListener("pointerup", endDrag);
 R.addEventListener("pointercancel", endDrag);
-R.addEventListener("wheel", e => { e.preventDefault(); powerOn(); turn((e.deltaY > 0 ? -1 : 1) * 0.05 / TURN_MHZ * 2 * Math.PI); }, { passive: false });
+let lastWheel = 0;
+R.addEventListener("wheel", e => {
+  e.preventDefault(); powerOn();
+  const now = performance.now();
+  if (now - lastWheel > 350) newGesture(); // пауза — новый прокрут колёсика
+  lastWheel = now;
+  turn((e.deltaY > 0 ? -1 : 1) * 0.05 / TURN_MHZ * 2 * Math.PI);
+}, { passive: false });
 R.addEventListener("keydown", e => {
+  if (!e.repeat && e.key.startsWith("Arrow")) newGesture(); // удержание — тот же жест
   const step = (e.shiftKey ? 1 : 0.1) / TURN_MHZ * 2 * Math.PI;
   if (["ArrowRight", "ArrowUp"].includes(e.key)) { e.preventDefault(); powerOn(); turn(step); }
   if (["ArrowLeft", "ArrowDown"].includes(e.key)) { e.preventDefault(); powerOn(); turn(-step); }
