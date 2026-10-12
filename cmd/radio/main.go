@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"kontakt/internal/moderation"
 	"kontakt/internal/radio"
@@ -36,6 +37,8 @@ func main() {
 	castQuota := flag.Int64("stations-quota-gb", 10, "сколько ГБ файлов можно хранить для станций с сервера")
 	rtcUDP := flag.String("rtc-udp", "", "UDP-адрес эфира по WebRTC (docs/UDP_BROADCAST.md), например :443; пусто — звук ведущего только по WebSocket")
 	rtcIP := flag.String("rtc-ip", "", "публичный IPv4 для кандидатов WebRTC, если сервер за NAT (через запятую); пусто — адреса интерфейсов")
+	secretList := flag.String("secret", "", "список KiwiSDR для секретной волны (зеркало УВБ-76), например http://rx.linkfanel.net/kiwisdr_com.js; пусто — её нет")
+	secretSure := flag.String("secret-sure-until", "", "до этого времени (RFC 3339) секретная волна прячется на каждом визите — проверка; потом — с шансом 0,13")
 	botAPI := flag.String("bot-api", "https://api.telegram.org", "Bot API бота вещателей (токен — RADIO_BOT_TOKEN, владелец — TELEGRAM_CHAT_ID, оба из окружения)")
 	flag.Parse()
 	log.SetPrefix("[radio]  ")
@@ -73,7 +76,7 @@ func main() {
 	}
 	h := radio.NewHub(radio.Options{MaxStations: *stations, MaxListeners: *listeners, PrivateMetrics: *admin != "", Mod: mod,
 		LinksPath: *linksPath, DirectPort: directPort, LogosDir: *logosDir, HostLogos: *hostLogos,
-		RTCUDP: *rtcUDP, RTCIPs: splitList(*rtcIP), BotToken: botToken, BotOwner: botOwner, BotAPI: *botAPI})
+		RTCUDP: *rtcUDP, RTCIPs: splitList(*rtcIP), BotToken: botToken, BotOwner: botOwner, BotAPI: *botAPI, SecretList: *secretList, SecretSureUntil: parseTime(*secretSure)})
 	if *directAddr != "" {
 		go func() { log.Fatal(radio.ServeDirect(*directAddr, *certPath, *keyPath, h.Handler())) }()
 		log.Printf("прямой HTTPS для эфира: %s", *directAddr)
@@ -110,6 +113,18 @@ func main() {
 	}
 	log.Printf("Открытое радио: http://%s", shown)
 	log.Fatal(http.ListenAndServe(*addr, h.Handler()))
+}
+
+// parseTime — RFC 3339; пусто или ошибка — нулевое время (ошибка — в журнал).
+func parseTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		log.Printf("время %q: %v — без проверочного режима", s, err)
+	}
+	return t
 }
 
 // splitList — «a, b» → [a b]; пусто — nil.

@@ -42,7 +42,11 @@ body {
   --sb: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
   padding: calc(16px + var(--st)) 16px calc(16px + var(--sb));
 }
-.wrap { width: min(560px, 100%); margin: 0 auto; min-height: calc(100dvh - 32px - var(--st) - var(--sb)); display: flex; flex-direction: column; }
+.wrap { width: min(560px, 100%); margin: 0 auto; min-height: calc(100dvh - 32px - var(--st) - var(--sb)); display: flex; flex-direction: column; position: relative; z-index: 1; }
+/* секретная волна: страница чернеет, по ней — белый пиксельный снег, как в окошке шкалы между станциями */
+#snow { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; z-index: 0; display: none; }
+body.secret { background-color: #000; background-image: none; }
+body.secret #snow { display: block; }
 /* Панель приёмника — внизу страницы: клавиша поддержки, главная кнопка футера («поделиться» и
    жалоба — под карточкой станции). Только на вкладке «слушать». Под ней, последней строкой на обеих
    вкладках, — правила и язык. */
@@ -380,6 +384,7 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
 </style>
 </head>
 <body>
+<canvas id="snow" aria-hidden="true"></canvas>
 <div class="wrap">
   <nav class="tabs" aria-label="Режим" data-i-aria="modeAria">
     <button class="tab on" id="tabRx" aria-pressed="true" data-i="listen">LISTEN</button>
@@ -593,7 +598,7 @@ const I18N = {
     drop: "кинь сюда mp3 или целую папку",
     searchPh: "поиск по найденному…", searchAria: "Поиск mp3 в выбранной папке",
     foot: "Файлы не загружаются на сервер: играют из твоего браузера, в эфир уходит только звук — G.711, 64 кбит/с.",
-    canvasName: "РАДИО", band: "УКВ", lcdTouch: "ЖМИ", lcdTurn: "КРУТИ", lcdTuned: "ЧИСТО", lcdSignal: "СИГНАЛ", lcdStatic: "ШУМ",
+    canvasName: "РАДИО", band: "УКВ", bandSW: "КВ", khz: "кГц", lcdTouch: "ЖМИ", lcdTurn: "КРУТИ", lcdTuned: "ЧИСТО", lcdSignal: "СИГНАЛ", lcdStatic: "ШУМ",
     freq: f => fmt(f) + " МГц",
     errNoWebAudio: "браузер без Web Audio — открой в Chrome или Firefox",
     errNoWorklet: "браузер без AudioWorklet — открой в Chrome или Firefox",
@@ -685,7 +690,7 @@ const I18N = {
     drop: "drop mp3 files or a whole folder here",
     searchPh: "search the files found…", searchAria: "Search mp3 in the chosen folder",
     foot: "Files are not uploaded: they play from your browser, only the sound goes on air — G.711, 64 kbit/s.",
-    canvasName: "OPEN RADIO", band: "FM", lcdTouch: "TOUCH", lcdTurn: "TURN ME", lcdTuned: "TUNED", lcdSignal: "SIGNAL", lcdStatic: "STATIC",
+    canvasName: "OPEN RADIO", band: "FM", bandSW: "SW", khz: "kHz", lcdTouch: "TOUCH", lcdTurn: "TURN ME", lcdTuned: "TUNED", lcdSignal: "SIGNAL", lcdStatic: "STATIC",
     freq: f => fmt(f) + " FM",
     errNoWebAudio: "this browser has no Web Audio — open in Chrome or Firefox",
     errNoWorklet: "this browser has no AudioWorklet — open in Chrome or Firefox",
@@ -1270,7 +1275,7 @@ function airSocket(path, needProven) {
 function connectListen() {
   lws = airSocket("/ws/listen", false);
   lws.binaryType = "arraybuffer";
-  lws.onopen = () => { st.tuned = -1; st.full = false; retune(); };
+  lws.onopen = () => { st.tuned = -1; st.full = false; retune(); warmSecret(true); };
   lws.onmessage = e => {
     if (typeof e.data === "string") {
       try {
@@ -1312,10 +1317,31 @@ function nearest(freqMHz) {
 }
 const strengthOf = d => d <= 0.03 ? 1 : Math.max(0, 1 - (d - 0.03) / (CATCH - 0.03));
 
+// ---------- секретная волна ----------
+// Сервер зеркалит УВБ-76 (secret.go) и в метатеге secret-wave даёт шанс на этот визит. Выпало — на
+// левом краю шкалы (87,6–88,9) прячется точка: на экранчике там 4625 и «КВ», на наклейке — только
+// частота, страница чернеет и идёт снегом. Рядом со своей станцией точки нет — та её перекрыла бы.
+const SECRET_TUNE = 4625;
+const SECRET_P = parseFloat((document.querySelector('meta[name="secret-wave"]') || {}).content || "0") || 0;
+const SECRET = Math.random() < SECRET_P ? 876 + (Math.random() * 14 | 0) : 0;
+function secretD() {
+  if (!SECRET || st.stations.some(s => ringDist(s.f / 10, SECRET / 10) < PRELOAD)) return 1e9;
+  return ringDist(SECRET / 10, st.dial);
+}
+const onSecret = lim => st.power && st.mode === "rx" && secretD() < lim && secretD() <= nearest(st.dial).d;
+// Прогрев: сервер ищет приёмник заранее — к точке звук уже готов. Сразу после подключения и раз в
+// 50 с, пока ручка ближе 1,5 МГц к точке.
+function warmSecret(now) {
+  if (!SECRET || !lws || lws.readyState !== 1) return;
+  if (now || (st.power && ringDist(SECRET / 10, st.dial) < 1.5)) lws.send(JSON.stringify({ warm: true }));
+}
+setInterval(() => warmSecret(false), 50000);
+
 function retune() {
   if (!lws || lws.readyState !== 1) return;
   let want = 0;
-  if (st.mode === "rx" && st.power) { const { s, d } = nearest(st.dial); if (s && d < PRELOAD) want = s.f; }
+  if (onSecret(PRELOAD)) want = SECRET_TUNE;
+  else if (st.mode === "rx" && st.power) { const { s, d } = nearest(st.dial); if (s && d < PRELOAD) want = s.f; }
   if (want !== st.tuned) {
     st.tuned = want;
     lws.send(JSON.stringify({ tune: want }));
@@ -1323,7 +1349,8 @@ function retune() {
   }
 }
 function updateSignal() {
-  const { s, d } = nearest(st.dial);
+  const near = nearest(st.dial), sd = secretD();
+  const d = Math.min(near.d, sd), s = near.s || sd < 1e9;
   const str = st.power && s ? strengthOf(d) : 0, dd = Math.min(d, 1);
   if (Math.abs(str - st.strength) > 0.005 || Math.abs(dd - st.dist) > 0.002) {
     st.strength = str; st.dist = dd;
@@ -1435,12 +1462,13 @@ function drawRadio() {
       if ((tick >> 5) & 1) text(rg, TXT.lcdTouch, 65, 41, P.amber);
     } else if ((tick >> 5) & 1) text(rg, TXT.lcdTurn, 76, 34, P.amberDim);
   } else {
-    text(rg, st.dial.toFixed(1).padStart(5, " "), 65, 30, P.amber, 2);
+    const sec = onSecret(CATCH);
+    text(rg, sec ? String(SECRET_TUNE).padStart(5, " ") : st.dial.toFixed(1).padStart(5, " "), 65, 30, P.amber, 2);
     const bars = Math.round(st.strength * 5);
     for (let i = 0; i < 5; i++) { rg.fillStyle = i < bars ? P.amber : P.amberDim; rg.fillRect(107 + i * 2, 39 - (i * 2 + 2), 1, i * 2 + 2); }
     const status = st.strength > 0.95 ? TXT.lcdTuned : st.strength > 0 ? TXT.lcdSignal : TXT.lcdStatic;
     text(rg, status, 65, 41, st.strength > 0 ? P.amber : P.amberDim);
-    text(rg, TXT.band, 108, 41, P.amberDim);
+    text(rg, sec ? TXT.bandSW : TXT.band, 108, 41, P.amberDim);
     const noise = (1 - st.strength) * 0.6 + st.scratchVis; // снег и разрывы строк в окошке
     if (noise > 0.02) {
       rg.fillStyle = P.amberDim;
@@ -1557,6 +1585,7 @@ function drawSticker() {
     if (shared) return setSticker(shared.name || TXT.freq(shared.f), TXT.sharedSticker(shared.track), false, shared.logo);
     return setSticker(TXT.stickerIdle, "");
   }
+  if (onSecret(CATCH)) return setSticker(SECRET_TUNE + " " + TXT.khz, "", st.strength < 0.7);
   const { s, d } = nearest(st.dial);
   if (s && d < CATCH) setSticker(s.n, s.t || "", st.strength < 0.7, s.g);
   else setSticker(TXT.static, "");
@@ -2301,7 +2330,28 @@ document.addEventListener("pointerdown", e => {
   b._t = setTimeout(() => b.classList.remove("pressed"), 1000);
 });
 
+// снег секретной волны: крупные пиксели (холст в 5 раз меньше окна), ~15 кадров/с
+const snow = $("snow"), sg = snow.getContext("2d");
+let snowAt = 0;
+const calmMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+function secretView(on) {
+  if (document.body.classList.contains("secret") !== on) { document.body.classList.toggle("secret", on); snowAt = 0; }
+  if (!on) return;
+  const now = performance.now();
+  if (snowAt && (calmMotion || now - snowAt < 66)) return;
+  snowAt = now;
+  const w = Math.max(1, Math.ceil(innerWidth / 5)), h = Math.max(1, Math.ceil(innerHeight / 5));
+  if (snow.width !== w || snow.height !== h) { snow.width = w; snow.height = h; }
+  const img = sg.createImageData(w, h), px = img.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const v = Math.random() < 0.08 ? 170 + (Math.random() * 85 | 0) : 0;
+    px[i] = px[i + 1] = px[i + 2] = v; px[i + 3] = 255;
+  }
+  sg.putImageData(img, 0, 0);
+}
+
 function frame() {
+  secretView(onSecret(CATCH));
   if (st.mode === "rx") {
     updateSignal();
     animateBody();

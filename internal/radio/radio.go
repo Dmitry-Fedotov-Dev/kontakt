@@ -147,6 +147,11 @@ type Options struct {
 	BotToken string
 	BotOwner int64
 	BotAPI   string // https://api.telegram.org; в тестах — подделка
+	// SecretList — список приёмников KiwiSDR для секретной волны (secret.go); пусто — её нет
+	SecretList string
+	// SecretChance — шанс, что на визит страница спрячет секретную волну (0 — 0,13); до SecretSureUntil — 1
+	SecretChance    float64
+	SecretSureUntil time.Time
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
@@ -209,9 +214,11 @@ type Hub struct {
 	hostAdmit   *metrics.CounterVec
 	waves       *waveMemo // последнее название и логотип каждой волны (waves.go)
 
-	access     *logoAccess // кому бот выдал логотип (logoaccess.go)
-	bot        *castBot    // nil — бота нет
-	logoAccess *metrics.CounterVec
+	access       *logoAccess // кому бот выдал логотип (logoaccess.go)
+	bot          *castBot    // nil — бота нет
+	logoAccess   *metrics.CounterVec
+	secret       *secretWave // секретная волна; nil — выключена
+	secretEvents *metrics.CounterVec
 
 	rtc         *rtcServer // эфир по UDP; nil — выключен
 	rtcConnects *metrics.CounterVec
@@ -253,7 +260,8 @@ type listener struct {
 	heardSince time.Time
 	counted    bool // прослушивание уже засчитано
 	lastLike   time.Time
-	stale      bool // под Hub.mu: не влезло сообщение о треке — при следующем тике полный список
+	lastWarm   time.Time // прогрев секретной волны — не чаще secretWarmEvery
+	stale      bool      // под Hub.mu: не влезло сообщение о треке — при следующем тике полный список
 }
 
 // Station — то, что видят слушатели.
@@ -383,6 +391,12 @@ func NewHub(opt Options) *Hub {
 	h.logoAccess = h.reg.CounterVec("kontakt_radio_logo_access_total",
 		"Доступ к логотипу через бота: link — ссылка в бота, request — запрос владельцу, granted / denied — его решение, "+
 			"rejoined — тот же аккаунт из нового браузера, revoked — отозван", "event", "link", "request", "granted", "denied", "rejoined", "revoked")
+	h.secretEvents = h.reg.CounterVec("kontakt_radio_secret_total",
+		"Секретная волна (зеркало УВБ-76): tuned — настроились, warm — прогрев со страницы, connected — приёмник KiwiSDR отдал звук, no_receiver — ни один не ответил",
+		"event", "tuned", "warm", "connected", "no_receiver")
+	if opt.SecretList != "" {
+		h.secret = newSecretWave(h, opt.SecretList)
+	}
 	if opt.BotToken != "" && !opt.HostLogos {
 		h.bot = newCastBot(h, opt.BotAPI, opt.BotToken, opt.BotOwner)
 		go h.bot.run()
@@ -863,6 +877,7 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 			Tune   *int   `json:"tune"`
 			Report bool   `json:"report"`
 			Like   bool   `json:"like"`
+			Warm   bool   `json:"warm"`
 			Letter string `json:"letter"`
 		}
 		if json.Unmarshal(data, &m) != nil {
@@ -879,6 +894,10 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 		}
 		if m.Like {
 			h.like(l)
+		}
+		if m.Warm && h.secret != nil && time.Since(l.lastWarm) >= secretWarmEvery {
+			l.lastWarm = time.Now()
+			h.secret.warm()
 		}
 		if m.Letter != "" {
 			res, wait := h.letter(l, m.Letter)
@@ -897,7 +916,7 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.mu.Lock()
-	if s := h.st[l.tuned]; s != nil {
+	if s := h.stationFor(l.tuned); s != nil {
 		delete(s.subs, l)
 	}
 	delete(h.ls, l)
@@ -908,7 +927,7 @@ func (h *Hub) serveListen(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) tune(l *listener, f int) {
-	if f < MinFreq || f > MaxFreq {
+	if (f < MinFreq || f > MaxFreq) && !(f == SecretTune && h.secret != nil) {
 		f = 0
 	}
 	h.mu.Lock()
@@ -916,7 +935,7 @@ func (h *Hub) tune(l *listener, f int) {
 		h.mu.Unlock()
 		return
 	}
-	if s := h.st[l.tuned]; s != nil {
+	if s := h.stationFor(l.tuned); s != nil {
 		delete(s.subs, l)
 	}
 	l.tuned = f
@@ -929,6 +948,20 @@ func (h *Hub) tune(l *listener, f int) {
 		default:
 			drained = true
 		}
+	}
+	if f == SecretTune { // секретная волна: звук — да, лайки, письма и жалобы — нет (l.heard пуст)
+		s := h.secret.st
+		s.subs[l] = struct{}{}
+		for _, b := range s.recent {
+			select {
+			case l.out <- b:
+			default:
+			}
+		}
+		h.mu.Unlock()
+		h.secretEvents.Inc("tuned")
+		h.secret.wake()
+		return
 	}
 	if s := h.st[f]; s != nil {
 		s.subs[l] = struct{}{}

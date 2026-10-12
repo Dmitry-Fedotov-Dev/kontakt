@@ -84,6 +84,9 @@ func (h *Hub) airPortMeta() string {
 	if h.opt.DirectPort != 0 {
 		m = fmt.Sprintf(`<meta name="air-port" content="%d">`+"\n", h.opt.DirectPort)
 	}
+	if h.secret != nil { // страница прячет секретную волну, только если сервер её зеркалит
+		m += fmt.Sprintf(`<meta name="secret-wave" content="%.2f">`+"\n", h.secretChance(time.Now()))
+	}
 	if mode := h.logoMode(); mode != "" {
 		m += `<meta name="host-logos" content="` + mode + `">` + "\n"
 	}
