@@ -435,6 +435,12 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
 .queue li span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .queue li button { background: none; border: 0; color: var(--amber); cursor: pointer; padding: 0 4px; font-weight: 600; }
 .queue li button[disabled] { opacity: .3; cursor: default; }
+.queue li span { cursor: pointer; }
+.queue li.played span { opacity: .45; }
+.queue li.on span { color: var(--amber); font-weight: 600; }
+/* переключатели очереди: нажат — янтарный, как лампа */
+.qmodes { display: flex; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+.btn.tog[aria-pressed="true"] { background: var(--amber); box-shadow: 0 0 0 3px var(--ink), inset 3px 3px 0 #C98F22; }
 .queue .empty { color: #9C86BC; }
 .foot { margin: auto 0 0; padding-top: 18px; font-size: 11px; color: #9C86BC; text-align: center; line-height: 1.4; }
 .shake { animation: shake .08s steps(2) 3; }
@@ -536,6 +542,10 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
       <div class="row" style="margin-top:10px">
         <button class="btn" id="play" data-i="play">PLAY</button>
         <button class="btn" id="skip" data-i="skip">SKIP</button>
+        <span class="qmodes">
+          <button class="btn tog" id="qKeep" aria-pressed="false" data-i="qKeep">≡ KEEP</button>
+          <button class="btn tog" id="qLoop" aria-pressed="false" data-i="qLoop">↻ LOOP</button>
+        </span>
       </div>
       <ol class="queue" id="queue"></ol>
       <input type="file" id="files" accept="audio/mpeg,.mp3" multiple hidden>
@@ -656,7 +666,7 @@ const I18N = {
     pcDenied: "браузер не дал звук — попробуй ещё раз", pcEnded: "звук ПК больше не в эфире",
     pcHelp: "Вкладка — только её звук; весь экран — весь звук компьютера (Chrome и Edge на Windows)",
     pcLoop: "в эфир идёт весь звук компьютера — не слушай свою станцию на этом же компьютере (или выключи звук той вкладки), иначе будет эхо и шум",
-    queue: "ОЧЕРЕДЬ", addFiles: "+ ФАЙЛЫ", addDir: "+ ПАПКА", addAll: "ДОБАВИТЬ ВСЁ", play: "ИГРАТЬ", pause: "ПАУЗА", skip: "ДАЛЬШЕ",
+    queue: "ОЧЕРЕДЬ", addFiles: "+ ФАЙЛЫ", addDir: "+ ПАПКА", addAll: "ДОБАВИТЬ ВСЁ", play: "ИГРАТЬ", pause: "ПАУЗА", skip: "ДАЛЬШЕ", qKeep: "≡ ОСТАВЛЯТЬ", qLoop: "↻ ПО КРУГУ", qKeepHint: "Сыгранные треки остаются в списке", qLoopHint: "После последнего трека — снова с первого",
     drop: "кинь сюда mp3 или целую папку",
     searchPh: "поиск по найденному…", searchAria: "Поиск mp3 в выбранной папке",
     foot: "Файлы не загружаются на сервер: играют из твоего браузера, в эфир уходит только звук — G.711, 64 кбит/с.",
@@ -748,7 +758,7 @@ const I18N = {
     pcDenied: "the browser didn't share audio — try again", pcEnded: "PC audio is off the air",
     pcHelp: "A tab — only its sound; the whole screen — all computer sound (Chrome and Edge on Windows)",
     pcLoop: "all computer sound goes on air — don't listen to your station on this computer (or mute that tab), or you'll get echo and noise",
-    queue: "QUEUE", addFiles: "+ FILES", addDir: "+ FOLDER", addAll: "ADD ALL", play: "PLAY", pause: "PAUSE", skip: "SKIP",
+    queue: "QUEUE", addFiles: "+ FILES", addDir: "+ FOLDER", addAll: "ADD ALL", play: "PLAY", pause: "PAUSE", skip: "SKIP", qKeep: "≡ KEEP", qLoop: "↻ LOOP", qKeepHint: "Played tracks stay in the list", qLoopHint: "After the last track, start over",
     drop: "drop mp3 files or a whole folder here",
     searchPh: "search the files found…", searchAria: "Search mp3 in the chosen folder",
     foot: "Files are not uploaded: they play from your browser, only the sound goes on air — G.711, 64 kbit/s.",
@@ -2312,6 +2322,28 @@ renderLogo();
 // ---------- очередь ----------
 const queue = [];   // {file, name}
 let current = null, playing = false;
+// «Оставлять» — сыгранное не удаляется: qi — номер играющего трека в списке (−1 — ничего);
+// «По кругу» — после последнего снова первый (и включает «оставлять»). Выбор — в этом браузере.
+let keepList = false, loopList = false, qi = -1;
+try { const m = JSON.parse(localStorage.getItem("radio-queue-mode") || "{}"); keepList = !!m.keep || !!m.loop; loopList = !!m.loop; } catch (_) {}
+function saveQueueMode() { try { localStorage.setItem("radio-queue-mode", JSON.stringify({ keep: keepList, loop: loopList })); } catch (_) {} }
+function setKeep(on) {
+  if (on === keepList) return;
+  keepList = on;
+  if (on && current && current.q) { queue.unshift(current.q); qi = 0; }   // играющий — снова в списке, первым
+  if (!on) { if (qi >= 0) queue.splice(0, qi + 1); qi = -1; loopList = false; } // сыгранное и текущее — из списка
+  saveQueueMode(); renderQueue();
+}
+function setLoop(on) {
+  loopList = on;
+  if (on) setKeep(true);
+  saveQueueMode(); renderQueue();
+}
+// playAt — сыграть трек i из списка сейчас
+function playAt(i) {
+  if (keepList) { qi = i - 1; return next(); }
+  const [q] = queue.splice(i, 1); queue.unshift(q); next();
+}
 let library = [];   // найденное в выбранной папке: {file, name, path}
 
 const isMp3 = f => /\.mp3$/i.test(f.name) || f.type === "audio/mpeg";
@@ -2336,16 +2368,25 @@ function renderQueue() {
   if (!queue.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = TXT.queueEmpty; list.append(li); }
   queue.forEach((q, i) => {
     const li = document.createElement("li");
-    const n = document.createElement("span"); n.textContent = (i + 1) + ". " + q.name; n.title = q.name;
+    if (keepList && i < qi) li.className = "played";
+    if (keepList && i === qi) li.className = "on";
+    const n = document.createElement("span"); n.textContent = (keepList && i === qi ? "▶ " : (i + 1) + ". ") + q.name; n.title = q.name;
+    n.onclick = () => playAt(i);
     const up = document.createElement("button"); up.textContent = "▲"; up.setAttribute("aria-label", TXT.up); up.disabled = i === 0;
-    up.onclick = () => { [queue[i - 1], queue[i]] = [queue[i], queue[i - 1]]; renderQueue(); };
+    up.onclick = () => {
+      [queue[i - 1], queue[i]] = [queue[i], queue[i - 1]];
+      if (qi === i) qi = i - 1; else if (qi === i - 1) qi = i;
+      renderQueue();
+    };
     const rm = document.createElement("button"); rm.textContent = "✕"; rm.setAttribute("aria-label", TXT.remove);
-    rm.onclick = () => { queue.splice(i, 1); renderQueue(); };
+    rm.onclick = () => { queue.splice(i, 1); if (i <= qi) qi--; renderQueue(); };
     li.append(n, up, rm);
     list.append(li);
   });
   $("now").textContent = current ? (playing ? "▶ " : "❚❚ ") + current.name : pc ? (pcTrack() ? "▶ " + pcTrack() : TXT.pcNow) : TXT.silenceNow;
   $("play").textContent = playing ? TXT.pause : TXT.play;
+  $("qKeep").setAttribute("aria-pressed", String(keepList));
+  $("qLoop").setAttribute("aria-pressed", String(loopList));
 }
 function stopCurrent() {
   if (!current) return;
@@ -2357,7 +2398,13 @@ function stopCurrent() {
 async function next() {
   await ensureTx();
   stopCurrent();
-  const q = queue.shift();
+  let q;
+  if (keepList) {
+    let i = qi + 1;
+    if (i >= queue.length) i = loopList && queue.length ? 0 : -1;
+    qi = i;
+    q = i >= 0 ? queue[i] : null;
+  } else q = queue.shift();
   if (!q) { playing = false; renderQueue(); sendTitle(); renderHost(); return; }
   // <audio> читает mp3 потоком: весь файл в память не декодируется — так дешевле
   const el = new Audio(URL.createObjectURL(q.file));
@@ -2365,7 +2412,7 @@ async function next() {
   src.connect(tx.music); src.connect(tx.monitor);
   el.onended = () => next();
   el.onerror = () => { hintHold = performance.now() + 2500; hostHint(TXT.unreadable(q.name), true); next(); };
-  current = { name: q.name, el, src };
+  current = { name: q.name, el, src, q };
   playing = true;
   try { await el.play(); } catch (_) { playing = false; } // браузер не дал автозапуск — ждём PLAY
   renderQueue(); sendTitle(); renderHost();
@@ -2378,6 +2425,9 @@ $("play").onclick = async () => {
   renderQueue(); sendTitle(); renderHost();
 };
 $("skip").onclick = () => next();
+$("qKeep").onclick = () => setKeep(!keepList);
+$("qLoop").onclick = () => setLoop(!loopList);
+$("qKeep").title = TXT.qKeepHint; $("qLoop").title = TXT.qLoopHint;
 
 // ---------- звук ПК: вкладка, окно или весь экран ----------
 // Браузер даёт звук только вместе с картинкой (getDisplayMedia): видео сразу выключаем, звук —
