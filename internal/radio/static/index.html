@@ -2388,16 +2388,30 @@ function renderQueue() {
   $("qKeep").setAttribute("aria-pressed", String(keepList));
   $("qLoop").setAttribute("aria-pressed", String(loopList));
 }
-function stopCurrent() {
+// Плеер очереди — один <audio> на всю сессию, между треками меняется только файл. Новый элемент на
+// каждый трек Android с погашенным экраном запускать не даёт (play() отклоняется) — очередь вставала
+// на конце трека; уже звучащему элементу смену файла он разрешает.
+let musicEl = null, musicUrl = "";
+function musicPlayer() {
+  if (musicEl) return musicEl;
+  musicEl = new Audio();
+  const src = ctx.createMediaElementSource(musicEl);
+  src.connect(tx.music); src.connect(tx.monitor);
+  musicEl.onended = () => next();
+  musicEl.onerror = () => {
+    if (!current || !musicEl.getAttribute("src")) return;
+    hintHold = performance.now() + 2500; hostHint(TXT.unreadable(current.name), true); next();
+  };
+  return musicEl;
+}
+function stopCurrent(keep) {
   if (!current) return;
-  current.el.pause();
-  current.src.disconnect();
-  URL.revokeObjectURL(current.el.src);
+  if (!keep) { musicEl.pause(); musicEl.removeAttribute("src"); musicEl.load(); }
+  URL.revokeObjectURL(musicUrl); musicUrl = "";
   current = null;
 }
 async function next() {
   await ensureTx();
-  stopCurrent();
   let q;
   if (keepList) {
     let i = qi + 1;
@@ -2405,14 +2419,13 @@ async function next() {
     qi = i;
     q = i >= 0 ? queue[i] : null;
   } else q = queue.shift();
-  if (!q) { playing = false; renderQueue(); sendTitle(); renderHost(); return; }
+  if (!q) { stopCurrent(); playing = false; renderQueue(); sendTitle(); renderHost(); return; }
   // <audio> читает mp3 потоком: весь файл в память не декодируется — так дешевле
-  const el = new Audio(URL.createObjectURL(q.file));
-  const src = ctx.createMediaElementSource(el);
-  src.connect(tx.music); src.connect(tx.monitor);
-  el.onended = () => next();
-  el.onerror = () => { hintHold = performance.now() + 2500; hostHint(TXT.unreadable(q.name), true); next(); };
-  current = { name: q.name, el, src, q };
+  const el = musicPlayer();
+  stopCurrent(true);
+  musicUrl = URL.createObjectURL(q.file);
+  el.src = musicUrl;
+  current = { name: q.name, el, q };
   playing = true;
   try { await el.play(); } catch (_) { playing = false; } // браузер не дал автозапуск — ждём PLAY
   renderQueue(); sendTitle(); renderHost();
