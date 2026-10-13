@@ -43,17 +43,22 @@ body {
   padding: calc(16px + var(--st)) 16px calc(16px + var(--sb));
 }
 .wrap { width: min(560px, 100%); margin: 0 auto; min-height: calc(100dvh - 32px - var(--st) - var(--sb)); display: flex; flex-direction: column; position: relative; z-index: 1; }
-/* Телефон лёжа, вкладка «Слушать» (класс land ставит страница): на экране только приёмник — по центру,
-   как можно крупнее, с воздухом по краям и запасом под вырез камеры. Пропорции холста 128×88 = 16/11. */
-body.land { padding: 0; }
-body.land .wrap {
-  width: 100%; min-height: 100dvh; box-sizing: border-box; justify-content: center; align-items: center;
-  padding: max(4vh, env(safe-area-inset-top, 0px)) max(4vw, env(safe-area-inset-right, 0px))
-           max(4vh, env(safe-area-inset-bottom, 0px)) max(4vw, env(safe-area-inset-left, 0px));
-}
+/* Телефон лёжа, вкладка «Слушать» (класс land ставит страница): экран телефона — передняя панель радио.
+   Холст растянут так, что внутренность корпуса (116×56 из 128×88, центр — 64, 49) заполняет экран без
+   воздуха: обводка, антенна и ножки уходят за края, края телефона — края корпуса. Пропорции корпуса
+   2,07:1, у телефонов лёжа 2,06–2,17 — обрезается по паре пикселей корпуса. Фон — цвет корпуса. */
+body.land, body.land.secret { padding: 0; background: #E8573F; overflow: hidden; }
 body.land .wrap > :not(#rxView), body.land #rxView > :not(.stage) { display: none !important; }
-body.land #rxView, body.land .stage { width: 100%; display: flex; justify-content: center; }
-body.land #radio { width: min(92vw, calc(92dvh * 16 / 11)); max-width: none; }
+/* масштаб: корпус во весь экран, но дисплей целиком (по ширине — 112 из 116) и вся высота корпуса (56);
+   недостающее по краям — тот же цвет корпуса: обводка и углы корпуса срезаны скруглённой маской, и
+   панель продолжается до краёв экрана без шва */
+body.land #radio {
+  --s: min(calc(100vw / 112), calc(100dvh / 56));
+  position: fixed; max-width: none; margin: 0; transform: none !important;
+  width: calc(128 * var(--s)); height: calc(88 * var(--s));
+  left: calc(50vw - 64 * var(--s)); top: calc(50dvh - 49 * var(--s));
+  clip-path: inset(calc(21.5 * var(--s)) calc(6.5 * var(--s)) calc(11.5 * var(--s)) calc(6.5 * var(--s)) round calc(7 * var(--s)));
+}
 /* секретная волна: страница чернеет, по ней — белый пиксельный снег, как в окошке шкалы между станциями */
 #snow { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; z-index: 0; display: none; }
 body.secret { background-color: #000; background-image: none; }
@@ -354,7 +359,7 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
 #mic { width: 168px; height: 168px; }
 /* у холста микрофона пустые поля по бокам (место под волны) — без поправки блок на глаз уезжает вправо */
 .desk .micbtn { margin: 0 -20px 0 -52px; }
-@media (max-width: 450px) { .desk .micbtn { margin: 0 -36px; } } /* в столбик — микрофон по центру */
+/* на телефоне микрофон — слева от фейдеров (ниже, в блоке «Телефон, вкладка „Вещать“») */
 .micbtn .cap { display: block; font-size: 12px; margin-top: 4px; color: #C9B6E4; }
 .micbtn[aria-pressed="true"] .cap { color: var(--red); font-weight: 600; }
 
@@ -373,6 +378,33 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
 .vu i.hot { background: repeating-linear-gradient(0deg, var(--red) 0 4px, transparent 4px 6px); }
 .vu .lbl { font-size: 11px; font-weight: 600; }
 .vu .val { font-size: 11px; } /* пустая строка под подписью, как число у фейдеров: полосы на одной высоте */
+/* Телефон, вкладка «Вещать»: панель настройки и плитка микрофона с микшером — на первом экране (замер на
+   390×844: видно ~660 px в Safari). Частота на табличке не повторяется — она крупно на дисплейчике;
+   микрофон — слева от фейдеров, а не над ними; фейдеры короче. */
+@media (max-width: 600px) {
+  .studio { gap: 12px; }
+  .studio .box { padding: 10px; }
+  .sign { padding: 5px 12px 6px; min-width: 150px; }
+  .sign .lamp { font-size: 20px; }
+  #txView .sign .freq { display: none; }
+  .sign.live .freq { display: block; }
+  .arrow { width: 30px; height: 30px; }
+  .tuner { margin-top: 10px; gap: 6px; }
+  .tunerLcd { padding: 4px 10px 5px; }
+  .tunerLcd #tunerFreq { font-size: 24px; }
+  #dial { height: 56px; }
+  .nameRow { margin-top: 10px; }
+  #txView .hint { margin-top: 6px; }
+  #txView .rules { font-size: 11px; margin-top: 4px; }
+  .desk { flex-wrap: nowrap; gap: 6px; align-items: center; }
+  #mic { width: 104px; height: 104px; }
+  .desk .micbtn { margin: 0 -10px 0 -24px; flex: none; }
+  .mixer { gap: 6px; }
+  .fader { width: 40px; gap: 4px; }
+  .fader .track, .vu .track { height: 104px; }
+  .vu { margin-left: 8px; }
+  .fader .lbl, .vu .lbl { font-size: 10px; letter-spacing: 0; }
+}
 
 .btn {
   border: 0; cursor: pointer; padding: 5px 10px 6px; font-size: 13px; font-weight: 600; letter-spacing: .03em;
@@ -1735,12 +1767,13 @@ $("fUp").onclick = () => stepFreq(1);
 // Холст рисуется в CSS-пикселях устройства (×dpr), без сглаживания: деления, подписи, огоньки занятых
 // волн, красный визир на выбранной частоте, под стеклом — прорезь и кремовая ручка-ползунок.
 const dial = $("dial"), dg = dial.getContext("2d");
-const DIAL_PAD = 14, GLASS_H = 38, SLOT_Y = 46;
+const DIAL_PAD = 14;
 const fToX = (f, w) => DIAL_PAD + (f - 875) / (1080 - 875) * (w - 2 * DIAL_PAD);
 const xToF = (x, w) => Math.max(875, Math.min(1080, Math.round(875 + (x - DIAL_PAD) / (w - 2 * DIAL_PAD) * (1080 - 875))));
 function drawDial() {
-  const w = Math.round(dial.clientWidth), h = 64, dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  const w = Math.round(dial.clientWidth), h = Math.round(dial.clientHeight) || 64, dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
   if (!w) return;
+  const GLASS_H = h - 26, SLOT_Y = GLASS_H + 8; // стекло — всё, кроме прорези с ползунком снизу
   if (dial.width !== w * dpr || dial.height !== h * dpr) { dial.width = w * dpr; dial.height = h * dpr; }
   const g = dg;
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1755,14 +1788,14 @@ function drawDial() {
   g.font = "600 10px 'Pixelify Sans', monospace"; g.textAlign = "center"; g.textBaseline = "top";
   for (let f = 880; f <= 1080; f += 5) {
     const x = fToX(f, w), major = f % 10 === 0;
-    px(x, major ? 22 : 27, 1, major ? 10 : 5, major ? "#FFC24B" : "#8A6224");
-    if (major && (f - 880) % step === 0) { g.fillStyle = "#FFC24B"; g.fillText(String(f / 10), Math.round(x) + 0.5, 7); }
+    px(x, major ? GLASS_H - 16 : GLASS_H - 11, 1, major ? 10 : 5, major ? "#FFC24B" : "#8A6224");
+    if (major && (f - 880) % step === 0) { g.fillStyle = "#FFC24B"; g.fillText(String(f / 10), Math.round(x) + 0.5, GLASS_H - 31); }
   }
   // огоньки занятых волн
   for (const s of st.stations) {
     if (s.f === st.hostFreq && st.onAir) continue; // своя — визир
     const x = fToX(s.f, w);
-    px(x - 1, 33, 3, 3, "#FF3B2F");
+    px(x - 1, GLASS_H - 5, 3, 3, "#FF3B2F");
   }
   const f = st.hostFreq || 1000, x = fToX(f, w);
   // визир
