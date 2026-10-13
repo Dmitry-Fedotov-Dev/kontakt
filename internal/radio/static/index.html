@@ -150,6 +150,21 @@ button, input { font: inherit; color: inherit; }
 .sign.live { background: var(--red); color: #FFF3E0; animation: signblink 1.2s steps(1) infinite; }
 .sign.live .lamp { text-shadow: 0 0 8px #FFD0C0; }
 @keyframes signblink { 50% { background: #D22A20; } }
+/* Тюнер ведущего, как на старом приёмнике: дисплейчик с частотой и шкала-«стекло» с визиром и ползунком
+   (холст #dial). Кнопки ◀ ▶ — точная подстройка, шкала — быстрый выбор. */
+.tuner { margin: 14px auto 0; width: min(520px, 100%); display: grid; gap: 8px; }
+.tunerLcd {
+  display: flex; align-items: baseline; gap: 8px; padding: 6px 12px 7px;
+  background: var(--lcd); color: var(--amber); box-shadow: 0 0 0 3px var(--ink), inset 2px 2px 0 #000;
+  font-variant-numeric: tabular-nums;
+}
+.tunerLcd #tunerFreq { font-size: 30px; font-weight: 600; line-height: 1; letter-spacing: .04em; text-shadow: 0 0 6px rgba(255,194,75,.45); min-width: 3.4em; text-align: right; }
+.tunerLcd .tunerUnit { font-size: 13px; color: var(--amber-dim); }
+.tunerLcd .tunerState { margin-left: auto; font-size: 12px; letter-spacing: .08em; color: var(--mint); }
+.tunerLcd .tunerState.busy { color: var(--red); }
+#dial { display: block; width: 100%; height: 64px; touch-action: pan-y; cursor: ew-resize; image-rendering: pixelated; }
+#dial:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+#dial.off { cursor: not-allowed; opacity: .55; }
 .arrow {
   border: 0; cursor: pointer; width: 34px; height: 34px; font-weight: 600;
   background: var(--cream); color: var(--ink); box-shadow: 0 0 0 3px var(--ink), inset -3px -3px 0 var(--cream-lo);
@@ -428,6 +443,10 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
         <button class="sign" id="onair" aria-pressed="false"><span class="lamp" data-i="onAir">ON AIR</span><span class="freq" id="hostFreq">—</span></button>
         <button class="arrow" id="fUp" aria-label="Частота выше" data-i-aria="freqUp">▶</button>
       </div>
+      <div class="tuner">
+        <div class="tunerLcd" aria-hidden="true"><span id="tunerFreq">—</span><span class="tunerUnit" data-i="mhz">МГц</span><span class="tunerState" id="tunerState"></span></div>
+        <canvas id="dial" tabindex="0" role="slider" aria-label="Шкала частот: тяните ползунок" data-i-aria="dialAria" aria-valuemin="87.5" aria-valuemax="108" aria-valuenow="100"></canvas>
+      </div>
       <div class="nameRow">
         <button type="button" class="logoSlot" id="logoSlot" aria-label="Логотип станции" data-i-aria="logoAdd"><img id="logoImg" alt="" hidden><span class="plus" aria-hidden="true">+</span></button>
         <input class="name" id="name" maxlength="24" placeholder="название станции" autocomplete="off" aria-label="Название станции" data-i-ph="namePh" data-i-aria="nameAria">
@@ -592,7 +611,7 @@ const I18N = {
     stickerIdle: "крутни ручку", share: "ПОДЕЛИТЬСЯ ↗",
     airFull: "эфир переполнен", airFullSub: "подключимся, как освободится место",
     rules: "правила радио", report: "ЖАЛОБА", sure: "ТОЧНО?", reportAria: "Пожаловаться на станцию",
-    freqDown: "Частота ниже", freqUp: "Частота выше", onAir: "В ЭФИРЕ", mhz: "МГц",
+    freqDown: "Частота ниже", freqUp: "Частота выше", dialAria: "Шкала частот: тяните ползунок", tunerFree: "СВОБОДНА", tunerBusy: "ЗАНЯТА", onAir: "В ЭФИРЕ", mhz: "МГц",
     namePh: "название станции", nameAria: "Название станции",
     consentHtml: 'выходя в эфир, ты подтверждаешь, что тебе 18+, и принимаешь <a class="termsLink" href="terms.html" target="_blank" rel="noopener">правила</a>',
     micAria: "Микрофон", micOn: "МИКР ВКЛ", micOff: "МИКР ВЫКЛ",
@@ -684,7 +703,7 @@ const I18N = {
     stickerIdle: "turn the knob", share: "SHARE ↗",
     airFull: "the air is full", airFullSub: "we'll connect as soon as a spot frees up",
     rules: "radio rules", report: "REPORT", sure: "SURE?", reportAria: "Report this station",
-    freqDown: "Lower frequency", freqUp: "Higher frequency", onAir: "ON AIR", mhz: "MHz",
+    freqDown: "Lower frequency", freqUp: "Higher frequency", dialAria: "Frequency dial: drag the slider", tunerFree: "FREE", tunerBusy: "TAKEN", onAir: "ON AIR", mhz: "MHz",
     namePh: "station name", nameAria: "Station name",
     consentHtml: 'by going on air you confirm you are 18+ and accept the <a class="termsLink" href="terms-en.html" target="_blank" rel="noopener">rules</a>',
     micAria: "Microphone", micOn: "MIC ON", micOff: "MIC OFF",
@@ -1291,7 +1310,7 @@ function connectListen() {
     if (typeof e.data === "string") {
       try {
         const m = JSON.parse(e.data);
-        if (m.stations) st.stations = m.stations;
+        if (m.stations) { st.stations = m.stations; if (st.mode === "tx") renderHost(); }
         if (m.title) { const x = st.stations.find(s => s.f === m.title.f); if (x) x.t = m.title.t; }
         if (m.report) return toast(TXT.reports[m.report] || TXT.reportFail);
         if (m.letter) return letterAnswer(m.letter, m.wait || 0);
@@ -1676,6 +1695,11 @@ let connecting = false, lastTxAt = 0;
 function renderHost() {
   holdScreen(st.onAir);
   $("hostFreq").textContent = (st.hostFreq ? fmt(st.hostFreq) : "—") + " " + TXT.mhz;
+  $("tunerFreq").textContent = st.hostFreq ? fmt(st.hostFreq) : "—";
+  const busy = !!st.hostFreq && taken(st.hostFreq) && !st.onAir;
+  $("tunerState").textContent = st.onAir ? TXT.onAir : busy ? TXT.tunerBusy : TXT.tunerFree;
+  $("tunerState").classList.toggle("busy", busy);
+  try { drawDial(); } catch (_) { /* шкала ещё не создана — нарисуется при создании */ }
   $("fDown").disabled = $("fUp").disabled = st.onAir;
   $("onair").classList.toggle("live", st.onAir);
   $("onair").setAttribute("aria-pressed", String(st.onAir));
@@ -1706,6 +1730,75 @@ function stepFreq(d) {
 }
 $("fDown").onclick = () => stepFreq(-1);
 $("fUp").onclick = () => stepFreq(1);
+
+// ---------- тюнер: шкала с визиром и ползунком ----------
+// Холст рисуется в CSS-пикселях устройства (×dpr), без сглаживания: деления, подписи, огоньки занятых
+// волн, красный визир на выбранной частоте, под стеклом — прорезь и кремовая ручка-ползунок.
+const dial = $("dial"), dg = dial.getContext("2d");
+const DIAL_PAD = 14, GLASS_H = 38, SLOT_Y = 46;
+const fToX = (f, w) => DIAL_PAD + (f - 875) / (1080 - 875) * (w - 2 * DIAL_PAD);
+const xToF = (x, w) => Math.max(875, Math.min(1080, Math.round(875 + (x - DIAL_PAD) / (w - 2 * DIAL_PAD) * (1080 - 875))));
+function drawDial() {
+  const w = Math.round(dial.clientWidth), h = 64, dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  if (!w) return;
+  if (dial.width !== w * dpr || dial.height !== h * dpr) { dial.width = w * dpr; dial.height = h * dpr; }
+  const g = dg;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, w, h);
+  const px = (x, y, ww, hh, c) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), ww, hh); };
+  // стекло шкалы
+  px(0, 0, w, GLASS_H, "#1E0F0A"); px(3, 3, w - 6, GLASS_H - 6, "#21160B");
+  px(3, 3, w - 6, 2, "#2E2112");
+  // деления: 0,5 МГц — короткие, целые — длинные; подписи — каждые 2 (узко — 4) МГц
+  const step = w < 360 ? 40 : 20;
+  g.font = "600 10px 'Pixelify Sans', monospace"; g.textAlign = "center"; g.textBaseline = "top";
+  for (let f = 880; f <= 1080; f += 5) {
+    const x = fToX(f, w), major = f % 10 === 0;
+    px(x, major ? 22 : 27, 1, major ? 10 : 5, major ? "#FFC24B" : "#8A6224");
+    if (major && (f - 880) % step === 0) { g.fillStyle = "#FFC24B"; g.fillText(String(f / 10), Math.round(x) + 0.5, 7); }
+  }
+  // огоньки занятых волн
+  for (const s of st.stations) {
+    if (s.f === st.hostFreq && st.onAir) continue; // своя — визир
+    const x = fToX(s.f, w);
+    px(x - 1, 33, 3, 3, "#FF3B2F");
+  }
+  const f = st.hostFreq || 1000, x = fToX(f, w);
+  // визир
+  px(x - 1, 4, 3, GLASS_H - 8, "rgba(255,59,47,.35)"); px(x, 4, 1, GLASS_H - 8, "#FF3B2F");
+  // прорезь и ползунок
+  px(DIAL_PAD - 4, SLOT_Y + 4, w - 2 * DIAL_PAD + 8, 6, "#1E0F0A"); px(DIAL_PAD - 2, SLOT_Y + 6, w - 2 * DIAL_PAD + 4, 2, "#000");
+  const kx = Math.round(x) - 9;
+  px(kx, SLOT_Y - 1, 19, 17, "#1E0F0A");                       // контур
+  px(kx + 2, SLOT_Y + 1, 15, 13, "#FFE9C2");                   // крем
+  px(kx + 2, SLOT_Y + 11, 15, 3, "#E2BE86");                   // тень снизу
+  for (const gx of [5, 9, 13]) px(kx + gx, SLOT_Y + 3, 1, 7, "#A87E4C"); // насечки
+  dial.setAttribute("aria-valuenow", fmt(f));
+  dial.setAttribute("aria-valuetext", fmt(f) + " " + TXT.mhz);
+  dial.classList.toggle("off", st.onAir);
+}
+let dialDrag = false;
+function dialSet(e) {
+  const r = dial.getBoundingClientRect(), f = xToF(e.clientX - r.left, r.width);
+  if (f !== st.hostFreq) { st.hostFreq = f; renderHost(); }
+}
+dial.addEventListener("pointerdown", e => {
+  if (st.onAir) return shake($("onair"));
+  dialDrag = true; dial.setPointerCapture(e.pointerId); dialSet(e);
+});
+dial.addEventListener("pointermove", e => { if (dialDrag) dialSet(e); });
+const dialEnd = () => { dialDrag = false; };
+dial.addEventListener("pointerup", dialEnd);
+dial.addEventListener("pointercancel", dialEnd);
+dial.addEventListener("keydown", e => {
+  if (st.onAir) return;
+  const d = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -10, PageUp: 10 }[e.key];
+  if (d) { e.preventDefault(); st.hostFreq = Math.max(875, Math.min(1080, (st.hostFreq || 1000) + d)); renderHost(); }
+  if (e.key === "Home" || e.key === "End") { e.preventDefault(); st.hostFreq = e.key === "Home" ? 875 : 1080; renderHost(); }
+});
+if (window.ResizeObserver) new ResizeObserver(() => drawDial()).observe(dial);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawDial);
 
 // Смеситель: микрофон и музыка → громкость эфира → полоса телефона → компрессор → 8 кГц кадры.
 let tx = null, hws = null, micSrc = null, micOn = false, micAn = null;
