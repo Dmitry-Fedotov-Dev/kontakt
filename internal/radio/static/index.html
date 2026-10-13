@@ -43,6 +43,17 @@ body {
   padding: calc(16px + var(--st)) 16px calc(16px + var(--sb));
 }
 .wrap { width: min(560px, 100%); margin: 0 auto; min-height: calc(100dvh - 32px - var(--st) - var(--sb)); display: flex; flex-direction: column; position: relative; z-index: 1; }
+/* Телефон лёжа, вкладка «Слушать» (класс land ставит страница): на экране только приёмник — по центру,
+   как можно крупнее, с воздухом по краям и запасом под вырез камеры. Пропорции холста 128×88 = 16/11. */
+body.land { padding: 0; }
+body.land .wrap {
+  width: 100%; min-height: 100dvh; box-sizing: border-box; justify-content: center; align-items: center;
+  padding: max(4vh, env(safe-area-inset-top, 0px)) max(4vw, env(safe-area-inset-right, 0px))
+           max(4vh, env(safe-area-inset-bottom, 0px)) max(4vw, env(safe-area-inset-left, 0px));
+}
+body.land .wrap > :not(#rxView), body.land #rxView > :not(.stage) { display: none !important; }
+body.land #rxView, body.land .stage { width: 100%; display: flex; justify-content: center; }
+body.land #radio { width: min(92vw, calc(92dvh * 16 / 11)); max-width: none; }
 /* секретная волна: страница чернеет, по ней — белый пиксельный снег, как в окошке шкалы между станциями */
 #snow { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; z-index: 0; display: none; }
 body.secret { background-color: #000; background-image: none; }
@@ -1643,6 +1654,7 @@ function setMode(m) {
   if (tx && !st.onAir && (!st.hostFreq || taken(st.hostFreq))) st.hostFreq = pickFree();
   retune();
   renderHost();
+  if (typeof landView === "function") landView();
 }
 $("tabRx").onclick = () => setMode("rx");
 $("tabTx").onclick = () => setMode("tx");
@@ -2369,6 +2381,24 @@ document.addEventListener("pointerdown", e => {
   clearTimeout(b._t);
   b._t = setTimeout(() => b.classList.remove("pressed"), 1000);
 });
+
+// ---------- телефон лёжа: только приёмник, во весь экран ----------
+// Ландшафт с невысоким экраном и вкладка «Слушать» — класс land (CSS выше). Настоящий полноэкранный
+// режим браузер даёт только по касанию: первое касание радио лёжа его включает, поворот обратно —
+// выключает. На iPhone Safari такого нет — там просто крупное радио под панелью браузера.
+var landMQ = window.matchMedia ? matchMedia("(orientation: landscape) and (max-height: 520px)") : null;
+function landView() {
+  const on = !!(landMQ && landMQ.matches) && st.mode === "rx";
+  document.body.classList.toggle("land", on);
+  if (!on && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+}
+if (landMQ) (landMQ.addEventListener ? landMQ.addEventListener("change", landView) : landMQ.addListener(landView));
+R.addEventListener("pointerdown", () => {
+  if (!document.body.classList.contains("land") || document.fullscreenElement) return;
+  const el = document.documentElement;
+  if (el.requestFullscreen) el.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+});
+landView();
 
 // снег секретной волны: крупные пиксели (холст в 5 раз меньше окна), ~15 кадров/с
 const snow = $("snow"), sg = snow.getContext("2d");
