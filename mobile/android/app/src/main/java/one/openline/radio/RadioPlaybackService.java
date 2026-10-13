@@ -25,6 +25,8 @@ public class RadioPlaybackService extends Service {
     static final String CHANNEL = "air";
     static final String ACTION_STOP = "one.openline.radio.STOP";
     private PowerManager.WakeLock wake;
+    /** Сервис работает — MainActivity не даёт WebView считать окно скрытым (иначе звук на паузе). */
+    static volatile boolean running;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -75,6 +77,7 @@ public class RadioPlaybackService extends Service {
                 return START_NOT_STICKY;
             }
         }
+        running = true;
         if (wake == null) {
             PowerManager pm = getSystemService(PowerManager.class);
             wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "openradio:air");
@@ -85,6 +88,7 @@ public class RadioPlaybackService extends Service {
 
     @Override
     public void onDestroy() {
+        running = false;
         if (wake != null && wake.isHeld()) wake.release();
         wake = null;
         super.onDestroy();
