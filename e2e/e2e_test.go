@@ -133,7 +133,6 @@ type phone struct {
 	media  *websocket.Conn
 	callID string
 	room   string // звонок по ссылке: заголовок X-Kontakt-Room
-	join   bool   // пришёл по ссылке: X-Kontakt-Join
 	opus   bool   // предлагает Opus (тип 111), как веб-трубка с WebCodecs
 	tag    string
 	toTag  string
@@ -207,9 +206,6 @@ func (p *phone) dial(line string) *sip.Msg {
 	room := ""
 	if p.room != "" {
 		room = signal.RoomHeader + ": " + p.room + "\r\n"
-	}
-	if p.join {
-		room += signal.JoinHeader + ": 1\r\n"
 	}
 	p.send(fmt.Sprintf("INVITE sip:%s@kontakt SIP/2.0\r\nVia: SIP/2.0/WSS t.invalid;branch=%s\r\nMax-Forwards: 70\r\n"+
 		"From: <sip:anon@t.invalid>;tag=%s\r\nTo: <sip:%s@kontakt>\r\nCall-ID: %s\r\nCSeq: 1 INVITE\r\n"+
@@ -970,8 +966,9 @@ func TestLegsPerIdentity(t *testing.T) {
 	}
 }
 
-// Звонок по ссылке: ноги одной комнаты соединяются только друг с другом (рулетка их не видит), третьего
-// не пускают, а положил трубку один — разговор кончается обоим, без шума и новых поисков.
+// Звонок по ссылке: комната — общая линия двоих. Кто первый, ждёт в тишине (рулетка его не видит), второй
+// соединяется сразу; третьего не пускают (вторая вкладка того же человека места не занимает); положил
+// трубку один — разговор кончается обоим. Ссылка не «умирает»: после разговора в комнате снова можно ждать.
 func TestRoomCall(t *testing.T) {
 	st := newStack(t, nil)
 	stranger := newPhone(t, st, "")
@@ -979,17 +976,18 @@ func TestRoomCall(t *testing.T) {
 	stranger.expectState("searching", "")
 
 	a, b := newPhone(t, st, ""), newPhone(t, st, "")
-	a.room, b.room, b.join = "k7f3q9zx2m1p", "k7f3q9zx2m1p", true
-	early := newPhone(t, st, "")
-	early.room, early.join = a.room, true
-	if r := early.dial("32"); r.Status != 480 || !strings.Contains(r.Get("Reason"), signal.ReasonRoomGone) {
-		t.Fatalf("по ссылке в пустую комнату пустили: %d %s", r.Status, r.Get("Reason"))
-	}
+	a.room, b.room = "k7f3q9zx2m1p", "k7f3q9zx2m1p"
+	a2 := newPhone(t, st, a.id) // вторая вкладка А в той же комнате
+	a2.room = a.room
 	a.pickUp("32")
+	a2.pickUp("32")
 	a.expectState("searching", "")
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
 	if s := st.sig.Stats(); s.Talking != 0 {
 		t.Fatalf("комнату соединили с рулеткой: %+v", s)
+	}
+	if n := len(a.rtp); n > 0 { // звонящий ждёт друга в тишине: гудков ему станция не шлёт
+		t.Fatalf("звонящему по ссылке пришло %d пакетов гудков", n)
 	}
 	b.pickUp("32")
 	a.expectState("talking", "")
@@ -1002,7 +1000,7 @@ func TestRoomCall(t *testing.T) {
 	}
 
 	c := newPhone(t, st, "")
-	c.room, c.join = a.room, true
+	c.room = a.room
 	if r := c.dial("32"); r.Status != 486 || !strings.Contains(r.Get("Reason"), signal.ReasonRoomFull) {
 		t.Fatalf("третьего пустили в комнату: %d %s", r.Status, r.Get("Reason"))
 	}
@@ -1014,16 +1012,16 @@ func TestRoomCall(t *testing.T) {
 
 	b.inDialog("BYE", "")
 	a.expectBye(signal.ReasonPeerLeft)
+	a2.inDialog("BYE", "")
 	waitFor(t, func() bool { s := st.sig.Stats(); return s.Online == 1 && s.Talking == 0 })
 
-	late := newPhone(t, st, "") // ссылка после разговора: звонка уже нет
-	late.room, late.join = a.room, true
-	if r := late.dial("32"); r.Status != 480 {
-		t.Fatalf("по старой ссылке пустили: %d %s", r.Status, r.Get("Reason"))
-	}
+	late := newPhone(t, st, "") // та же ссылка после разговора: в комнате снова ждут
+	late.room = a.room
+	late.pickUp("32")
+	late.expectState("searching", "")
 }
 
-// Позвонил по ссылке, а друг её не открыл: через RoomWait станция кладёт трубку с «no-answer».
+// Ждал в комнате, а второй так и не пришёл: через RoomWait станция кладёт трубку с «no-answer».
 // С другом в разговоре таймер ожидания не срабатывает.
 func TestRoomNoAnswer(t *testing.T) {
 	old := signal.RoomWait
@@ -1037,7 +1035,7 @@ func TestRoomNoAnswer(t *testing.T) {
 	alone.expectBye(signal.ReasonNoAnswer)
 
 	a, b := newPhone(t, st, ""), newPhone(t, st, "")
-	a.room, b.room, b.join = "talking12345", "talking12345", true
+	a.room, b.room = "talking12345", "talking12345"
 	a.pickUp("32")
 	b.pickUp("32")
 	a.expectState("talking", "")
@@ -1069,7 +1067,7 @@ func (p *phone) codecOf() string {
 func TestOpusPassthrough(t *testing.T) {
 	st := newStack(t, nil)
 	a, b := newPhone(t, st, ""), newPhone(t, st, "")
-	a.room, b.room, b.join, a.opus, b.opus = "opuspair1234", "opuspair1234", true, true, true
+	a.room, b.room, a.opus, b.opus = "opuspair1234", "opuspair1234", true, true
 	a.pickUp("32")
 	b.pickUp("32")
 	if ca, cb := a.codecOf(), b.codecOf(); ca != "opus" || cb != "opus" {
@@ -1097,7 +1095,7 @@ func TestOpusPassthrough(t *testing.T) {
 	}
 
 	c, d := newPhone(t, st, ""), newPhone(t, st, "")
-	c.room, d.room, d.join, c.opus = "mixedpair123", "mixedpair123", true, true
+	c.room, d.room, c.opus = "mixedpair123", "mixedpair123", true
 	c.pickUp("32")
 	d.pickUp("32")
 	if cc, cd := c.codecOf(), d.codecOf(); cc != "pcma" || cd != "pcma" {

@@ -8,9 +8,9 @@
 //	→ собеседник ушёл: 2 с белого шума, затем снова гудки и очередь — тот же SIP-диалог
 //	→ вы положили трубку (BYE) — конец.
 //
-// Звонок по ссылке — тот же INVITE с заголовком X-Kontakt-Room: ноги одной комнаты соединяются
-// только друг с другом, третьего в комнату не пускают, а кто положил трубку — кончает разговор обоим.
-// Кто пришёл по ссылке, шлёт ещё X-Kontakt-Join: в пустую комнату его не ставят — звонок уже кончился.
+// Звонок по ссылке — тот же INVITE с заголовком X-Kontakt-Room. Комната — общая линия двоих: кто пришёл
+// первым, ждёт в тишине (до RoomWait), второй соединяется сразу; третьего не пускают; кто положил
+// трубку — кончает разговор обоим.
 //
 // Так работает и браузер, и любой обычный SIP-софтфон: набрал один раз — и крутишь рулетку.
 package signal
@@ -65,8 +65,7 @@ const (
 	ReasonTooMany    = "too-many-calls" // у этой куки уже maxLegsPerID трубок
 	ReasonRoomFull   = "room-full"      // в комнате звонка по ссылке уже двое
 	ReasonBadRoom    = "bad-room"       // имя комнаты не по формату
-	ReasonRoomGone   = "room-gone"      // пришёл по ссылке, а звонившего в комнате уже нет
-	ReasonNoAnswer   = "no-answer"      // позвонил по ссылке, а друг так её и не открыл (RoomWait)
+	ReasonNoAnswer   = "no-answer"      // ждал в комнате, а второй так и не пришёл (RoomWait)
 
 	// maxLegsPerID — трубок на одну куку (вкладка и приложение). Больше нормальному человеку не нужно,
 	// а без предела одна кука ставила в очередь тысячи ног: подбор пар перебирал их попарно (O(n²))
@@ -76,9 +75,6 @@ const (
 
 // RoomHeader — комната звонка по ссылке (её имя придумывает трубка того, кто зовёт).
 const RoomHeader = "X-Kontakt-Room"
-
-// JoinHeader — нога пришла по ссылке: только присоединиться к тому, кто ждёт в комнате.
-const JoinHeader = "X-Kontakt-Join"
 
 // validRoom: 8–32 знака a-z0-9 — имя из ссылки, его подбирать бессмысленно (60+ бит случайности).
 func validRoom(r string) bool {
@@ -93,8 +89,9 @@ func validRoom(r string) bool {
 	return true
 }
 
-// RoomWait — сколько звонящий по ссылке ждёт друга, как гудки у телефона. Переменная — для тестов.
-var RoomWait = 3 * time.Minute
+// RoomWait — сколько звонящий по ссылке ждёт друга (пока страница открыта: закрыл — нога кончается сразу).
+// Переменная — для тестов.
+var RoomWait = 15 * time.Minute
 
 // NoiseSeconds — сколько звучит «пустой эфир» после ухода собеседника.
 const NoiseSeconds = 2.0
@@ -306,13 +303,9 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 		s.reject(inv, tr, 429, "Too Many Requests", ReasonTooMany)
 		return
 	}
-	if n := s.roomLegs(room); room != "" && n >= 2 {
+	if room != "" && s.roomFull(room, id) {
 		s.mu.Unlock()
 		s.reject(inv, tr, 486, "Busy Here", ReasonRoomFull)
-		return
-	} else if room != "" && n == 0 && inv.Get(JoinHeader) != "" {
-		s.mu.Unlock()
-		s.reject(inv, tr, 480, "Temporarily Unavailable", ReasonRoomGone)
 		return
 	}
 	s.perID[id]++
@@ -363,8 +356,9 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 
 	s.m.calls.Inc("accepted")
 	log.Printf("☎  %s снял трубку (линия %s)", tr.Name(), leg.line)
-	s.Media.SetTone(ep.ID, "ring", 0, "")
-	if room != "" && inv.Get(JoinHeader) == "" { // позвонил сам: ждёт друга не дольше RoomWait
+	if room == "" {
+		s.Media.SetTone(ep.ID, "ring", 0, "") // рулетка — гудки; в комнате ждут второго в тишине
+	} else { // ждёт второго не дольше RoomWait (пришёл к ждущему — соединится сразу, таймер не сработает)
 		t := time.AfterFunc(RoomWait, func() {
 			leg.mu.Lock()
 			alone := leg.state == legQueued && leg.lastPeerID == ""
@@ -380,16 +374,17 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 	s.enqueue(leg, "")
 }
 
-// roomLegs — сколько ног в комнате (под s.mu). Нога, которая ещё создаётся в медиа, не видна:
+// roomFull — в комнате уже двое других людей, кроме id (под s.mu). Считаются люди, а не ноги: вторая
+// вкладка того же человека места второго не занимает. Нога, которая ещё создаётся в медиа, не видна:
 // двое одновременно вошедших третьими проскочат, но соединится всё равно только пара.
-func (s *Server) roomLegs(room string) int {
-	n := 0
+func (s *Server) roomFull(room, id string) bool {
+	people := map[string]bool{}
 	for _, l := range s.legs {
-		if room != "" && l.room == room {
-			n++
+		if l.room == room && l.identity != id {
+			people[l.identity] = true
 		}
 	}
-	return n
+	return len(people) >= 2
 }
 
 func (s *Server) pickLine(want string) string {
