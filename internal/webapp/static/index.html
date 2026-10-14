@@ -79,6 +79,15 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 .lcd .link span { display: inline-block; white-space: nowrap; }
 /* текст, а не кнопка: выделяется (касание — целиком) и копируется руками, если буфер браузер не дал */
 .lcd .link { -webkit-user-select: all; user-select: all; }
+/* справа от ссылки — кнопка копирования, подпись над ней */
+.lcd .linkRow { display: flex; align-items: center; justify-content: center; gap: .3em; }
+.lcd .linkRow[hidden] { display: none; }
+.copyBtn { font: inherit; color: #B9E39C; background: none; border: 0; padding: 0; cursor: pointer; flex: none;
+  display: flex; flex-direction: column; align-items: center; gap: .1em;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.copyBtn span { font-size: .62em; white-space: nowrap; }
+.copyBtn img { width: 2.3em; height: 2.3em; image-rendering: pixelated; display: block; }
+.copyBtn:focus-visible { outline: .15em solid var(--focus); outline-offset: .1em; }
 .lcd .link:focus-visible { outline: .15em solid var(--focus); }
 .lamp { width: .62em; height: .62em; background: #39421F; flex: none; }
 .lamp.on { background: var(--lamp); }
@@ -166,7 +175,10 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
     <div class="lcd" id="lcd" role="status" aria-live="polite">
       <div class="state"><span class="lamp" id="lamp"></span><span id="state" data-i="idle">Трубка лежит</span></div>
       <div class="sub" id="sub"></div>
-      <div class="link" id="link" role="button" tabindex="0" hidden></div>
+      <div class="linkRow" id="link-row" hidden>
+        <div class="link" id="link" role="button" tabindex="0"></div>
+        <button class="copyBtn" id="copy-btn" type="button" aria-label="copy" data-i-aria="copy"><span data-i="copy">copy</span><img alt=""></button>
+      </div>
     </div>
 
     <div class="actions">
@@ -241,6 +253,8 @@ const ICONS = {
   // трубка рычагом вниз — «положить»
   bye: ["..########..", ".##########.", "###......###", "##........##", "##........##"],
   // трубка по диагонали — «снять» (классический значок звонка)
+  // два листа внахлёст — «копировать»
+  copy: ["#####....", "#...#....", "#..######", "#..#....#", "#..#....#", "####....#", "...#....#", "...######"],
   pick: ["###........", "####.......", "####.......", ".###.......", "..##.......", "..###......",
          "...###.....", "....###....", ".....####..", "......#####", ".......####"],
 };
@@ -267,7 +281,7 @@ function sprite(base, light, dark, icon, pressed) {
 const RED = ["#C8302A", "#E2614F", "#7E1512"], GREEN = ["#4E9A36", "#8FD16A", "#2F6420"];
 let pressUntil = 0, pendingGroup = null, pendingTimer = 0;
 function initButtons() {
-  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"]]) {
+  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"], [copyBtn, GREEN, "copy"]]) {
     const img = btn.querySelector("img");
     btn.spriteUp = sprite(col[0], col[1], col[2], icon, false);
     btn.spriteDown = sprite(col[0], col[1], col[2], icon, true);
@@ -276,7 +290,7 @@ function initButtons() {
     btn.addEventListener("pointerdown", () => {
       if (btn.disabled) return;
       img.src = btn.spriteDown;
-      pressUntil = Date.now() + 1000;
+      if (btn !== copyBtn) pressUntil = Date.now() + 1000; // копирование кнопки трубки не прячет
       clearTimeout(btn.upTimer);
       btn.upTimer = setTimeout(() => { img.src = btn.spriteUp; }, 1000);
     });
@@ -334,7 +348,7 @@ const I18N = {
     },
     reportFail: "Жалоба не дошла, попробуйте ещё раз.",
     copyLink: "Скопируйте ссылку и отправьте другу:",
-    waitFriend: "Ждём друга", linkCopied: "Отправьте ссылку другу, чтобы он присоединился к звонку:", copied: "Ссылка скопирована!",
+    waitFriend: "Ждём друга", linkCopied: "Отправьте ссылку другу, чтобы он присоединился к звонку:", copied: "Ссылка скопирована!", copy: "скопировать", copiedShort: "скопировано",
     ringFriend: "Гудки — ждём, пока друг снимет трубку.", tapToHear: "Коснитесь экрана, чтобы слышать.",
     invitedGate: "Вас зовут поговорить по ссылке. Примите правила — и соединим.",
     invitedHint: "Вас зовут поговорить — нажмите «ответить».",
@@ -378,7 +392,7 @@ const I18N = {
     },
     reportFail: "The report didn't go through, try again.",
     copyLink: "Copy the link and send it to your friend:",
-    waitFriend: "Waiting for your friend", linkCopied: "Send the link to your friend so they can join the call:", copied: "Link copied!",
+    waitFriend: "Waiting for your friend", linkCopied: "Send the link to your friend so they can join the call:", copied: "Link copied!", copy: "copy", copiedShort: "copied",
     ringFriend: "Ringing — waiting for your friend to pick up.", tapToHear: "Tap the screen to hear.",
     invitedGate: "You've been invited to talk. Accept the rules and we'll connect you.",
     invitedHint: "You've been invited to talk — press “answer”.",
@@ -406,7 +420,7 @@ $("lang").addEventListener("click", () => {
   location.reload();
 });
 const handset = $("handset"), lamp = $("lamp"), stateEl = $("state"), sub = $("sub"),
-      mainBtn = $("main-btn"), mainLabel = $("main-btn").querySelector("span"), callBtns = $("call-btns"), reportBtn = $("report-btn"), reportLabel = $("report-btn").querySelector("span"),
+      mainBtn = $("main-btn"), copyBtn = $("copy-btn"), mainLabel = $("main-btn").querySelector("span"), callBtns = $("call-btns"), reportBtn = $("report-btn"), reportLabel = $("report-btn").querySelector("span"),
       hangupBtn = $("hangup-btn"), gate = $("gate"), cAge = $("c-age"), cTerms = $("c-terms");
 
 // Линия одна: G.711 со звучанием «32». Выбора битрейта в интерфейсе нет.
@@ -847,9 +861,9 @@ reportBtn.onclick = async () => {
 // позвонить другу: новая комната, ссылка на неё — в буфер обмена, сами ждём в ней с гудками
 // ссылку видно на дисплее, пока ждём друга; нажатие — скопировать снова
 let inviteUrl = "", copiedTimer = 0;
-const linkEl = $("link");
+const linkEl = $("link"), linkRow = $("link-row"), copyLabel = $("copy-btn").querySelector("span");
 function showLink(on) {
-  linkEl.hidden = !on;
+  linkRow.hidden = !on;
   const u = inviteUrl.replace(/^https?:\/\//, ""), q = u.indexOf("?");
   const part = t => Object.assign(document.createElement("span"), { textContent: t });
   linkEl.replaceChildren(part(u.slice(0, q)), part(u.slice(q))); // перенос — только перед ?call=
@@ -858,13 +872,16 @@ function copyInvite(flash) {
   const ask = () => window.prompt(T.copyLink, inviteUrl);
   const done = () => {
     if (!flash) return;
-    sub.textContent = T.copied;
+    sub.textContent = T.copied; copyLabel.textContent = T.copiedShort;
     clearTimeout(copiedTimer);
-    copiedTimer = setTimeout(() => { if (!linkEl.hidden) sub.textContent = T.linkCopied; }, 1500);
+    copiedTimer = setTimeout(() => {
+      copyLabel.textContent = T.copy;
+      if (!linkRow.hidden) sub.textContent = T.linkCopied;
+    }, 1500);
   };
   try { navigator.clipboard.writeText(inviteUrl).then(done, ask); } catch { ask(); }
 }
-linkEl.onclick = () => copyInvite(true);
+linkEl.onclick = copyBtn.onclick = () => copyInvite(true);
 linkEl.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyInvite(true); } };
 // Зелёная кнопка: пришли по ссылке — ответить в её комнату, иначе позвонить — новая комната, ссылка на неё
 // в буфер обмена, сами ждём в ней с гудками.
