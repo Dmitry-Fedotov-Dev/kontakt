@@ -38,3 +38,16 @@ func TestInvitePreview(t *testing.T) {
 		}
 	}
 }
+
+// Шумодав трубки: wasm RNNoise отдаётся с типом application/wasm (иначе браузер его не соберёт) и с лицензией.
+func TestRNNoiseServed(t *testing.T) {
+	u, _ := url.Parse("http://127.0.0.1:1")
+	h := Handler(Upstreams{Signal: u, Media: u})
+	for path, ctype := range map[string]string{"/rnnoise.wasm": "application/wasm", "/rnnoise-LICENSE.txt": "text/plain"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), ctype) || w.Body.Len() < 1000 {
+			t.Fatalf("%s: %d %q %d байт", path, w.Code, w.Header().Get("Content-Type"), w.Body.Len())
+		}
+	}
+}

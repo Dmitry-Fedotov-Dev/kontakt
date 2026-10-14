@@ -572,27 +572,48 @@ for (let i = 0; i < 256; i++) {
 // «opus» — микрофон как есть, 48 кГц кадрами по 20 мс (960 отсчётов) для кодировщика Opus.
 const WORKLET = `
 class Capture extends AudioWorkletProcessor {
-  constructor() { super(); this.step = sampleRate / 8000; this.pos = 0; this.l1 = 0; this.l2 = 0;
+  constructor(options) { super(); this.step = sampleRate / 8000; this.pos = 0; this.l1 = 0; this.l2 = 0;
     this.a = 1 - Math.exp(-2 * Math.PI * 3400 / sampleRate); this.buf = new Int16Array(160); this.n = 0;
     this.opus = false; this.fsize = Math.round(sampleRate / 50); this.fbuf = new Float32Array(this.fsize); this.fn = 0;
-    this.port.onmessage = e => { this.opus = e.data.opus; this.n = this.fn = 0; }; }
+    this.port.onmessage = e => { this.opus = e.data.opus; this.n = this.fn = 0; };
+    // RNNoise (wasm, модуль собран на странице): 48 кГц, кадры по 480 отсчётов (10 мс), шкала int16.
+    // Вызовов наружу у сборки два: рост памяти (не даём — хватает 32 МБ) и копирование.
+    const mod = options.processorOptions && options.processorOptions.rnn;
+    if (mod && sampleRate === 48000) try {
+      let heap;
+      const ex = new WebAssembly.Instance(mod, { a: { a: () => false, b: (d, s, n) => heap.copyWithin(d, s, s + n) } }).exports;
+      ex.d(); heap = new Uint8Array(ex.c.buffer);
+      const pin = ex.g(1920), pout = ex.g(1920);
+      this.rnn = { ex, st: ex.f(0), pin, pout, fin: new Float32Array(ex.c.buffer, pin, 480), fout: new Float32Array(ex.c.buffer, pout, 480) };
+      this.rbuf = new Float32Array(480); this.rn = 0;
+      this.port.postMessage({ rnn: true });
+    } catch { this.rnn = null; }
+  }
   process(inputs) {
     const ch = inputs[0] && inputs[0][0]; if (!ch) return true;
-    if (this.opus) {
-      for (let i = 0; i < ch.length; i++) {
-        this.fbuf[this.fn++] = ch[i];
-        if (this.fn === this.fsize) { this.port.postMessage({ f32: this.fbuf }, [this.fbuf.buffer]); this.fbuf = new Float32Array(this.fsize); this.fn = 0; }
-      }
-      return true;
-    }
+    const r = this.rnn;
+    if (!r) { for (let i = 0; i < ch.length; i++) this.emit(ch[i]); return true; }
     for (let i = 0; i < ch.length; i++) {
-      this.l1 += this.a * (ch[i] - this.l1); this.l2 += this.a * (this.l1 - this.l2);
-      if (++this.pos >= this.step) { this.pos -= this.step;
-        this.buf[this.n++] = Math.max(-1, Math.min(1, this.l2 * 1.6)) * 32767;
-        if (this.n === 160) { this.port.postMessage({ i16: this.buf }, [this.buf.buffer]); this.buf = new Int16Array(160); this.n = 0; }
-      }
+      this.rbuf[this.rn++] = ch[i];
+      if (this.rn < 480) continue;
+      this.rn = 0;
+      for (let k = 0; k < 480; k++) r.fin[k] = this.rbuf[k] * 32768;
+      r.ex.j(r.st, r.pout, r.pin);
+      for (let k = 0; k < 480; k++) this.emit(r.fout[k] / 32768);
     }
     return true;
+  }
+  emit(v) {
+    if (this.opus) {
+      this.fbuf[this.fn++] = v;
+      if (this.fn === this.fsize) { this.port.postMessage({ f32: this.fbuf }, [this.fbuf.buffer]); this.fbuf = new Float32Array(this.fsize); this.fn = 0; }
+      return;
+    }
+    this.l1 += this.a * (v - this.l1); this.l2 += this.a * (this.l1 - this.l2);
+    if (++this.pos >= this.step) { this.pos -= this.step;
+      this.buf[this.n++] = Math.max(-1, Math.min(1, this.l2 * 1.6)) * 32767;
+      if (this.n === 160) { this.port.postMessage({ i16: this.buf }, [this.buf.buffer]); this.buf = new Int16Array(160); this.n = 0; }
+    }
   }
 }
 // Проигрыватель с джиттер-буфером; частота кадров — своя у G.711 (8 кГц) и Opus (48 кГц): сменилась —
@@ -633,11 +654,18 @@ registerProcessor("k-capture", Capture);
 registerProcessor("k-player", Player);`;
 
 let ctx, mic, capture, player, out;
-// Android (Chrome): звук страницы играет как «вызов» (громкость — кнопками, при нуле громкости медиа
-// слышно) только если аудиовыход открыт, когда микрофон уже включён: режим вызова включает микрофон, а
-// выход запоминает режим, в котором открылся. Поэтому на Android сначала микрофон, потом свой
-// AudioContext на каждый звонок. Раньше выход открывался до микрофона — и звонок шёл громкостью медиа.
-const ANDROID = /Android/i.test(navigator.userAgent);
+
+// Шумоподавление — RNNoise (нейросеть Xiph, сборка Jitsi, 110 КБ) вместо встроенного в браузер: чистит фон
+// заметно лучше и почти не трогает голос. Замер в Chrome 15.10.2026 (речь + шум 5 дБ): шум в паузах
+// −29 → −40 дБ, речь −23,8 дБ (чистая −23,2), сходство с чистой 0,891 → 0,945; 0,17 мс на кадр 10 мс
+// (1,7 % ядра ПК), задержка 10 мс. Эхоподавление и автоусиление остаются браузерные. Нет wasm
+// или контекст не 48 кГц — работает встроенное шумоподавление, как раньше.
+let rnnPromise = null, rnnOn = false;
+function rnnModule() {
+  rnnPromise = rnnPromise || fetch("rnnoise.wasm").then(r => r.ok ? r.arrayBuffer() : Promise.reject())
+    .then(b => WebAssembly.compile(b)).catch(() => null);
+  return rnnPromise;
+}
 
 // ================= Opus (WebCodecs) =================
 // Чистый звук: Opus 48 кГц, моно, 32 кбит/с, кадр 20 мс. Медиасервер его не трогает — пересылает
@@ -700,11 +728,6 @@ async function openOutput() {
   player.connect(comp); comp.connect(loud); loud.connect(out); out.connect(ctx.destination);
 }
 async function startAudio() {
-  const getMic = () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
-  if (ANDROID) {
-    mic = await getMic();
-    if (ctx) { const old = ctx; ctx = null; old.close().catch(() => {}); } // прошлый выход открыт без режима вызова
-  }
   if (!ctx) await openOutput();
   // по ссылке трубка снимается сама, без нажатия, — тогда браузер держит звук выключенным до касания
   if (ctx.state !== "running") await Promise.race([ctx.resume(), new Promise(r => setTimeout(r, 300))]);
@@ -713,12 +736,16 @@ async function startAudio() {
     document.addEventListener("pointerdown", wake, { once: true });
     document.addEventListener("keydown", wake, { once: true });
   }
-  if (!mic) mic = await getMic();
+  const rnn = ctx.sampleRate === 48000 ? await rnnModule() : null;
+  mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: !rnn, autoGainControl: true, channelCount: 1 } });
   const src = ctx.createMediaStreamSource(mic);
-  capture = new AudioWorkletNode(ctx, "k-capture", { outputChannelCount: [1] });
+  try { capture = new AudioWorkletNode(ctx, "k-capture", { outputChannelCount: [1], processorOptions: { rnn } }); }
+  catch { capture = new AudioWorkletNode(ctx, "k-capture", { outputChannelCount: [1] }); } // модуль не передаётся — без RNNoise
   const mute = ctx.createGain(); mute.gain.value = 0;
   src.connect(capture); capture.connect(mute); mute.connect(ctx.destination);
+  rnnOn = false;
   capture.port.onmessage = e => {
+    if (e.data.rnn) return void (rnnOn = true); // шумодав поднялся в обработчике
     if (e.data.i16) return sendG711(e.data.i16);
     if (!enc || enc.state !== "configured" || call.state !== "talking") return;
     const ad = new AudioData({ format: "f32", sampleRate: ctx.sampleRate, numberOfFrames: e.data.f32.length,
