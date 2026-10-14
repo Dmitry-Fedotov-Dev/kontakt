@@ -322,8 +322,12 @@ func OGImage(freq int, name, track, lang string, logo []byte) []byte {
 	draw.Draw(out, out.Bounds(), c.img, image.Point{}, draw.Src)
 	ox, oy := ogLogoX*ogScale, ogLogoY*ogScale
 	b := li.Bounds()
-	// Логотип всегда в круге — как на странице: углы квадратной картинки срезаются.
-	in := func(x, y int) bool { dx, dy := float64(x)-31.5, float64(y)-31.5; return dx*dx+dy*dy <= 32*32 }
+	// Как на странице: квадратная картинка — в круге (углы срезаются), фигурная (прозрачный угол) — целиком.
+	free := logoFree(li)
+	in := func(x, y int) bool {
+		dx, dy := float64(x)-31.5, float64(y)-31.5
+		return free || dx*dx+dy*dy <= 32*32
+	}
 	// тень по контуру самого логотипа, сдвинута на клетку холста
 	shadow := image.NewUniform(color.RGBA{0x14, 0x0C, 0x1C, 0xC0})
 	for y := 0; y < logoSide; y++ {
@@ -345,6 +349,17 @@ func OGImage(freq int, name, track, lang string, logo []byte) []byte {
 		}
 	}
 	return encodePNG(out)
+}
+
+// logoFree — у логотипа прозрачный хотя бы один угол: рисунок сам задаёт форму, круг его не режет.
+func logoFree(li image.Image) bool {
+	b := li.Bounds()
+	for _, p := range []image.Point{{b.Min.X, b.Min.Y}, {b.Max.X - 1, b.Min.Y}, {b.Min.X, b.Max.Y - 1}, {b.Max.X - 1, b.Max.Y - 1}} {
+		if _, _, _, a := li.At(p.X, p.Y).RGBA(); a < 0x8000 {
+			return true
+		}
+	}
+	return false
 }
 
 // Где на превью логотип: квадрат ogLogoBox клеток холста (64 пикселя логотипа × 3 точки = 48 клеток).

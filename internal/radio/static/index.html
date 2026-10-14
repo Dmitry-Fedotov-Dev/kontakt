@@ -117,6 +117,8 @@ button, input { font: inherit; color: inherit; }
 .stLogo { grid-column: 1; grid-row: 1; justify-self: end; width: 120px; max-width: 100%; height: auto; aspect-ratio: 1;
   min-width: 0; image-rendering: pixelated; border-radius: 50%; box-shadow: 0 0 0 3px var(--ink), 4px 4px 0 3px rgba(0,0,0,.35); }
 .stLogo[hidden] { display: none; }
+/* фигурный логотип (прозрачные углы — гифка или PNG без фона): без круга, тень — по контуру рисунка */
+.stLogo.free { border-radius: 0; box-shadow: none; filter: drop-shadow(4px 4px 0 rgba(0,0,0,.35)); }
 .stRow.withLogo { grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr); }
 .stRow.withLogo .stLogo { grid-column: 2; }
 .stRow.withLogo .sticker { grid-column: 3; }
@@ -184,6 +186,7 @@ button, input { font: inherit; color: inherit; }
 .logoSlot .plus { color: #9C86BC; font-size: 18px; line-height: 34px; }
 .logoSlot.has { outline: 0; background: none; box-shadow: none; border-radius: 50%; overflow: hidden; }
 .logoSlot.has .plus { display: none; }
+.logoSlot.has.free { border-radius: 0; overflow: visible; }
 .logoSlot img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 .logoSlot img[hidden] { display: none; }
 .logoSlot[hidden] { display: none; }
@@ -1681,9 +1684,25 @@ R.addEventListener("keydown", e => {
 const sticker = $("sticker");
 // logoURL — значок станции по хешу логотипа (сервер отдаёт его навсегда кешируемым).
 const logoURL = g => /^[0-9a-f]{16}$/.test(g || "") ? BASE + "/logo/" + g + ".png" : "";
+// Фигурный логотип — хотя бы один угол прозрачный: рисунок сам задаёт форму (волны, лучи за край),
+// круг его не обрезает. Квадратная картинка с фоном, как раньше, — в круге.
+const logoProbe = document.createElement("canvas"); logoProbe.width = logoProbe.height = 64;
+function markFree(img, el) {
+  const check = () => {
+    let free = false;
+    try {
+      const g = logoProbe.getContext("2d", { willReadFrequently: true });
+      g.clearRect(0, 0, 64, 64); g.drawImage(img, 0, 0, 64, 64);
+      const d = g.getImageData(0, 0, 64, 64).data, a = i => d[i * 4 + 3];
+      free = a(0) < 128 || a(63) < 128 || a(63 * 64) < 128 || a(64 * 64 - 1) < 128;
+    } catch (_) {}
+    (el || img).classList.toggle("free", free);
+  };
+  if (img.complete && img.naturalWidth) check(); else img.addEventListener("load", check, { once: true });
+}
 function setSticker(a, b, glitch, logo) {
   const img = $("stLogo"), src = logoURL(logo);
-  if (src) { if (img.getAttribute("src") !== src) img.src = src; img.hidden = false; } else img.hidden = true;
+  if (src) { if (img.getAttribute("src") !== src) { img.classList.remove("free"); img.src = src; markFree(img); } img.hidden = false; } else img.hidden = true;
   img.parentNode.classList.toggle("withLogo", !!src); // телефон: без логотипа наклейка — по центру
   if ($("st1").textContent !== a) $("st1").textContent = a;
   const b2 = b || " ";
@@ -2188,7 +2207,7 @@ function renderLogo() {
   const has = !!hostLogoData;
   $("logoSlot").classList.toggle("has", has);
   $("logoImg").hidden = !has;
-  if (has) $("logoImg").src = hostLogoData;
+  if (has) { $("logoImg").src = hostLogoData; markFree($("logoImg"), $("logoSlot")); }
   $("logoDel").hidden = !has;
 }
 function sendLogo() {

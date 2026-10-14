@@ -231,3 +231,18 @@ func TestWaveMemory(t *testing.T) {
 		t.Fatal("превью молчащей волны без названия или логотипа")
 	}
 }
+
+// Фигурный логотип (прозрачный угол) превью рисует целиком, квадратный — в круге.
+func TestLogoFree(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, logoSide, logoSide))
+	for i := range img.Pix {
+		img.Pix[i] = 255
+	}
+	if logoFree(img) {
+		t.Fatal("непрозрачный квадрат — не фигурный")
+	}
+	img.SetNRGBA(logoSide-1, 0, color.NRGBA{})
+	if !logoFree(img) {
+		t.Fatal("прозрачный угол — фигурный")
+	}
+}
