@@ -28,8 +28,8 @@ func TestInvitePreview(t *testing.T) {
 		return w.Body.String()
 	}
 	inv := get("/?call=5tapr1r3cwgy")
-	if !strings.Contains(inv, `<meta property="og:title" content="`+inviteTitle+`">`) || strings.Contains(inv, "со случайным человеком.\">") ||
-		strings.Count(inv, "<title>") != 1 || !strings.Contains(inv, `id="friend-btn"`) {
+	if !strings.Contains(inv, `<meta property="og:title" content="`+inviteTitle+`">`) || strings.Contains(inv, `content="Позвоните другу по ссылке`) ||
+		strings.Count(inv, "<title>") != 1 || !strings.Contains(inv, `id="link"`) {
 		t.Fatalf("превью приглашения:\n%.900s", inv)
 	}
 	for _, p := range []string{"/", "/?call=../x"} {

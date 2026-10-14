@@ -10,6 +10,7 @@
 //
 // Звонок по ссылке — тот же INVITE с заголовком X-Kontakt-Room: ноги одной комнаты соединяются
 // только друг с другом, третьего в комнату не пускают, а кто положил трубку — кончает разговор обоим.
+// Кто пришёл по ссылке, шлёт ещё X-Kontakt-Join: в пустую комнату его не ставят — звонок уже кончился.
 //
 // Так работает и браузер, и любой обычный SIP-софтфон: набрал один раз — и крутишь рулетку.
 package signal
@@ -64,6 +65,7 @@ const (
 	ReasonTooMany    = "too-many-calls" // у этой куки уже maxLegsPerID трубок
 	ReasonRoomFull   = "room-full"      // в комнате звонка по ссылке уже двое
 	ReasonBadRoom    = "bad-room"       // имя комнаты не по формату
+	ReasonRoomGone   = "room-gone"      // пришёл по ссылке, а звонившего в комнате уже нет
 
 	// maxLegsPerID — трубок на одну куку (вкладка и приложение). Больше нормальному человеку не нужно,
 	// а без предела одна кука ставила в очередь тысячи ног: подбор пар перебирал их попарно (O(n²))
@@ -73,6 +75,9 @@ const (
 
 // RoomHeader — комната звонка по ссылке (её имя придумывает трубка того, кто зовёт).
 const RoomHeader = "X-Kontakt-Room"
+
+// JoinHeader — нога пришла по ссылке: только присоединиться к тому, кто ждёт в комнате.
+const JoinHeader = "X-Kontakt-Join"
 
 // validRoom: 8–32 знака a-z0-9 — имя из ссылки, его подбирать бессмысленно (60+ бит случайности).
 func validRoom(r string) bool {
@@ -296,9 +301,13 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 		s.reject(inv, tr, 429, "Too Many Requests", ReasonTooMany)
 		return
 	}
-	if room != "" && s.roomBusy(room) {
+	if n := s.roomLegs(room); room != "" && n >= 2 {
 		s.mu.Unlock()
 		s.reject(inv, tr, 486, "Busy Here", ReasonRoomFull)
+		return
+	} else if room != "" && n == 0 && inv.Get(JoinHeader) != "" {
+		s.mu.Unlock()
+		s.reject(inv, tr, 480, "Temporarily Unavailable", ReasonRoomGone)
 		return
 	}
 	s.perID[id]++
@@ -351,16 +360,16 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 	s.enqueue(leg, "")
 }
 
-// roomBusy — в комнате уже двое (под s.mu). Нога, которая ещё создаётся в медиа, не видна:
+// roomLegs — сколько ног в комнате (под s.mu). Нога, которая ещё создаётся в медиа, не видна:
 // двое одновременно вошедших третьими проскочат, но соединится всё равно только пара.
-func (s *Server) roomBusy(room string) bool {
+func (s *Server) roomLegs(room string) int {
 	n := 0
 	for _, l := range s.legs {
-		if l.room == room {
+		if room != "" && l.room == room {
 			n++
 		}
 	}
-	return n >= 2
+	return n
 }
 
 func (s *Server) pickLine(want string) string {

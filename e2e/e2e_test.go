@@ -133,6 +133,7 @@ type phone struct {
 	media  *websocket.Conn
 	callID string
 	room   string // звонок по ссылке: заголовок X-Kontakt-Room
+	join   bool   // пришёл по ссылке: X-Kontakt-Join
 	tag    string
 	toTag  string
 	cseq   int
@@ -202,6 +203,9 @@ func (p *phone) dial(line string) *sip.Msg {
 	room := ""
 	if p.room != "" {
 		room = signal.RoomHeader + ": " + p.room + "\r\n"
+	}
+	if p.join {
+		room += signal.JoinHeader + ": 1\r\n"
 	}
 	p.send(fmt.Sprintf("INVITE sip:%s@kontakt SIP/2.0\r\nVia: SIP/2.0/WSS t.invalid;branch=%s\r\nMax-Forwards: 70\r\n"+
 		"From: <sip:anon@t.invalid>;tag=%s\r\nTo: <sip:%s@kontakt>\r\nCall-ID: %s\r\nCSeq: 1 INVITE\r\n"+
@@ -971,7 +975,12 @@ func TestRoomCall(t *testing.T) {
 	stranger.expectState("searching", "")
 
 	a, b := newPhone(t, st, ""), newPhone(t, st, "")
-	a.room, b.room = "k7f3q9zx2m1p", "k7f3q9zx2m1p"
+	a.room, b.room, b.join = "k7f3q9zx2m1p", "k7f3q9zx2m1p", true
+	early := newPhone(t, st, "")
+	early.room, early.join = a.room, true
+	if r := early.dial("32"); r.Status != 480 || !strings.Contains(r.Get("Reason"), signal.ReasonRoomGone) {
+		t.Fatalf("по ссылке в пустую комнату пустили: %d %s", r.Status, r.Get("Reason"))
+	}
 	a.pickUp("32")
 	a.expectState("searching", "")
 	time.Sleep(200 * time.Millisecond)
@@ -989,7 +998,7 @@ func TestRoomCall(t *testing.T) {
 	}
 
 	c := newPhone(t, st, "")
-	c.room = a.room
+	c.room, c.join = a.room, true
 	if r := c.dial("32"); r.Status != 486 || !strings.Contains(r.Get("Reason"), signal.ReasonRoomFull) {
 		t.Fatalf("третьего пустили в комнату: %d %s", r.Status, r.Get("Reason"))
 	}
@@ -1002,4 +1011,10 @@ func TestRoomCall(t *testing.T) {
 	b.inDialog("BYE", "")
 	a.expectBye(signal.ReasonPeerLeft)
 	waitFor(t, func() bool { s := st.sig.Stats(); return s.Online == 1 && s.Talking == 0 })
+
+	late := newPhone(t, st, "") // ссылка после разговора: звонка уже нет
+	late.room, late.join = a.room, true
+	if r := late.dial("32"); r.Status != 480 {
+		t.Fatalf("по старой ссылке пустили: %d %s", r.Status, r.Get("Reason"))
+	}
 }

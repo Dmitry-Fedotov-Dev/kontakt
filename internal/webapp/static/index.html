@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Контакт</title>
-<meta name="description" content="Снимите трубку — и говорите со случайным человеком. Только голос, звук старой линии.">
+<meta name="description" content="Позвоните другу по ссылке: только голос, звук старой линии. Без регистрации и номеров.">
 <meta name="theme-color" content="#D5DBD6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -169,7 +169,6 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 
     <div class="actions">
       <button class="rbtn" id="main-btn" type="button" aria-label="pick up" data-i-aria="pickUp"><img alt=""><span data-i="pickUp">pick up</span></button>
-      <button class="rbtn" id="friend-btn" type="button" aria-label="call a friend" data-i-aria="callFriend"><img alt=""><span data-i="callFriend">call a friend</span></button>
       <div class="row2" id="call-btns" hidden>
         <button class="rbtn" id="report-btn" type="button" aria-label="ban" data-i-aria="ban"><img alt=""><span data-i="ban">ban</span></button>
         <button class="rbtn" id="hangup-btn" type="button" aria-label="bye" data-i-aria="bye"><img alt=""><span data-i="bye">bye</span></button>
@@ -263,10 +262,10 @@ function sprite(base, light, dark, icon, pressed) {
   rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === "#") g.fillRect(ox + x, oy + y, 1, 1); }));
   return cv.toDataURL();
 }
-const RED = ["#C8302A", "#E2614F", "#7E1512"], GREEN = ["#4E9A36", "#8FD16A", "#2F6420"], BLUE = ["#2F6FC0", "#6FA8EC", "#1B427A"];
+const RED = ["#C8302A", "#E2614F", "#7E1512"], GREEN = ["#4E9A36", "#8FD16A", "#2F6420"];
 let pressUntil = 0, pendingGroup = null, pendingTimer = 0;
 function initButtons() {
-  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [friendBtn, BLUE, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"]]) {
+  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"]]) {
     const img = btn.querySelector("img");
     btn.spriteUp = sprite(col[0], col[1], col[2], icon, false);
     btn.spriteDown = sprite(col[0], col[1], col[2], icon, true);
@@ -281,12 +280,11 @@ function initButtons() {
     });
   }
 }
-// showButtons — какая группа кнопок видна: "main" (pick up и, после согласия с правилами, call a friend),
-// "call" (ban + bye), "none".
+// showButtons — какая группа кнопок видна: "main" (позвонить), "call" (ban + bye), "none".
 // Пока идёт анимация нажатия, смена откладывается до её конца: иначе нажатая кнопка
 // исчезала бы мгновенно и вдавленного состояния никто бы не увидел.
 function showButtons(group) {
-  const apply = () => { pendingGroup = null; mainBtn.hidden = group !== "main"; friendBtn.hidden = group !== "main" || !termsOk; callBtns.hidden = group !== "call"; };
+  const apply = () => { pendingGroup = null; mainBtn.hidden = group !== "main"; callBtns.hidden = group !== "call"; };
   clearTimeout(pendingTimer);
   const wait = pressUntil - Date.now();
   if (wait > 0) { pendingGroup = group; pendingTimer = setTimeout(apply, wait); } else apply();
@@ -300,20 +298,20 @@ const $ = id => document.getElementById(id);
 const I18N = {
   ru: {
     brand: "Контакт",
-    description: "Снимите трубку — и говорите со случайным человеком. Только голос, звук старой линии.",
+    description: "Позвоните другу по ссылке: только голос, звук старой линии. Без регистрации и номеров.",
     age: "Мне есть 18 лет",
     acceptHtml: 'Принимаю <a href="terms.html" target="_blank" rel="noopener">правила</a> и сам(а) отвечаю за свои слова',
     terms: "terms.html",
     rules: "правила", support: "поддержать", other: "English",
     anyCard: "картой любой страны ♥", ruCard: "картой из России ₽",
-    pickUp: "снять", ban: "жалоба", bye: "положить", sure: "точно?",
+    pickUp: "позвонить", answer: "ответить", ban: "жалоба", bye: "положить", sure: "точно?",
     idle: "Трубка лежит",
-    hintIdle: "Снимите трубку — вас соединят со случайным человеком на станции.",
-    hintGate: "Случайный собеседник, только голос. Ничего не записывается.",
+    hintIdle: "Нажмите «позвонить» — ссылка на звонок скопируется, отправьте её другу.",
+    hintGate: "Звонок другу по ссылке, только голос. Ничего не записывается.",
     banTitle: "Вход закрыт", banHint: "На вас пожаловались собеседники. С этого браузера войти больше нельзя.",
     maint: "Станция на обслуживании", maintHint: "Попробуйте снять трубку чуть позже.",
     yellowSub: "У вас жёлтая карточка: ещё жалобы — и вход закроется навсегда.",
-    online: (n, t) => `На станции: ${n}, говорят: ${t}`, nobody: "На станции пока никого",
+    online: t => `Сейчас говорят: ${t}`,
     noAnswer: "Станция не отвечает", retry: "Попробуйте снять трубку ещё раз.",
     yellowTitle: "Жёлтая карточка", yellowHint: "На вас пожаловались. Ещё жалобы — и вход закроется навсегда.",
     timeUp: "Время вышло", timeUpHint: "Снимите трубку, чтобы продолжить.",
@@ -333,29 +331,31 @@ const I18N = {
       rate_limited: "Слишком много жалоб за час.",
     },
     reportFail: "Жалоба не дошла, попробуйте ещё раз.",
-    callFriend: "позвонить другу", copyLink: "Скопируйте ссылку и отправьте другу:",
+    copyLink: "Скопируйте ссылку и отправьте другу:",
     waitFriend: "Ждём друга", linkCopied: "Ссылка скопирована — отправьте её другу:", copied: "Скопировано!",
     ringFriend: "Гудки — ждём, пока друг снимет трубку.", tapToHear: "Коснитесь экрана, чтобы слышать.",
     invitedGate: "Вас зовут поговорить по ссылке. Примите правила — и соединим.",
+    invitedHint: "Вас зовут поговорить — нажмите «ответить».",
     friendLeft: "Разговор окончен", friendLeftHint: "Собеседник положил трубку.",
     roomFull: "Линия занята", roomFullHint: "По этой ссылке уже говорят двое.",
+    roomGone: "Звонок завершён", roomGoneHint: "Абонент уже положил трубку. Нажмите «позвонить», чтобы позвонить самому.",
   },
   en: {
     brand: "Kontakt",
-    description: "Pick up the phone and talk to a random person. Voice only, the sound of an old line.",
+    description: "Call a friend with a link: voice only, the sound of an old line. No sign-up, no numbers.",
     age: "I'm 18 or older",
     acceptHtml: 'I accept the <a href="terms-en.html" target="_blank" rel="noopener">rules</a> and answer for my own words',
     terms: "terms-en.html",
     rules: "rules", support: "support", other: "Русский",
     anyCard: "any card ♥", ruCard: "Russian card ₽",
-    pickUp: "pick up", ban: "report", bye: "hang up", sure: "sure?",
+    pickUp: "call", answer: "answer", ban: "report", bye: "hang up", sure: "sure?",
     idle: "On the hook",
-    hintIdle: "Pick up and you'll be connected with a random person on the station.",
-    hintGate: "A random stranger, voice only. Nothing is recorded.",
+    hintIdle: "Press “call” — the call link is copied, send it to your friend.",
+    hintGate: "Call a friend with a link, voice only. Nothing is recorded.",
     banTitle: "Access closed", banHint: "People you talked to reported you. You can't enter from this browser anymore.",
     maint: "Station under maintenance", maintHint: "Try picking up a little later.",
     yellowSub: "You have a yellow card: more reports and access closes for good.",
-    online: (n, t) => `On the station: ${n}, talking: ${t}`, nobody: "Nobody on the station yet",
+    online: t => `Talking right now: ${t}`,
     noAnswer: "The station isn't answering", retry: "Try picking up again.",
     yellowTitle: "Yellow card", yellowHint: "You were reported. More reports and access closes for good.",
     timeUp: "Time's up", timeUpHint: "Pick up to continue.",
@@ -375,12 +375,14 @@ const I18N = {
       rate_limited: "Too many reports this hour.",
     },
     reportFail: "The report didn't go through, try again.",
-    callFriend: "call a friend", copyLink: "Copy the link and send it to your friend:",
+    copyLink: "Copy the link and send it to your friend:",
     waitFriend: "Waiting for your friend", linkCopied: "Link copied — send it to your friend:", copied: "Copied!",
     ringFriend: "Ringing — waiting for your friend to pick up.", tapToHear: "Tap the screen to hear.",
     invitedGate: "You've been invited to talk. Accept the rules and we'll connect you.",
+    invitedHint: "You've been invited to talk — press “answer”.",
     friendLeft: "Call ended", friendLeftHint: "They hung up.",
     roomFull: "Line busy", roomFullHint: "Two people are already talking on this link.",
+    roomGone: "Call ended", roomGoneHint: "The caller has already hung up. Press “call” to call them yourself.",
   },
 };
 const LANG_KEY = "kontakt-lang";
@@ -402,7 +404,7 @@ $("lang").addEventListener("click", () => {
   location.reload();
 });
 const handset = $("handset"), lamp = $("lamp"), stateEl = $("state"), sub = $("sub"),
-      mainBtn = $("main-btn"), friendBtn = $("friend-btn"), callBtns = $("call-btns"), reportBtn = $("report-btn"), reportLabel = $("report-btn").querySelector("span"),
+      mainBtn = $("main-btn"), mainLabel = $("main-btn").querySelector("span"), callBtns = $("call-btns"), reportBtn = $("report-btn"), reportLabel = $("report-btn").querySelector("span"),
       hangupBtn = $("hangup-btn"), gate = $("gate"), cAge = $("c-age"), cTerms = $("c-terms");
 
 // Линия одна: G.711 со звучанием «32». Выбора битрейта в интерфейсе нет.
@@ -434,10 +436,12 @@ function setIdle(kind, text, hint) {
   gate.hidden = termsOk;
   handset.classList.toggle("entry", !termsOk);
   syncMain();
-  lcd(kind || "", text || T.idle, hint || (termsOk ? T.hintIdle : linkRoom ? T.invitedGate : T.hintGate));
+  mainLabel.textContent = linkRoom ? T.answer : T.pickUp;
+  mainBtn.setAttribute("aria-label", mainLabel.textContent);
+  lcd(kind || "", text || T.idle, hint || (!termsOk ? (linkRoom ? T.invitedGate : T.hintGate) : linkRoom ? T.invitedHint : T.hintIdle));
 }
 function syncMain() {
-  if (me.banned) { mainBtn.hidden = friendBtn.hidden = true; return; }
+  if (me.banned) { mainBtn.hidden = true; return; }
   if (!termsOk && cAge.checked && cTerms.checked) return acceptTerms();
   mainBtn.disabled = !termsOk;
 }
@@ -450,8 +454,7 @@ function acceptTerms() {
   handset.classList.remove("entry");
   mainBtn.disabled = false;
   if (call.state !== "idle") return;
-  friendBtn.hidden = mainBtn.hidden;
-  if (linkRoom) pickUp(linkRoom);
+  if (linkRoom) pickUp(linkRoom, true);
   else sub.textContent = T.hintIdle;
 }
 cAge.onchange = cTerms.onchange = syncMain;
@@ -530,13 +533,13 @@ async function loadState() {
   if (cfg.maintenance) return setIdle("bad", T.maint, T.maintHint);
   setIdle();
   if (me.cards > 0) sub.textContent = T.yellowSub;
-  if (linkRoom && termsOk) pickUp(linkRoom);
+  if (linkRoom && termsOk) pickUp(linkRoom, true);
 }
 
 async function pollStats() {
   try {
     const s = await (await fetch("api/stats", { cache: "no-store" })).json();
-    $("online").textContent = s.online ? T.online(s.online, s.talking) : T.nobody;
+    $("online").textContent = s.talking ? T.online(s.talking) : " "; // пусто — строка не прыгает
   } catch {}
 }
 
@@ -714,7 +717,12 @@ function onSIP(text) {
     sendRaw(build(`ACK ${call.ruri} SIP/2.0`, hdrs("ACK", 1, (/;tag=([^;>\s]+)/.exec(m.h.to[0]) || [])[1])));
     teardown(false);
     if (why === "banned") return showBanned();
-    if (why === "room-full") { linkRoom = ""; return setIdle("bad", T.roomFull, T.roomFullHint); }
+    if (why === "room-gone") { // по ссылке, а звонившего уже нет — отбой: короткие гудки
+      linkRoom = ""; history.replaceState(null, "", location.pathname);
+      busy();
+      return setIdle("", T.roomGone, T.roomGoneHint);
+    }
+    if (why === "room-full") { linkRoom = ""; history.replaceState(null, "", location.pathname); return setIdle("bad", T.roomFull, T.roomFullHint); }
     if (m.status === 503 && why === "maintenance") return setIdle("bad", T.maint, T.maintHint);
     return setIdle("bad", T.noAnswer, T.retry);
   }
@@ -729,7 +737,7 @@ function onSIP(text) {
     if (why === "banned") return showBanned();
     if (why === "yellow-card") { me.cards = (me.cards || 0) + 1; return setIdle("bad", T.yellowTitle, T.yellowHint); }
     if (why === "time-limit") return setIdle("", T.timeUp, T.timeUpHint);
-    if (why === "peer-left") return setIdle("", T.friendLeft, T.friendLeftHint);
+    if (why === "peer-left") { busy(); return setIdle("", T.friendLeft, T.friendLeftHint); }
     if (why === "report-accepted") return setIdle("", T.reportAccepted, T.hintIdle);
     setIdle("bad", T.stationHung, T.retry);
   } else if (m.method === "OPTIONS") reply200(m);
@@ -771,7 +779,8 @@ function openMedia(path) {
   mediaWS.onmessage = e => onRTP(e.data);
 }
 
-async function pickUp(room) {
+async function pickUp(room, join) {
+  stopBusy();
   if (!termsOk) acceptTerms();
   if (!window.isSecureContext) return setIdle("bad", T.needHttps, T.needHttpsHint);
   showButtons("call");
@@ -783,6 +792,7 @@ async function pickUp(room) {
   call.id = rnd(10); call.fromTag = rnd(4); call.cseq = 1; call.toTag = null;
   call.ruri = `sip:${LINE}@kontakt`;
   call.room = typeof room === "string" ? room : "";
+  call.join = !!join && !!call.room;
   rtpSeq = crypto.getRandomValues(new Uint16Array(1))[0];
   rtpTs = crypto.getRandomValues(new Uint32Array(1))[0];
   rtpSsrc = crypto.getRandomValues(new Uint32Array(1))[0];
@@ -793,7 +803,7 @@ async function pickUp(room) {
     const sdp = "v=0\r\no=- " + Date.now() + " 1 IN IP4 0.0.0.0\r\ns=Kontakt\r\nc=IN IP4 0.0.0.0\r\nt=0 0\r\n" +
       "m=audio 9 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\na=ptime:20\r\na=sendrecv\r\n";
     sendRaw(build(`INVITE ${call.ruri} SIP/2.0`, [...hdrs("INVITE", 1), `Contact: <sip:anon@${host};transport=ws>`,
-      ...(call.room ? [`X-Kontakt-Room: ${call.room}`] : []), "Content-Type: application/sdp"], sdp));
+      ...(call.room ? [`X-Kontakt-Room: ${call.room}`] : []), ...(call.join ? ["X-Kontakt-Join: 1"] : []), "Content-Type: application/sdp"], sdp));
   };
   ws.onmessage = e => typeof e.data === "string" && onSIP(e.data);
   ws.onclose = () => { if (call.state !== "idle") { teardown(false); setIdle("bad", T.lost, T.lostHint); } };
@@ -832,7 +842,6 @@ reportBtn.onclick = async () => {
   setTimeout(() => { if (call.state === "searching") sub.textContent = text; }, 50);
 };
 
-mainBtn.onclick = () => pickUp(linkRoom);
 // позвонить другу: новая комната, ссылка на неё — в буфер обмена, сами ждём в ней с гудками
 // ссылку видно на дисплее, пока ждём друга; нажатие — скопировать снова
 let inviteUrl = "", copiedTimer = 0;
@@ -854,13 +863,41 @@ function copyInvite(flash) {
   try { navigator.clipboard.writeText(inviteUrl).then(done, ask); } catch { ask(); }
 }
 linkEl.onclick = () => copyInvite(true);
-friendBtn.onclick = () => {
+// Зелёная кнопка: пришли по ссылке — ответить в её комнату, иначе позвонить — новая комната, ссылка на неё
+// в буфер обмена, сами ждём в ней с гудками.
+mainBtn.onclick = () => {
+  if (linkRoom) return pickUp(linkRoom, true);
   const room = newRoom();
   inviteUrl = location.origin + location.pathname + "?call=" + room;
   copyInvite(false);
   pickUp(room);
 };
 hangupBtn.onclick = () => { teardown(true); setIdle(); };
+
+// Короткие гудки отбоя, как у городской линии: 425 Гц, 0,35 с звук / 0,35 с тишина, восемь раз.
+// Играет сама трубка (свой AudioContext звонка уже открыт); «позвонить» их обрывает.
+let busyGain = null;
+function busy() {
+  stopBusy();
+  if (!ctx) return;
+  const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + 0.05;
+  o.frequency.value = 425;
+  g.gain.setValueAtTime(0, ctx.currentTime);
+  for (let i = 0; i < 8; i++) {
+    const on = t + i * 0.7;
+    g.gain.setValueAtTime(0, on); g.gain.linearRampToValueAtTime(0.18, on + 0.01);
+    g.gain.setValueAtTime(0.18, on + 0.34); g.gain.linearRampToValueAtTime(0, on + 0.35);
+  }
+  o.connect(g); g.connect(ctx.destination);
+  o.start(); o.stop(t + 8 * 0.7);
+  o.onended = () => { if (busyGain === g) busyGain = null; g.disconnect(); };
+  busyGain = g;
+}
+function stopBusy() {
+  if (!busyGain) return;
+  busyGain.gain.cancelScheduledValues(0); busyGain.gain.value = 0;
+  busyGain = null;
+}
 initButtons();
 window.addEventListener("pagehide", () => teardown(true));
 
