@@ -74,6 +74,8 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 .lcd .state { font-weight: 600; font-size: 1.12em; display: flex; align-items: center; justify-content: center; gap: .45em; }
 .lcd .sub { color: #B9E39C; font-size: .9em; min-height: 1.3em; }
 /* ссылка на звонок — строкой дисплея, как набранный номер: без плашек; касание выделяет её целиком */
+/* подсказка про громкость (Android) — тише основного текста, гаснет сама */
+.lcd .tip { color: #8FB874; font-size: .8em; text-wrap: balance; }
 .lcd .link { font-weight: 600; font-size: .9em; color: #E4F7CF; -webkit-user-select: all; user-select: all; }
 .lcd .link span { display: inline-block; white-space: nowrap; }
 .lamp { width: .62em; height: .62em; background: #39421F; flex: none; }
@@ -163,6 +165,7 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
       <div class="state"><span class="lamp" id="lamp"></span><span id="state" data-i="idle">Трубка лежит</span></div>
       <div class="sub" id="sub"></div>
       <div class="link" id="link" hidden></div>
+      <div class="tip" id="tip" hidden></div>
     </div>
 
     <div class="actions">
@@ -338,7 +341,7 @@ const I18N = {
     reportFail: "Жалоба не дошла, попробуйте ещё раз.",
     copyLink: "Скопируйте ссылку и отправьте другу:",
     waitFriend: "Ждём друга", linkCopied: "Отправьте эту ссылку другу. Он откроет её — и вас соединит.", copy: "скопировать", copiedShort: "скопировано", share: "отправить",
-    ringFriend: "Гудки — ждём, пока друг снимет трубку.", tapToHear: "Коснитесь экрана, чтобы слышать.",
+    ringFriend: "Гудки — ждём, пока друг снимет трубку.", tapToHear: "Коснитесь экрана, чтобы слышать.", volTip: "Тихо? Прибавьте громкость «Медиа»",
     invitedGate: "Вас зовут поговорить. Отметьте оба пункта выше — и вас соединит.",
     invitedHint: "Вас зовут поговорить — нажмите «ответить».",
     friendLeft: "Разговор окончен", friendLeftHint: "Собеседник положил трубку.",
@@ -384,7 +387,7 @@ const I18N = {
     reportFail: "The report didn't go through, try again.",
     copyLink: "Copy the link and send it to your friend:",
     waitFriend: "Waiting for your friend", linkCopied: "Send this link to your friend. They open it — and you're connected.", copy: "copy", copiedShort: "copied", share: "send",
-    ringFriend: "Ringing — waiting for your friend to pick up.", tapToHear: "Tap the screen to hear.",
+    ringFriend: "Ringing — waiting for your friend to pick up.", tapToHear: "Tap the screen to hear.", volTip: "Too quiet? Turn up “Media” volume",
     invitedGate: "You've been invited to talk. Tick both boxes above — and you're connected.",
     invitedHint: "You've been invited to talk — press “answer”.",
     friendLeft: "Call ended", friendLeftHint: "They hung up.",
@@ -438,8 +441,20 @@ function lcd(kind, text, hint) {
   lamp.className = "lamp" + ({ search: " on blink", talk: " on", bad: " red" }[kind] || "");
 }
 
+// Android: Chrome играет звук страницы громкостью «Медиа», а кнопки громкости в разговоре правят «Вызов» —
+// изменить это страница не может. Подсказка — первые 10 с разговора.
+const ANDROID = /Android/i.test(navigator.userAgent);
+let tipTimer = 0;
+function volumeTip(on) {
+  clearTimeout(tipTimer);
+  $("tip").textContent = T.volTip;
+  $("tip").hidden = !(on && ANDROID);
+  if (on) tipTimer = setTimeout(() => volumeTip(false), 10000);
+}
+
 function setIdle(kind, text, hint) {
   call.state = "idle";
+  volumeTip(false);
   showLink(false);
   showButtons("main");
   gate.hidden = termsOk;
@@ -889,11 +904,12 @@ function onStation(state, reason, codec) {
     talkTimer = setInterval(tick, 1000);
     lcd("talk", T.onLine, ctx.state !== "running" ? T.tapToHear : "00:00");
     showLink(false);
+    volumeTip(true);
     if (call.room && linkRoom === call.room) { linkRoom = ""; history.replaceState(null, "", location.pathname); }
     handset.classList.remove("ring"); void handset.offsetWidth; handset.classList.add("ring");
   } else if (state === "searching") {
     if (call.state === "talking") lastTalkEnd = Date.now();
-    call.state = "searching"; clearInterval(talkTimer);
+    call.state = "searching"; clearInterval(talkTimer); volumeTip(false);
     const mine = !!call.room && inviteUrl.endsWith("=" + call.room); // звал я — ссылку видно на дисплее
     showLink(mine);
     if (call.room) lcd("search", T.waitFriend, ctx.state !== "running" ? T.tapToHear : mine ? T.linkCopied : T.ringFriend);
