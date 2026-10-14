@@ -77,6 +77,8 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 .lcd .link { font: inherit; font-weight: 600; font-size: .9em; color: #E4F7CF; background: #26301B; border: 0;
   padding: .15em .3em; cursor: pointer;  text-decoration: underline dotted; text-underline-offset: .2em; }
 .lcd .link span { display: inline-block; white-space: nowrap; }
+/* текст, а не кнопка: выделяется (касание — целиком) и копируется руками, если буфер браузер не дал */
+.lcd .link { -webkit-user-select: all; user-select: all; }
 .lcd .link:focus-visible { outline: .15em solid var(--focus); }
 .lamp { width: .62em; height: .62em; background: #39421F; flex: none; }
 .lamp.on { background: var(--lamp); }
@@ -164,7 +166,7 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
     <div class="lcd" id="lcd" role="status" aria-live="polite">
       <div class="state"><span class="lamp" id="lamp"></span><span id="state" data-i="idle">Трубка лежит</span></div>
       <div class="sub" id="sub"></div>
-      <button type="button" class="link" id="link" hidden></button>
+      <div class="link" id="link" role="button" tabindex="0" hidden></div>
     </div>
 
     <div class="actions">
@@ -863,6 +865,7 @@ function copyInvite(flash) {
   try { navigator.clipboard.writeText(inviteUrl).then(done, ask); } catch { ask(); }
 }
 linkEl.onclick = () => copyInvite(true);
+linkEl.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyInvite(true); } };
 // Зелёная кнопка: пришли по ссылке — ответить в её комнату, иначе позвонить — новая комната, ссылка на неё
 // в буфер обмена, сами ждём в ней с гудками.
 mainBtn.onclick = () => {
