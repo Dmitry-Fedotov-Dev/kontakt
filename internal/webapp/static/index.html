@@ -617,7 +617,36 @@ class Player extends AudioWorkletProcessor {
 registerProcessor("k-capture", Capture);
 registerProcessor("k-player", Player);`;
 
-let ctx, mic, capture, player;
+let ctx, mic, capture, player, out;
+// Android: пока открыт микрофон, кнопки громкости правят громкость вызова, а Web Audio Android считает
+// музыкой — кнопки не меняли громкость собеседника. Звук WebRTC Chrome играет как вызов, поэтому выход
+// трубки идёт через пару RTCPeerConnection внутри страницы и <audio>. Бонус: эхоподавление микрофона
+// видит этот звук (Web Audio оно не видит). Не поднялось — звук идёт напрямую, как раньше.
+const CALL_STREAM = /Android/i.test(navigator.userAgent) && !!window.RTCPeerConnection;
+let loopEl = null, loopPCs = []; // ссылки держим: иначе сборщик мусора закроет соединения
+async function callStreamOut(node) {
+  const dest = ctx.createMediaStreamDestination();
+  node.connect(dest);
+  const a = new RTCPeerConnection(), b = new RTCPeerConnection();
+  loopPCs = [a, b];
+  a.onicecandidate = e => { if (e.candidate) b.addIceCandidate(e.candidate).catch(() => {}); };
+  b.onicecandidate = e => { if (e.candidate) a.addIceCandidate(e.candidate).catch(() => {}); };
+  loopEl = new Audio();
+  b.ontrack = e => { loopEl.srcObject = e.streams[0]; loopEl.play().catch(() => {}); };
+  dest.stream.getTracks().forEach(t => a.addTrack(t, dest.stream));
+  // звук и так телефонный (8 кГц): G.711 вместо Opus — кодек почти ничего не стоит процессору
+  const g711 = (RTCRtpSender.getCapabilities && RTCRtpSender.getCapabilities("audio").codecs || []).filter(c => /PCMU|PCMA/i.test(c.mimeType));
+  if (g711.length) try { a.getTransceivers()[0].setCodecPreferences(g711); } catch {}
+  await a.setLocalDescription(await a.createOffer());
+  await b.setRemoteDescription(a.localDescription);
+  await b.setLocalDescription(await b.createAnswer());
+  await a.setRemoteDescription(b.localDescription);
+  await new Promise((ok, fail) => {
+    const t = setTimeout(() => fail(new Error("loop")), 3000);
+    const check = () => { if (b.connectionState === "connected") { clearTimeout(t); ok(); } };
+    b.onconnectionstatechange = check; check();
+  });
+}
 async function startAudio() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -631,12 +660,17 @@ async function startAudio() {
     comp.threshold.value = -28; comp.knee.value = 6; comp.ratio.value = 3;
     comp.attack.value = 0.003; comp.release.value = 0.25;
     loud.gain.value = 1.4;
-    player.connect(comp); comp.connect(loud); loud.connect(ctx.destination);
+    out = ctx.createGain(); // общий выход трубки: собеседник, гудки отбоя
+    player.connect(comp); comp.connect(loud); loud.connect(out);
+    if (CALL_STREAM) {
+      try { await callStreamOut(out); } catch { loopEl = null; out.connect(ctx.destination); }
+    } else out.connect(ctx.destination);
   }
+  if (loopEl) loopEl.play().catch(() => {}); // по нажатию «позвонить» — жест: <audio> точно заиграет
   // по ссылке трубка снимается сама, без нажатия, — тогда браузер держит звук выключенным до касания
   if (ctx.state !== "running") await Promise.race([ctx.resume(), new Promise(r => setTimeout(r, 300))]);
   if (ctx.state !== "running") {
-    const wake = () => ctx.resume().then(() => { if (call.state === "searching") sub.textContent = T.ringFriend; else if (call.state === "talking") tick(); });
+    const wake = () => (loopEl && loopEl.play().catch(() => {}), ctx.resume()).then(() => { if (call.state === "searching") sub.textContent = T.ringFriend; else if (call.state === "talking") tick(); });
     document.addEventListener("pointerdown", wake, { once: true });
     document.addEventListener("keydown", wake, { once: true });
   }
@@ -913,7 +947,7 @@ function busy() {
     g.gain.setValueAtTime(0, on); g.gain.linearRampToValueAtTime(0.18, on + 0.01);
     g.gain.setValueAtTime(0.18, on + 0.34); g.gain.linearRampToValueAtTime(0, on + 0.35);
   }
-  o.connect(g); g.connect(ctx.destination);
+  o.connect(g); g.connect(out || ctx.destination);
   o.start(); o.stop(t + 8 * 0.7);
   o.onended = () => { if (busyGain === g) busyGain = null; g.disconnect(); };
   busyGain = g;
