@@ -73,22 +73,9 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 .lcd { order: 0; }
 .lcd .state { font-weight: 600; font-size: 1.12em; display: flex; align-items: center; justify-content: center; gap: .45em; }
 .lcd .sub { color: #B9E39C; font-size: .9em; min-height: 1.3em; }
-/* ссылка на звонок другу — на дисплее, как набранный номер; нажатие копирует её ещё раз */
-.lcd .link { font: inherit; font-weight: 600; font-size: .9em; color: #E4F7CF; background: #26301B; border: 0;
-  padding: .15em .3em; cursor: pointer;  text-decoration: underline dotted; text-underline-offset: .2em; }
+/* ссылка на звонок — строкой дисплея, как набранный номер: без плашек; касание выделяет её целиком */
+.lcd .link { font-weight: 600; font-size: .9em; color: #E4F7CF; -webkit-user-select: all; user-select: all; }
 .lcd .link span { display: inline-block; white-space: nowrap; }
-/* текст, а не кнопка: выделяется (касание — целиком) и копируется руками, если буфер браузер не дал */
-.lcd .link { -webkit-user-select: all; user-select: all; }
-/* справа от ссылки — кнопка копирования, подпись над ней */
-.lcd .linkRow { display: flex; align-items: center; justify-content: center; gap: .3em; }
-.lcd .linkRow[hidden] { display: none; }
-.copyBtn { font: inherit; color: #B9E39C; background: none; border: 0; padding: 0; cursor: pointer; flex: none;
-  display: flex; flex-direction: column; align-items: center; gap: .1em;
-  -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-.copyBtn span { font-size: .62em; white-space: nowrap; }
-.copyBtn img { width: 2.3em; height: 2.3em; image-rendering: pixelated; display: block; }
-.copyBtn:focus-visible { outline: .15em solid var(--focus); outline-offset: .1em; }
-.lcd .link:focus-visible { outline: .15em solid var(--focus); }
 .lamp { width: .62em; height: .62em; background: #39421F; flex: none; }
 .lamp.on { background: var(--lamp); }
 .lamp.blink { animation: blink 1s steps(1) infinite; }
@@ -175,15 +162,13 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
     <div class="lcd" id="lcd" role="status" aria-live="polite">
       <div class="state"><span class="lamp" id="lamp"></span><span id="state" data-i="idle">Трубка лежит</span></div>
       <div class="sub" id="sub"></div>
-      <div class="linkRow" id="link-row" hidden>
-        <div class="link" id="link" role="button" tabindex="0"></div>
-        <button class="copyBtn" id="copy-btn" type="button" aria-label="copy" data-i-aria="copy"><span data-i="copy">copy</span><img alt=""></button>
-      </div>
+      <div class="link" id="link" hidden></div>
     </div>
 
     <div class="actions">
       <button class="rbtn" id="main-btn" type="button" aria-label="pick up" data-i-aria="pickUp"><img alt=""><span data-i="pickUp">pick up</span></button>
       <div class="row2" id="call-btns" hidden>
+        <button class="rbtn" id="copy-btn" type="button" hidden><img alt=""><span></span></button>
         <button class="rbtn" id="report-btn" type="button" aria-label="ban" data-i-aria="ban"><img alt=""><span data-i="ban">ban</span></button>
         <button class="rbtn" id="hangup-btn" type="button" aria-label="bye" data-i-aria="bye"><img alt=""><span data-i="bye">bye</span></button>
       </div>
@@ -253,7 +238,9 @@ const ICONS = {
   // трубка рычагом вниз — «положить»
   bye: ["..########..", ".##########.", "###......###", "##........##", "##........##"],
   // трубка по диагонали — «снять» (классический значок звонка)
-  // два листа внахлёст — «копировать»
+  // стрелка из лотка — «отправить» (телефон: список мессенджеров)
+  share: ["....#....", "...###...", "..#.#.#..", "....#....", "....#....", "#...#...#", "#.......#", "#########"],
+  // два листа внахлёст — «скопировать»
   copy: ["#####....", "#...#....", "#..######", "#..#....#", "#..#....#", "####....#", "...#....#", "...######"],
   pick: ["###........", "####.......", "####.......", ".###.......", "..##.......", "..###......",
          "...###.....", "....###....", ".....####..", "......#####", ".......####"],
@@ -278,10 +265,12 @@ function sprite(base, light, dark, icon, pressed) {
   rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === "#") g.fillRect(ox + x, oy + y, 1, 1); }));
   return cv.toDataURL();
 }
+// На телефоне ссылку удобнее не копировать, а сразу отправить: системный список мессенджеров.
+const CAN_SHARE = !!navigator.share && matchMedia("(pointer: coarse)").matches;
 const RED = ["#C8302A", "#E2614F", "#7E1512"], GREEN = ["#4E9A36", "#8FD16A", "#2F6420"];
 let pressUntil = 0, pendingGroup = null, pendingTimer = 0;
 function initButtons() {
-  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"], [copyBtn, GREEN, "copy"]]) {
+  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"], [copyBtn, GREEN, CAN_SHARE ? "share" : "copy"]]) {
     const img = btn.querySelector("img");
     btn.spriteUp = sprite(col[0], col[1], col[2], icon, false);
     btn.spriteDown = sprite(col[0], col[1], col[2], icon, true);
@@ -322,8 +311,8 @@ const I18N = {
     anyCard: "картой любой страны ♥", ruCard: "картой из России ₽",
     pickUp: "позвонить", answer: "ответить", ban: "жалоба", bye: "положить", sure: "точно?",
     idle: "Трубка лежит",
-    hintIdle: "Нажмите «позвонить» — ссылка на звонок скопируется, отправьте её другу.",
-    hintGate: "Звонок другу по ссылке, только голос. Ничего не записывается.",
+    hintIdle: "Нажмите «позвонить» и отправьте ссылку другу.",
+    hintGate: "Звонок другу по ссылке. Только голос, ничего не записывается.",
     banTitle: "Вход закрыт", banHint: "На вас пожаловались собеседники. С этого браузера войти больше нельзя.",
     maint: "Станция на обслуживании", maintHint: "Попробуйте снять трубку чуть позже.",
     yellowSub: "У вас жёлтая карточка: ещё жалобы — и вход закроется навсегда.",
@@ -348,12 +337,13 @@ const I18N = {
     },
     reportFail: "Жалоба не дошла, попробуйте ещё раз.",
     copyLink: "Скопируйте ссылку и отправьте другу:",
-    waitFriend: "Ждём друга", linkCopied: "Отправьте ссылку другу, чтобы он присоединился к звонку:", copied: "Ссылка скопирована!", copy: "скопировать", copiedShort: "скопировано",
+    waitFriend: "Ждём друга", linkCopied: "Отправьте эту ссылку другу. Он откроет её — и вас соединит.", copy: "скопировать", copiedShort: "скопировано", share: "отправить",
     ringFriend: "Гудки — ждём, пока друг снимет трубку.", tapToHear: "Коснитесь экрана, чтобы слышать.",
-    invitedGate: "Вас зовут поговорить по ссылке. Примите правила — и соединим.",
+    invitedGate: "Вас зовут поговорить. Отметьте оба пункта выше — и вас соединит.",
     invitedHint: "Вас зовут поговорить — нажмите «ответить».",
     friendLeft: "Разговор окончен", friendLeftHint: "Собеседник положил трубку.",
     roomFull: "Линия занята", roomFullHint: "По этой ссылке уже говорят двое.",
+    shareText: "Позвони мне — нажми на ссылку:",
     roomGone: "Звонок завершён", roomGoneHint: "Абонент уже положил трубку. Нажмите «позвонить», чтобы позвонить самому.",
   },
   en: {
@@ -366,8 +356,8 @@ const I18N = {
     anyCard: "any card ♥", ruCard: "Russian card ₽",
     pickUp: "call", answer: "answer", ban: "report", bye: "hang up", sure: "sure?",
     idle: "On the hook",
-    hintIdle: "Press “call” — the call link is copied, send it to your friend.",
-    hintGate: "Call a friend with a link, voice only. Nothing is recorded.",
+    hintIdle: "Press “call” and send the link to your friend.",
+    hintGate: "Call a friend with a link. Voice only, nothing is recorded.",
     banTitle: "Access closed", banHint: "People you talked to reported you. You can't enter from this browser anymore.",
     maint: "Station under maintenance", maintHint: "Try picking up a little later.",
     yellowSub: "You have a yellow card: more reports and access closes for good.",
@@ -392,12 +382,13 @@ const I18N = {
     },
     reportFail: "The report didn't go through, try again.",
     copyLink: "Copy the link and send it to your friend:",
-    waitFriend: "Waiting for your friend", linkCopied: "Send the link to your friend so they can join the call:", copied: "Link copied!", copy: "copy", copiedShort: "copied",
+    waitFriend: "Waiting for your friend", linkCopied: "Send this link to your friend. They open it — and you're connected.", copy: "copy", copiedShort: "copied", share: "send",
     ringFriend: "Ringing — waiting for your friend to pick up.", tapToHear: "Tap the screen to hear.",
-    invitedGate: "You've been invited to talk. Accept the rules and we'll connect you.",
+    invitedGate: "You've been invited to talk. Tick both boxes above — and you're connected.",
     invitedHint: "You've been invited to talk — press “answer”.",
     friendLeft: "Call ended", friendLeftHint: "They hung up.",
     roomFull: "Line busy", roomFullHint: "Two people are already talking on this link.",
+    shareText: "Call me — tap the link:",
     roomGone: "Call ended", roomGoneHint: "The caller has already hung up. Press “call” to call them yourself.",
   },
 };
@@ -800,6 +791,7 @@ async function pickUp(room, join) {
   if (!termsOk) acceptTerms();
   if (!window.isSecureContext) return setIdle("bad", T.needHttps, T.needHttpsHint);
   showButtons("call");
+  showLink(!join && !!room); // звоним сами — сразу «отправить», а не «жалоба»
   lcd("search", T.pickingUp, T.allowMic);
   try { await startAudio(); }
   catch { return setIdle("bad", T.noMic, T.noMicHint); }
@@ -858,38 +850,40 @@ reportBtn.onclick = async () => {
   setTimeout(() => { if (call.state === "searching") sub.textContent = text; }, 50);
 };
 
-// позвонить другу: новая комната, ссылка на неё — в буфер обмена, сами ждём в ней с гудками
-// ссылку видно на дисплее, пока ждём друга; нажатие — скопировать снова
+// Пока ждём друга: на дисплее ссылка, на корпусе — «отправить» (телефон) или «скопировать» вместо «жалобы»
+// (жаловаться ещё не на кого). Ссылка уже в буфере с нажатия «позвонить» — подпись сначала «скопировано».
 let inviteUrl = "", copiedTimer = 0;
-const linkEl = $("link"), linkRow = $("link-row"), copyLabel = $("copy-btn").querySelector("span");
+const linkEl = $("link"), copyLabel = copyBtn.querySelector("span");
+copyLabel.textContent = CAN_SHARE ? T.share : T.copy;
+copyBtn.setAttribute("aria-label", copyLabel.textContent);
 function showLink(on) {
-  linkRow.hidden = !on;
+  linkEl.hidden = copyBtn.hidden = !on;
+  reportBtn.hidden = on;
   const u = inviteUrl.replace(/^https?:\/\//, ""), q = u.indexOf("?");
   const part = t => Object.assign(document.createElement("span"), { textContent: t });
   linkEl.replaceChildren(part(u.slice(0, q)), part(u.slice(q))); // перенос — только перед ?call=
 }
-function copyInvite(flash) {
+function copyInvite() {
   const ask = () => window.prompt(T.copyLink, inviteUrl);
   const done = () => {
-    if (!flash) return;
-    sub.textContent = T.copied; copyLabel.textContent = T.copiedShort;
+    if (CAN_SHARE) return;
+    copyLabel.textContent = T.copiedShort;
     clearTimeout(copiedTimer);
-    copiedTimer = setTimeout(() => {
-      copyLabel.textContent = T.copy;
-      if (!linkRow.hidden) sub.textContent = T.linkCopied;
-    }, 1500);
+    copiedTimer = setTimeout(() => { copyLabel.textContent = T.copy; }, 1500);
   };
   try { navigator.clipboard.writeText(inviteUrl).then(done, ask); } catch { ask(); }
 }
-linkEl.onclick = copyBtn.onclick = () => copyInvite(true);
-linkEl.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyInvite(true); } };
+copyBtn.onclick = () => {
+  if (!CAN_SHARE) return copyInvite();
+  navigator.share({ title: "Контакт", text: T.shareText, url: inviteUrl }).catch(() => {});
+};
 // Зелёная кнопка: пришли по ссылке — ответить в её комнату, иначе позвонить — новая комната, ссылка на неё
 // в буфер обмена, сами ждём в ней с гудками.
 mainBtn.onclick = () => {
   if (linkRoom) return pickUp(linkRoom, true);
   const room = newRoom();
   inviteUrl = location.origin + location.pathname + "?call=" + room;
-  copyInvite(false);
+  copyInvite();
   pickUp(room);
 };
 hangupBtn.onclick = () => { teardown(true); setIdle(); };
