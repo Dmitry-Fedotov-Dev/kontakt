@@ -134,6 +134,7 @@ type phone struct {
 	callID string
 	room   string // звонок по ссылке: заголовок X-Kontakt-Room
 	join   bool   // пришёл по ссылке: X-Kontakt-Join
+	opus   bool   // предлагает Opus (тип 111), как веб-трубка с WebCodecs
 	tag    string
 	toTag  string
 	cseq   int
@@ -200,6 +201,9 @@ func (p *phone) send(raw string) {
 
 func (p *phone) dial(line string) *sip.Msg {
 	sdp := "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\ns=-\r\nc=IN IP4 0.0.0.0\r\nt=0 0\r\nm=audio 9 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\n"
+	if p.opus {
+		sdp = strings.Replace(sdp, "RTP/AVP 8\r\n", "RTP/AVP 8 111\r\n", 1) + "a=rtpmap:111 opus/48000/2\r\n"
+	}
 	room := ""
 	if p.room != "" {
 		room = signal.RoomHeader + ": " + p.room + "\r\n"
@@ -1041,5 +1045,68 @@ func TestRoomNoAnswer(t *testing.T) {
 	case r := <-a.byes:
 		t.Fatalf("разговор оборвался по таймеру ожидания: %s", r)
 	case <-time.After(1500 * time.Millisecond):
+	}
+}
+
+// codecOf ждёт «talking» и возвращает кодек разговора из INFO.
+func (p *phone) codecOf() string {
+	p.t.Helper()
+	timeout := time.After(4 * time.Second)
+	for {
+		select {
+		case s := <-p.infos:
+			if s["state"] == "talking" {
+				return s["codec"]
+			}
+		case <-timeout:
+			p.t.Fatal("не дождались разговора")
+		}
+	}
+}
+
+// Чистый Opus: если оба умеют, пакеты Opus идут собеседнику байт в байт, без декодирования и «линии».
+// Один не умеет — разговор на G.711 у обоих.
+func TestOpusPassthrough(t *testing.T) {
+	st := newStack(t, nil)
+	a, b := newPhone(t, st, ""), newPhone(t, st, "")
+	a.room, b.room, b.join, a.opus, b.opus = "opuspair1234", "opuspair1234", true, true, true
+	a.pickUp("32")
+	b.pickUp("32")
+	if ca, cb := a.codecOf(), b.codecOf(); ca != "opus" || cb != "opus" {
+		t.Fatalf("кодек пары с Opus: %q / %q", ca, cb)
+	}
+	payload := []byte("opus-frame-\x01\x02\x03\xfc\xfd\xfe")
+	pkt := append([]byte{0x80, mediaapi.OpusPT, 0, 1, 0, 0, 0, 0, 0xCA, 0xFE, 0, 1}, payload...)
+	b.drain()
+	deadline := time.After(3 * time.Second)
+	for got := false; !got; {
+		a.media.WriteMessage(websocket.BinaryMessage, pkt)
+		select {
+		case r := <-b.rtp:
+			pl, pt, ok := media.ParseRTP(r)
+			if ok && pt == mediaapi.OpusPT {
+				if string(pl) != string(payload) {
+					t.Fatalf("Opus дошёл не байт в байт: %x", pl)
+				}
+				got = true
+			}
+		case <-deadline:
+			t.Fatal("пакет Opus не дошёл до собеседника")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+
+	c, d := newPhone(t, st, ""), newPhone(t, st, "")
+	c.room, d.room, d.join, c.opus = "mixedpair123", "mixedpair123", true, true
+	c.pickUp("32")
+	d.pickUp("32")
+	if cc, cd := c.codecOf(), d.codecOf(); cc != "pcma" || cd != "pcma" {
+		t.Fatalf("кодек смешанной пары: %q / %q", cc, cd)
+	}
+	c.drain()
+	d.drain()
+	c.talk(25, 700)
+	if lv := d.level(25); lv < 1000 {
+		t.Fatalf("смешанная пара на G.711 не слышит: %.0f", lv)
 	}
 }

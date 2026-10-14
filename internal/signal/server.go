@@ -107,6 +107,7 @@ type Leg struct {
 	invite   *sip.Msg
 	toTag    string
 	pt       int32
+	opus     bool // веб-трубка предложила Opus (тип mediaapi.OpusPT)
 	ep       *mediaapi.Endpoint
 
 	notifyMu   sync.Mutex // уведомления одной ноге уходят строго по очереди
@@ -329,7 +330,9 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 	req := &mediaapi.CreateEndpointRequest{CallID: leg.callID, Transport: "udp", PayloadType: pt,
 		LineMode: leg.line, RemoteIP: sdp.ip, RemotePort: int32(sdp.port)}
 	if _, isWS := tr.(*wsTransport); isWS {
-		req.Transport, req.RemoteIP, req.RemotePort = "ws", "", 0
+		// веб-трубка — звонилка: чистый звук без «старой линии», Opus, если браузер его умеет
+		leg.line, leg.opus = "clean", sdp.hasPT(mediaapi.OpusPT)
+		req.Transport, req.RemoteIP, req.RemotePort, req.LineMode, req.Opus = "ws", "", 0, "clean", leg.opus
 	}
 	ep, err := s.Media.CreateEndpoint(req)
 	if err != nil {
@@ -418,12 +421,17 @@ func (l *Leg) sdp() []byte {
 		name = "PCMU"
 	}
 	ip, port, extra := l.ep.LocalIP, l.ep.LocalPort, ""
+	pts, opus := fmt.Sprint(l.pt), ""
 	if l.ep.Transport == "ws" {
 		ip, port, extra = "0.0.0.0", 9, "a=x-kontakt-media:ws "+l.ep.WSPath+"\r\n"
 	}
+	if l.opus {
+		pts += fmt.Sprintf(" %d", mediaapi.OpusPT)
+		opus = fmt.Sprintf("a=rtpmap:%d opus/48000/2\r\n", mediaapi.OpusPT)
+	}
 	return []byte(fmt.Sprintf("v=0\r\no=kontakt %d 1 IN IP4 %s\r\ns=Kontakt\r\nc=IN IP4 %s\r\nt=0 0\r\n"+
-		"m=audio %d RTP/AVP %d\r\na=rtpmap:%d %s/8000\r\na=ptime:20\r\na=sendrecv\r\n%s",
-		time.Now().Unix(), ip, ip, port, l.pt, l.pt, name, extra))
+		"m=audio %d RTP/AVP %s\r\na=rtpmap:%d %s/8000\r\n%sa=ptime:20\r\na=sendrecv\r\n%s",
+		time.Now().Unix(), ip, ip, port, pts, l.pt, name, opus, extra))
 }
 
 // ---------- очередь и коммутация ----------
@@ -671,16 +679,24 @@ func (s *Server) notify(l *Leg, reason string) {
 	l.notifyMu.Lock()
 	defer l.notifyMu.Unlock()
 	l.mu.Lock()
-	st := l.state
+	st, peer := l.state, l.peer
 	l.mu.Unlock()
-	state := "searching"
+	state, codec := "searching", ""
 	switch st {
 	case legEnded:
 		return
 	case legTalking:
-		state, reason = "talking", ""
+		// кодек разговора: Opus, если его умеют оба, иначе G.711 (его умеет любая трубка)
+		state, reason, codec = "talking", "", "pcma"
+		if peer != nil && l.opus && peer.opus {
+			codec = "opus"
+		}
 	}
-	body, _ := json.Marshal(map[string]string{"state": state, "reason": reason})
+	msg := map[string]string{"state": state, "reason": reason}
+	if codec != "" {
+		msg["codec"] = codec
+	}
+	body, _ := json.Marshal(msg)
 	l.sendRequest("INFO", "application/json", string(body), "")
 }
 

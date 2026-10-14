@@ -61,6 +61,7 @@ type endpoint struct {
 	id, token string
 	transport string
 	pt        byte
+	opus      bool // принимает Opus (mediaapi.OpusPT) — собеседник с Opus шлёт ему пакеты как есть
 
 	// fxMu защищает эффект линии и генератор: их трогает либо горутина собеседника (мост),
 	// либо тикер служебных звуков.
@@ -100,7 +101,7 @@ func (e *Engine) CreateEndpoint(_ context.Context, r *mediaapi.CreateEndpointReq
 	if !ok {
 		mode = dsp.Mode32
 	}
-	ep := &endpoint{e: e, id: sip.RandHex(8), transport: r.Transport, pt: byte(r.PayloadType),
+	ep := &endpoint{e: e, id: sip.RandHex(8), transport: r.Transport, pt: byte(r.PayloadType), opus: r.Opus,
 		rx: dsp.NewLine(mode), seq: uint16(rand.Uint32()), ts: rand.Uint32(), ssrc: rand.Uint32(), marker: true}
 	out := &mediaapi.Endpoint{ID: ep.id, Transport: r.Transport}
 
@@ -378,16 +379,26 @@ func (e *Engine) ServeWS(w http.ResponseWriter, r *http.Request) {
 // ---------- мост ----------
 
 // onRTP: пакет от этой точки → декодирование → эффект линии собеседника → собеседнику.
+// Opus не декодируется и не обрабатывается: пакет уходит собеседнику как есть (если он умеет Opus).
 // Вызывается только из горутины чтения этой точки.
 func (ep *endpoint) onRTP(pkt []byte) {
 	ep.e.pktIn.Add(1)
 	ep.e.bytesIn.Add(uint64(len(pkt)))
 	payload, pt, ok := ParseRTP(pkt)
-	if !ok || (pt != 0 && pt != 8) || len(payload) == 0 || len(payload) > len(ep.pcm) {
+	if !ok || len(payload) == 0 || len(payload) > len(ep.pcm) {
 		return
 	}
 	peer := ep.peer.Load()
 	if peer == nil {
+		return
+	}
+	if pt == mediaapi.OpusPT {
+		if ep.opus && peer.opus {
+			peer.write(mediaapi.OpusPT, payload, opusFrame)
+		}
+		return
+	}
+	if pt != 0 && pt != 8 {
 		return
 	}
 	pcm := ep.pcm[:len(payload)]
@@ -402,11 +413,31 @@ func (ep *endpoint) onRTP(pkt []byte) {
 	peer.fxMu.Unlock()
 }
 
+// opusFrame — шаг метки времени RTP на пакет Opus: веб-трубка шлёт по 20 мс при 48 кГц.
+const opusFrame = 960
+
+// send кодирует PCM в G.711 этой точки и отправляет.
 func (ep *endpoint) send(pcm []int16) {
 	ep.sendMu.Lock()
 	defer ep.sendMu.Unlock()
-	pkt := ep.out[:12+len(pcm)]
-	pkt[0], pkt[1] = 0x80, ep.pt
+	pkt := ep.header(ep.pt, len(pcm), uint32(len(pcm)))
+	dsp.Encode(ep.pt, pcm, pkt[12:])
+	ep.deliver(pkt)
+}
+
+// write отправляет готовую полезную нагрузку (Opus) как есть.
+func (ep *endpoint) write(pt byte, payload []byte, step uint32) {
+	ep.sendMu.Lock()
+	defer ep.sendMu.Unlock()
+	pkt := ep.header(pt, len(payload), step)
+	copy(pkt[12:], payload)
+	ep.deliver(pkt)
+}
+
+// header — заголовок RTP в ep.out для n байт нагрузки; вызывать под sendMu.
+func (ep *endpoint) header(pt byte, n int, step uint32) []byte {
+	pkt := ep.out[:12+n]
+	pkt[0], pkt[1] = 0x80, pt
 	if ep.marker {
 		pkt[1] |= 0x80
 		ep.marker = false
@@ -415,9 +446,12 @@ func (ep *endpoint) send(pcm []int16) {
 	binary.BigEndian.PutUint32(pkt[4:], ep.ts)
 	binary.BigEndian.PutUint32(pkt[8:], ep.ssrc)
 	ep.seq++
-	ep.ts += uint32(len(pcm))
-	dsp.Encode(ep.pt, pcm, pkt[12:])
+	ep.ts += step
+	return pkt
+}
 
+// deliver — пакет в UDP или медиа-WebSocket точки; вызывать под sendMu.
+func (ep *endpoint) deliver(pkt []byte) {
 	if ep.udp != nil {
 		if dst := ep.udpRemote.Load(); dst != nil {
 			if _, err := ep.udp.WriteToUDP(pkt, dst); err == nil {

@@ -34,6 +34,7 @@ message CreateEndpointRequest {
   string line_mode = 4;     // "64" | "32" | "16" | "8" | "clean"
   string remote_ip = 5;     // для udp: адрес из SDP абонента
   int32 remote_port = 6;
+  bool opus = 7;            // веб-трубка с Opus 48 кГц (тип 111): пересылается собеседнику с Opus как есть
 }
 
 message Endpoint {

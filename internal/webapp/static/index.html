@@ -568,38 +568,53 @@ for (let i = 0; i < 256; i++) {
   ALAW_DEC[i] = ((a & 0x80) ? t : -t) / 32768;
 }
 
+// Захват: «g711» — полоса до 3400 Гц и 8 кГц кадрами по 160 отсчётов (собеседник без Opus);
+// «opus» — микрофон как есть, 48 кГц кадрами по 20 мс (960 отсчётов) для кодировщика Opus.
 const WORKLET = `
 class Capture extends AudioWorkletProcessor {
   constructor() { super(); this.step = sampleRate / 8000; this.pos = 0; this.l1 = 0; this.l2 = 0;
-    this.a = 1 - Math.exp(-2 * Math.PI * 3400 / sampleRate); this.buf = new Int16Array(160); this.n = 0; }
+    this.a = 1 - Math.exp(-2 * Math.PI * 3400 / sampleRate); this.buf = new Int16Array(160); this.n = 0;
+    this.opus = false; this.fsize = Math.round(sampleRate / 50); this.fbuf = new Float32Array(this.fsize); this.fn = 0;
+    this.port.onmessage = e => { this.opus = e.data.opus; this.n = this.fn = 0; }; }
   process(inputs) {
     const ch = inputs[0] && inputs[0][0]; if (!ch) return true;
+    if (this.opus) {
+      for (let i = 0; i < ch.length; i++) {
+        this.fbuf[this.fn++] = ch[i];
+        if (this.fn === this.fsize) { this.port.postMessage({ f32: this.fbuf }, [this.fbuf.buffer]); this.fbuf = new Float32Array(this.fsize); this.fn = 0; }
+      }
+      return true;
+    }
     for (let i = 0; i < ch.length; i++) {
       this.l1 += this.a * (ch[i] - this.l1); this.l2 += this.a * (this.l1 - this.l2);
       if (++this.pos >= this.step) { this.pos -= this.step;
         this.buf[this.n++] = Math.max(-1, Math.min(1, this.l2 * 1.6)) * 32767;
-        if (this.n === 160) { this.port.postMessage(this.buf.buffer, [this.buf.buffer]); this.buf = new Int16Array(160); this.n = 0; }
+        if (this.n === 160) { this.port.postMessage({ i16: this.buf }, [this.buf.buffer]); this.buf = new Int16Array(160); this.n = 0; }
       }
     }
     return true;
   }
 }
+// Проигрыватель с джиттер-буфером; частота кадров — своя у G.711 (8 кГц) и Opus (48 кГц): сменилась —
+// буфер с нуля. Пороги — во времени: старт с 60 мс, больше 0,5 с не копим (срезаем до 100 мс).
 class Player extends AudioWorkletProcessor {
   constructor() { super();
-    this.ring = new Float32Array(16000); this.w = 0; this.r = 0; this.fill = 0; this.frac = 0; this.on = false;
-    this.step = 8000 / sampleRate;
+    this.ring = new Float32Array(96000); this.w = 0; this.r = 0; this.fill = 0; this.frac = 0; this.on = false;
+    this.setRate(8000);
     this.port.onmessage = e => {
       if (e.data.flush) { this.fill = 0; this.r = this.w; this.on = false; return; }
+      if (e.data.rate !== this.rate) { this.setRate(e.data.rate); this.fill = 0; this.r = this.w; this.on = false; }
       const p = e.data.pcm, n = this.ring.length;
       for (let i = 0; i < p.length; i++) { this.ring[this.w] = p[i]; this.w = (this.w + 1) % n; }
       this.fill = Math.min(this.fill + p.length, n);
-      if (this.fill > 4000) { this.r = (this.r + this.fill - 800) % n; this.fill = 800; } // не копим задержку
+      if (this.fill > this.cap) { this.r = (this.r + this.fill - this.keep) % n; this.fill = this.keep; } // не копим задержку
     };
   }
+  setRate(rate) { this.rate = rate; this.step = rate / sampleRate; this.start = rate * 0.06; this.cap = rate * 0.5; this.keep = rate * 0.1; }
   process(_, outputs) {
     const out = outputs[0][0], n = this.ring.length;
     for (let i = 0; i < out.length; i++) {
-      if (!this.on && this.fill >= 480) this.on = true;   // джиттер-буфер 60 мс
+      if (!this.on && this.fill >= this.start) this.on = true;   // джиттер-буфер 60 мс
       let v = 0;
       if (this.on) {
         if (this.fill < 2) this.on = false;
@@ -634,23 +649,69 @@ async function callStreamOut(node) {
   loopEl = new Audio();
   b.ontrack = e => { loopEl.srcObject = e.streams[0]; loopEl.play().catch(() => {}); };
   dest.stream.getTracks().forEach(t => a.addTrack(t, dest.stream));
-  // звук и так телефонный (8 кГц): G.711 вместо Opus — кодек почти ничего не стоит процессору
-  const g711 = (RTCRtpSender.getCapabilities && RTCRtpSender.getCapabilities("audio").codecs || []).filter(c => /PCMU|PCMA/i.test(c.mimeType));
-  if (g711.length) try { a.getTransceivers()[0].setCodecPreferences(g711); } catch {}
+  // Opus петли — с запасом по битрейту: звук разговора теперь широкополосный, портить его нельзя
+  const hq = d => ({ type: d.type, sdp: d.sdp.replace(/(a=fmtp:\d+ .*useinbandfec=1)/g, "$1;maxaveragebitrate=128000") });
   await a.setLocalDescription(await a.createOffer());
-  await b.setRemoteDescription(a.localDescription);
+  await b.setRemoteDescription(hq(a.localDescription));
   await b.setLocalDescription(await b.createAnswer());
-  await a.setRemoteDescription(b.localDescription);
+  await a.setRemoteDescription(hq(b.localDescription));
   await new Promise((ok, fail) => {
     const t = setTimeout(() => fail(new Error("loop")), 3000);
     const check = () => { if (b.connectionState === "connected") { clearTimeout(t); ok(); } };
     b.onconnectionstatechange = check; check();
   });
 }
+
+// ================= Opus (WebCodecs) =================
+// Чистый звук: Opus 48 кГц, моно, 32 кбит/с, кадр 20 мс. Медиасервер его не трогает — пересылает
+// собеседнику как есть. Браузер без WebCodecs или без Opus — разговор на G.711 (сервер сам выберет
+// по возможностям обоих и скажет кодек в INFO «talking»).
+const OPUS_CFG = { codec: "opus", sampleRate: 48000, numberOfChannels: 1, bitrate: 32000,
+  opus: { frameDuration: 20000, application: "voip", useinbandfec: true } };
+let opusOK = false, enc = null, dec = null, encTs = 0, decTs = 0;
+async function probeOpus() {
+  try {
+    opusOK = !!(window.AudioEncoder && window.AudioDecoder && window.AudioData && window.EncodedAudioChunk) &&
+      ctx.sampleRate === 48000 &&
+      (await AudioEncoder.isConfigSupported(OPUS_CFG)).supported &&
+      (await AudioDecoder.isConfigSupported({ codec: "opus", sampleRate: 48000, numberOfChannels: 1 })).supported;
+  } catch { opusOK = false; }
+}
+// setCodec — кодек разговора: "opus" — кодировщик и захват 48 кГц, иначе G.711 по-старому.
+function setCodec(codec) {
+  const opus = codec === "opus" && opusOK;
+  call.codec = opus ? "opus" : "pcma";
+  if (capture) capture.port.postMessage({ opus });
+  if (!opus) return closeEncoder();
+  if (enc && enc.state === "configured") return;
+  enc = new AudioEncoder({
+    output: chunk => { const b = new Uint8Array(chunk.byteLength); chunk.copyTo(b); sendPacket(111, b, 960); },
+    error: () => { enc = null; },
+  });
+  enc.configure(OPUS_CFG); encTs = 0;
+}
+function closeEncoder() { if (enc) { try { enc.close(); } catch {} } enc = null; }
+function decoder() {
+  if (dec && dec.state === "configured") return dec;
+  dec = new AudioDecoder({
+    output: ad => {
+      const f = new Float32Array(ad.numberOfFrames);
+      ad.copyTo(f, { planeIndex: 0, format: "f32-planar" });
+      player.port.postMessage({ pcm: f, rate: ad.sampleRate }, [f.buffer]);
+      ad.close();
+    },
+    error: () => { dec = null; },
+  });
+  dec.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: 1 });
+  return dec;
+}
+
 async function startAudio() {
   if (!ctx) {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // 48 кГц — частота Opus: захват идёт в кодировщик без пересчёта
+    try { ctx = new AudioContext({ sampleRate: 48000 }); } catch { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+    await probeOpus();
     player = new AudioWorkletNode(ctx, "k-player", { numberOfInputs: 0, outputChannelCount: [1] });
     // Выравнивание громкости собеседника: речь из чужого микрофона приходит на −30…−24 дБ, с телефона
     // (громкость разговора, а не медиа) это было слишком тихо. Компрессор Chromium сам добавляет подъём;
@@ -679,35 +740,55 @@ async function startAudio() {
   capture = new AudioWorkletNode(ctx, "k-capture", { outputChannelCount: [1] });
   const mute = ctx.createGain(); mute.gain.value = 0;
   src.connect(capture); capture.connect(mute); mute.connect(ctx.destination);
-  capture.port.onmessage = e => sendRTP(new Int16Array(e.data));
+  capture.port.onmessage = e => {
+    if (e.data.i16) return sendG711(e.data.i16);
+    if (!enc || enc.state !== "configured" || call.state !== "talking") return;
+    const ad = new AudioData({ format: "f32", sampleRate: ctx.sampleRate, numberOfFrames: e.data.f32.length,
+      numberOfChannels: 1, timestamp: encTs, data: e.data.f32 });
+    encTs += 20000;
+    enc.encode(ad); ad.close();
+  };
 }
 function stopAudio() {
   if (mic) mic.getTracks().forEach(t => t.stop());
   if (capture) { capture.port.onmessage = null; capture.disconnect(); }
   mic = capture = null;
+  closeEncoder();
   if (player) player.port.postMessage({ flush: true });
 }
 
 // ================= RTP (бинарные кадры по медиа-WebSocket) =================
 let mediaWS = null, rtpSeq = 0, rtpTs = 0, rtpSsrc = 0, marker = true;
-function sendRTP(pcm) {
+function sendPacket(pt, payload, step) {
   // голос уходит только в разговоре; пока ищем — слышим станцию, но молчим
   if (call.state !== "talking" || !mediaWS || mediaWS.readyState !== 1 || mediaWS.bufferedAmount > 16000) return;
-  const p = new Uint8Array(12 + pcm.length), dv = new DataView(p.buffer);
-  p[0] = 0x80; p[1] = 8 | (marker ? 0x80 : 0); marker = false;
+  const p = new Uint8Array(12 + payload.length), dv = new DataView(p.buffer);
+  p[0] = 0x80; p[1] = pt | (marker ? 0x80 : 0); marker = false;
   dv.setUint16(2, rtpSeq); dv.setUint32(4, rtpTs); dv.setUint32(8, rtpSsrc);
-  rtpSeq = (rtpSeq + 1) & 0xFFFF; rtpTs = (rtpTs + pcm.length) >>> 0;
-  for (let i = 0; i < pcm.length; i++) p[12 + i] = ALAW_ENC[(pcm[i] >> 3) + 4096];
+  rtpSeq = (rtpSeq + 1) & 0xFFFF; rtpTs = (rtpTs + step) >>> 0;
+  p.set(payload, 12);
   mediaWS.send(p);
 }
+function sendG711(pcm) {
+  if (call.codec === "opus") return;
+  const a = new Uint8Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) a[i] = ALAW_ENC[(pcm[i] >> 3) + 4096];
+  sendPacket(8, a, pcm.length);
+}
 function onRTP(buf) {
-  const p = new Uint8Array(buf);
-  if (p.length < 12 || (p[0] >> 6) !== 2 || (p[1] & 0x7F) !== 8) return;
+  const p = new Uint8Array(buf), pt = p[1] & 0x7F;
+  if (p.length < 12 || (p[0] >> 6) !== 2 || (pt !== 8 && pt !== 111)) return;
   let off = 12 + 4 * (p[0] & 0x0F);
   if (p[0] & 0x10) off += 4 + 4 * ((p[off + 2] << 8) | p[off + 3]);
-  const out = new Float32Array(p.length - off);
-  for (let i = off; i < p.length; i++) out[i - off] = ALAW_DEC[p[i]];
-  player.port.postMessage({ pcm: out }, [out.buffer]);
+  if (pt === 111) { // Opus собеседника — в декодер, PCM 48 кГц придёт в проигрыватель из его output
+    if (!opusOK) return;
+    try { decoder().decode(new EncodedAudioChunk({ type: "key", timestamp: decTs, data: p.subarray(off) })); } catch {}
+    decTs += 20000;
+    return;
+  }
+  const pcm = new Float32Array(p.length - off);
+  for (let i = off; i < p.length; i++) pcm[i - off] = ALAW_DEC[p[i]];
+  player.port.postMessage({ pcm, rate: 8000 }, [pcm.buffer]);
 }
 
 // ================= SIP поверх WebSocket =================
@@ -780,7 +861,7 @@ function onSIP(text) {
   if (m.method === "INFO") {
     reply200(m);
     let st = {}; try { st = JSON.parse(m.body); } catch {}
-    onStation(st.state, st.reason);
+    onStation(st.state, st.reason, st.codec);
   } else if (m.method === "BYE") {
     reply200(m);
     const why = reasonText(m);
@@ -795,8 +876,9 @@ function onSIP(text) {
   } else if (m.method === "OPTIONS") reply200(m);
 }
 
-function onStation(state, reason) {
+function onStation(state, reason, codec) {
   if (state === "talking") {
+    setCodec(codec);
     call.state = "talking"; marker = true;
     talkStart = Date.now(); clearInterval(talkTimer);
     talkTimer = setInterval(tick, 1000);
@@ -845,6 +927,7 @@ async function pickUp(room, join) {
   call.id = rnd(10); call.fromTag = rnd(4); call.cseq = 1; call.toTag = null;
   call.ruri = `sip:${LINE}@kontakt`;
   call.room = typeof room === "string" ? room : "";
+  call.codec = "pcma"; // кодек разговора скажет станция в «talking»
   call.join = !!join && !!call.room;
   rtpSeq = crypto.getRandomValues(new Uint16Array(1))[0];
   rtpTs = crypto.getRandomValues(new Uint32Array(1))[0];
@@ -854,7 +937,8 @@ async function pickUp(room, join) {
   ws = new WebSocket(location.href.replace(/[^/]*$/, "").replace(/^http/, "ws") + "sip", "sip");
   ws.onopen = () => {
     const sdp = "v=0\r\no=- " + Date.now() + " 1 IN IP4 0.0.0.0\r\ns=Kontakt\r\nc=IN IP4 0.0.0.0\r\nt=0 0\r\n" +
-      "m=audio 9 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\na=ptime:20\r\na=sendrecv\r\n";
+      (opusOK ? "m=audio 9 RTP/AVP 8 111\r\na=rtpmap:8 PCMA/8000\r\na=rtpmap:111 opus/48000/2\r\n" : "m=audio 9 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\n") +
+      "a=ptime:20\r\na=sendrecv\r\n";
     sendRaw(build(`INVITE ${call.ruri} SIP/2.0`, [...hdrs("INVITE", 1), `Contact: <sip:anon@${host};transport=ws>`,
       ...(call.room ? [`X-Kontakt-Room: ${call.room}`] : []), ...(call.join ? ["X-Kontakt-Join: 1"] : []), "Content-Type: application/sdp"], sdp));
   };

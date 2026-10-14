@@ -20,7 +20,13 @@ type CreateEndpointRequest struct {
 	LineMode    string `json:"line_mode"`
 	RemoteIP    string `json:"remote_ip,omitempty"`
 	RemotePort  int32  `json:"remote_port,omitempty"`
+	// Opus — точка (веб-трубка) шлёт и принимает Opus 48 кГц с типом OpusPT. Пакеты Opus медиа не
+	// декодирует: пересылает собеседнику как есть, если и он умеет Opus.
+	Opus bool `json:"opus,omitempty"`
 }
+
+// OpusPT — динамический тип RTP для Opus у веб-трубки.
+const OpusPT = 111
 
 type Endpoint struct {
 	ID        string `json:"id"`
