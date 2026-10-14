@@ -633,34 +633,11 @@ registerProcessor("k-capture", Capture);
 registerProcessor("k-player", Player);`;
 
 let ctx, mic, capture, player, out;
-// Android: пока открыт микрофон, кнопки громкости правят громкость вызова, а Web Audio Android считает
-// музыкой — кнопки не меняли громкость собеседника. Звук WebRTC Chrome играет как вызов, поэтому выход
-// трубки идёт через пару RTCPeerConnection внутри страницы и <audio>. Бонус: эхоподавление микрофона
-// видит этот звук (Web Audio оно не видит). Не поднялось — звук идёт напрямую, как раньше.
-const CALL_STREAM = /Android/i.test(navigator.userAgent) && !!window.RTCPeerConnection;
-let loopEl = null, loopPCs = []; // ссылки держим: иначе сборщик мусора закроет соединения
-async function callStreamOut(node) {
-  const dest = ctx.createMediaStreamDestination();
-  node.connect(dest);
-  const a = new RTCPeerConnection(), b = new RTCPeerConnection();
-  loopPCs = [a, b];
-  a.onicecandidate = e => { if (e.candidate) b.addIceCandidate(e.candidate).catch(() => {}); };
-  b.onicecandidate = e => { if (e.candidate) a.addIceCandidate(e.candidate).catch(() => {}); };
-  loopEl = new Audio();
-  b.ontrack = e => { loopEl.srcObject = e.streams[0]; loopEl.play().catch(() => {}); };
-  dest.stream.getTracks().forEach(t => a.addTrack(t, dest.stream));
-  // Opus петли — с запасом по битрейту: звук разговора теперь широкополосный, портить его нельзя
-  const hq = d => ({ type: d.type, sdp: d.sdp.replace(/(a=fmtp:\d+ .*useinbandfec=1)/g, "$1;maxaveragebitrate=128000") });
-  await a.setLocalDescription(await a.createOffer());
-  await b.setRemoteDescription(hq(a.localDescription));
-  await b.setLocalDescription(await b.createAnswer());
-  await a.setRemoteDescription(hq(b.localDescription));
-  await new Promise((ok, fail) => {
-    const t = setTimeout(() => fail(new Error("loop")), 3000);
-    const check = () => { if (b.connectionState === "connected") { clearTimeout(t); ok(); } };
-    b.onconnectionstatechange = check; check();
-  });
-}
+// Android (Chrome): звук страницы играет как «вызов» (громкость — кнопками, при нуле громкости медиа
+// слышно) только если аудиовыход открыт, когда микрофон уже включён: режим вызова включает микрофон, а
+// выход запоминает режим, в котором открылся. Поэтому на Android сначала микрофон, потом свой
+// AudioContext на каждый звонок. Раньше выход открывался до микрофона — и звонок шёл громкостью медиа.
+const ANDROID = /Android/i.test(navigator.userAgent);
 
 // ================= Opus (WebCodecs) =================
 // Чистый звук: Opus 48 кГц, моно, 32 кбит/с, кадр 20 мс. Медиасервер его не трогает — пересылает
@@ -706,36 +683,37 @@ function decoder() {
   return dec;
 }
 
+async function openOutput() {
+  // 48 кГц — частота Opus: захват идёт в кодировщик без пересчёта
+  try { ctx = new AudioContext({ sampleRate: 48000 }); } catch { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+  await probeOpus();
+  player = new AudioWorkletNode(ctx, "k-player", { numberOfInputs: 0, outputChannelCount: [1] });
+  // Выравнивание громкости собеседника: речь из чужого микрофона приходит на −30…−24 дБ, с телефона
+  // это было слишком тихо. Компрессор Chromium сам добавляет подъём; по замеру в Chrome
+  // (OfflineAudioContext, 15.10.2026) с ×1,4: речь −30/−24 → −17/−14 дБ, громкое −3 → −7 дБ (пик 0,66).
+  const comp = ctx.createDynamicsCompressor(), loud = ctx.createGain();
+  comp.threshold.value = -28; comp.knee.value = 6; comp.ratio.value = 3;
+  comp.attack.value = 0.003; comp.release.value = 0.25;
+  loud.gain.value = 1.4;
+  out = ctx.createGain(); // общий выход трубки: собеседник, гудки отбоя
+  player.connect(comp); comp.connect(loud); loud.connect(out); out.connect(ctx.destination);
+}
 async function startAudio() {
-  if (!ctx) {
-    // 48 кГц — частота Opus: захват идёт в кодировщик без пересчёта
-    try { ctx = new AudioContext({ sampleRate: 48000 }); } catch { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
-    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
-    await probeOpus();
-    player = new AudioWorkletNode(ctx, "k-player", { numberOfInputs: 0, outputChannelCount: [1] });
-    // Выравнивание громкости собеседника: речь из чужого микрофона приходит на −30…−24 дБ, с телефона
-    // (громкость разговора, а не медиа) это было слишком тихо. Компрессор Chromium сам добавляет подъём;
-    // по замеру в Chrome (OfflineAudioContext, 15.10.2026) с ×1,4: речь −30/−24 → −17/−14 дБ,
-    // громкое −3 → −7 дБ (пик 0,66, без перегруза), шипение линии −51 → −38 дБ.
-    const comp = ctx.createDynamicsCompressor(), loud = ctx.createGain();
-    comp.threshold.value = -28; comp.knee.value = 6; comp.ratio.value = 3;
-    comp.attack.value = 0.003; comp.release.value = 0.25;
-    loud.gain.value = 1.4;
-    out = ctx.createGain(); // общий выход трубки: собеседник, гудки отбоя
-    player.connect(comp); comp.connect(loud); loud.connect(out);
-    if (CALL_STREAM) {
-      try { await callStreamOut(out); } catch { loopEl = null; out.connect(ctx.destination); }
-    } else out.connect(ctx.destination);
+  const getMic = () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+  if (ANDROID) {
+    mic = await getMic();
+    if (ctx) { const old = ctx; ctx = null; old.close().catch(() => {}); } // прошлый выход открыт без режима вызова
   }
-  if (loopEl) loopEl.play().catch(() => {}); // по нажатию «позвонить» — жест: <audio> точно заиграет
+  if (!ctx) await openOutput();
   // по ссылке трубка снимается сама, без нажатия, — тогда браузер держит звук выключенным до касания
   if (ctx.state !== "running") await Promise.race([ctx.resume(), new Promise(r => setTimeout(r, 300))]);
   if (ctx.state !== "running") {
-    const wake = () => (loopEl && loopEl.play().catch(() => {}), ctx.resume()).then(() => { if (call.state === "searching") sub.textContent = T.ringFriend; else if (call.state === "talking") tick(); });
+    const wake = () => ctx.resume().then(() => { if (call.state === "searching") sub.textContent = T.ringFriend; else if (call.state === "talking") tick(); });
     document.addEventListener("pointerdown", wake, { once: true });
     document.addEventListener("keydown", wake, { once: true });
   }
-  mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+  if (!mic) mic = await getMic();
   const src = ctx.createMediaStreamSource(mic);
   capture = new AudioWorkletNode(ctx, "k-capture", { outputChannelCount: [1] });
   const mute = ctx.createGain(); mute.gain.value = 0;
