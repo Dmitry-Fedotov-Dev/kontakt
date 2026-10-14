@@ -8,6 +8,9 @@
 //	→ собеседник ушёл: 2 с белого шума, затем снова гудки и очередь — тот же SIP-диалог
 //	→ вы положили трубку (BYE) — конец.
 //
+// Звонок по ссылке — тот же INVITE с заголовком X-Kontakt-Room: ноги одной комнаты соединяются
+// только друг с другом, третьего в комнату не пускают, а кто положил трубку — кончает разговор обоим.
+//
 // Так работает и браузер, и любой обычный SIP-софтфон: набрал один раз — и крутишь рулетку.
 package signal
 
@@ -59,12 +62,30 @@ const (
 	ReasonMediaError = "media-error"
 	ReasonNoTokens   = "no-tokens"      // жетоны кончились — снять трубку нельзя, пока не придёт новый
 	ReasonTooMany    = "too-many-calls" // у этой куки уже maxLegsPerID трубок
+	ReasonRoomFull   = "room-full"      // в комнате звонка по ссылке уже двое
+	ReasonBadRoom    = "bad-room"       // имя комнаты не по формату
 
 	// maxLegsPerID — трубок на одну куку (вкладка и приложение). Больше нормальному человеку не нужно,
 	// а без предела одна кука ставила в очередь тысячи ног: подбор пар перебирал их попарно (O(n²))
 	// под общей блокировкой — несовместимы между собой все ноги одной куки.
 	maxLegsPerID = 2
 )
+
+// RoomHeader — комната звонка по ссылке (её имя придумывает трубка того, кто зовёт).
+const RoomHeader = "X-Kontakt-Room"
+
+// validRoom: 8–32 знака a-z0-9 — имя из ссылки, его подбирать бессмысленно (60+ бит случайности).
+func validRoom(r string) bool {
+	if len(r) < 8 || len(r) > 32 {
+		return false
+	}
+	for _, c := range r {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
 
 // NoiseSeconds — сколько звучит «пустой эфир» после ухода собеседника.
 const NoiseSeconds = 2.0
@@ -73,6 +94,7 @@ type Leg struct {
 	callID   string
 	tr       Transport
 	identity string
+	room     string // "" — рулетка; иначе комната звонка по ссылке
 	invite   *sip.Msg
 	toTag    string
 	pt       int32
@@ -262,11 +284,21 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 		s.reject(inv, tr, 488, "Not Acceptable Here", "only-pcma-pcmu")
 		return
 	}
+	room := strings.ToLower(strings.TrimSpace(inv.Get(RoomHeader)))
+	if room != "" && !validRoom(room) {
+		s.reject(inv, tr, 400, "Bad Request", ReasonBadRoom)
+		return
+	}
 	// место занимаем под блокировкой до медиа: одновременные INVITE одной куки не проскочат предел
 	s.mu.Lock()
 	if s.perID[id] >= maxLegsPerID {
 		s.mu.Unlock()
 		s.reject(inv, tr, 429, "Too Many Requests", ReasonTooMany)
+		return
+	}
+	if room != "" && s.roomBusy(room) {
+		s.mu.Unlock()
+		s.reject(inv, tr, 486, "Busy Here", ReasonRoomFull)
 		return
 	}
 	s.perID[id]++
@@ -278,7 +310,7 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 		}
 	}()
 
-	leg := &Leg{callID: inv.Get("Call-ID"), tr: tr, identity: id, invite: inv, toTag: sip.RandHex(6),
+	leg := &Leg{callID: inv.Get("Call-ID"), tr: tr, identity: id, room: room, invite: inv, toTag: sip.RandHex(6),
 		line: s.pickLine(sip.UserOf(sip.URIOf(inv.RURI))), pt: pt, cseq: 1}
 
 	req := &mediaapi.CreateEndpointRequest{CallID: leg.callID, Transport: "udp", PayloadType: pt,
@@ -317,6 +349,18 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 	log.Printf("☎  %s снял трубку (линия %s)", tr.Name(), leg.line)
 	s.Media.SetTone(ep.ID, "ring", 0, "")
 	s.enqueue(leg, "")
+}
+
+// roomBusy — в комнате уже двое (под s.mu). Нога, которая ещё создаётся в медиа, не видна:
+// двое одновременно вошедших третьими проскочат, но соединится всё равно только пара.
+func (s *Server) roomBusy(room string) bool {
+	n := 0
+	for _, l := range s.legs {
+		if l.room == room {
+			n++
+		}
+	}
+	return n >= 2
 }
 
 func (s *Server) pickLine(want string) string {
@@ -436,11 +480,14 @@ func (s *Server) pickPair() (*Leg, *Leg) {
 	return nil, nil
 }
 
-// compatible: не сам с собой, не после жалобы, и не тот же собеседник сразу же
-// (разрешаем, только если оба ждут дольше 15 с — значит, больше никого нет).
+// compatible: из одной комнаты (рулетка — «пустая»), не сам с собой, не после жалобы, и в рулетке не тот
+// же собеседник сразу же (разрешаем, только если оба ждут дольше 15 с — значит, больше никого нет).
 func (s *Server) compatible(a, b *Leg) bool {
-	if a.identity == b.identity || s.blocked[[2]string{a.identity, b.identity}] || s.blocked[[2]string{b.identity, a.identity}] {
+	if a.room != b.room || a.identity == b.identity || s.blocked[[2]string{a.identity, b.identity}] || s.blocked[[2]string{b.identity, a.identity}] {
 		return false
+	}
+	if a.room != "" {
+		return true
 	}
 	a.mu.Lock()
 	aLast, aWait := a.lastPeerID, time.Since(a.queuedAt)
@@ -499,6 +546,10 @@ func (s *Server) split(a, b *Leg, reasonA, reasonB string) {
 	if !together {
 		return
 	}
+	if a.room != "" { // звонок по ссылке: искать дальше некого — кончаем обоим
+		s.End(a, reasonA, reasonB)
+		return
+	}
 	s.markEnded(a, b)
 	s.requeue(a, reasonA)
 	s.requeue(b, reasonB)
@@ -527,8 +578,9 @@ func (s *Server) markEnded(a, b *Leg) {
 }
 
 // End — нога уходит со станции. byeReason != "" — её выгоняет станция (послать BYE с причиной);
-// "" — абонент сам положил трубку. Собеседник получает шум и идёт искать дальше.
-func (s *Server) End(l *Leg, byeReason string) {
+// "" — абонент сам положил трубку. Собеседник получает шум и идёт искать дальше, а в звонке по ссылке
+// получает BYE: с причиной peerReason, если она задана, иначе — по причине ухода.
+func (s *Server) End(l *Leg, byeReason string, peerReason ...string) {
 	l.mu.Lock()
 	if l.state == legEnded {
 		l.mu.Unlock()
@@ -573,7 +625,14 @@ func (s *Server) End(l *Leg, byeReason string) {
 			if byeReason == ReasonYellow || byeReason == ReasonBanned {
 				reason = ReasonReported
 			}
-			s.requeue(peer, reason)
+			if len(peerReason) > 0 {
+				reason = peerReason[0]
+			}
+			if peer.room != "" {
+				s.End(peer, reason)
+			} else {
+				s.requeue(peer, reason)
+			}
 		}
 	}
 }

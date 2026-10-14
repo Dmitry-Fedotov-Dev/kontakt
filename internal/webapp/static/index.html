@@ -52,11 +52,11 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 .handset.ring { animation: ring .09s steps(2) 6; }
 @keyframes ring { 50% { transform: rotate(1.4deg) translateX(1px); } }
 
-/* Ручка трубки: колонки 5–34, строки 25–63 */
+/* Ручка трубки: колонки 5–34, строки 25–63, и шейка до кольца микрофона (строка 69) — под две кнопки */
 .panel {
   position: absolute;
   left: calc(6 / 40 * 100%); width: calc(28 / 40 * 100%);
-  top: calc(25.5 / 88 * 100%); height: calc(37.5 / 88 * 100%);
+  top: calc(25.5 / 88 * 100%); height: calc(43 / 88 * 100%);
   display: flex; flex-direction: column; align-items: stretch; gap: 1.6cqh;
   font-size: clamp(11px, 2.05cqh, 17px);
   text-align: center;
@@ -86,11 +86,12 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
   cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: .15em;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-.rbtn img { width: 4.4em; height: 4.4em; image-rendering: pixelated; display: block; }
+.rbtn img { width: 4em; height: 4em; image-rendering: pixelated; display: block; }
+@container (max-height: 560px) { .rbtn img { width: 3.3em; height: 3.3em; } } /* мелкий экран: шрифт упёрся в 11px, кнопки — меньше */
 .rbtn span { font-size: 1em; letter-spacing: .04em; text-shadow: 0 .09em 0 var(--bake-deep); }
 .rbtn:disabled { opacity: .45; cursor: not-allowed; }
 .rbtn:focus-visible { outline: .2em solid var(--focus); outline-offset: .1em; }
-.actions { display: grid; gap: .6em; margin-top: auto; padding-bottom: .4em; justify-items: center; }
+.actions { display: grid; gap: .4em; margin-top: auto; padding-bottom: .4em; justify-items: center; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2em; justify-items: center; }
 
 .online { font-size: .8em; color: var(--cream-dim); margin: 0; }
@@ -162,6 +163,7 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 
     <div class="actions">
       <button class="rbtn" id="main-btn" type="button" aria-label="pick up" data-i-aria="pickUp"><img alt=""><span data-i="pickUp">pick up</span></button>
+      <button class="rbtn" id="friend-btn" type="button" aria-label="call a friend" data-i-aria="callFriend"><img alt=""><span data-i="callFriend">call a friend</span></button>
       <div class="row2" id="call-btns" hidden>
         <button class="rbtn" id="report-btn" type="button" aria-label="ban" data-i-aria="ban"><img alt=""><span data-i="ban">ban</span></button>
         <button class="rbtn" id="hangup-btn" type="button" aria-label="bye" data-i-aria="bye"><img alt=""><span data-i="bye">bye</span></button>
@@ -255,10 +257,10 @@ function sprite(base, light, dark, icon, pressed) {
   rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === "#") g.fillRect(ox + x, oy + y, 1, 1); }));
   return cv.toDataURL();
 }
-const RED = ["#C8302A", "#E2614F", "#7E1512"], GREEN = ["#4E9A36", "#8FD16A", "#2F6420"];
+const RED = ["#C8302A", "#E2614F", "#7E1512"], GREEN = ["#4E9A36", "#8FD16A", "#2F6420"], BLUE = ["#2F6FC0", "#6FA8EC", "#1B427A"];
 let pressUntil = 0, pendingGroup = null, pendingTimer = 0;
 function initButtons() {
-  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"]]) {
+  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [friendBtn, BLUE, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"]]) {
     const img = btn.querySelector("img");
     btn.spriteUp = sprite(col[0], col[1], col[2], icon, false);
     btn.spriteDown = sprite(col[0], col[1], col[2], icon, true);
@@ -273,11 +275,12 @@ function initButtons() {
     });
   }
 }
-// showButtons — какая группа кнопок видна: "main" (pick up), "call" (ban + bye), "none".
+// showButtons — какая группа кнопок видна: "main" (pick up и, после согласия с правилами, call a friend),
+// "call" (ban + bye), "none".
 // Пока идёт анимация нажатия, смена откладывается до её конца: иначе нажатая кнопка
 // исчезала бы мгновенно и вдавленного состояния никто бы не увидел.
 function showButtons(group) {
-  const apply = () => { pendingGroup = null; mainBtn.hidden = group !== "main"; callBtns.hidden = group !== "call"; };
+  const apply = () => { pendingGroup = null; mainBtn.hidden = group !== "main"; friendBtn.hidden = group !== "main" || !termsOk; callBtns.hidden = group !== "call"; };
   clearTimeout(pendingTimer);
   const wait = pressUntil - Date.now();
   if (wait > 0) { pendingGroup = group; pendingTimer = setTimeout(apply, wait); } else apply();
@@ -324,6 +327,12 @@ const I18N = {
       rate_limited: "Слишком много жалоб за час.",
     },
     reportFail: "Жалоба не дошла, попробуйте ещё раз.",
+    callFriend: "позвонить другу", copyLink: "Скопируйте ссылку и отправьте другу:",
+    waitFriend: "Ждём друга", linkCopied: "Ссылка скопирована — отправьте её другу.",
+    ringFriend: "Гудки — ждём, пока друг снимет трубку.", tapToHear: "Коснитесь экрана, чтобы слышать.",
+    invitedGate: "Вас зовут поговорить по ссылке. Примите правила — и соединим.",
+    friendLeft: "Разговор окончен", friendLeftHint: "Собеседник положил трубку.",
+    roomFull: "Линия занята", roomFullHint: "По этой ссылке уже говорят двое.",
   },
   en: {
     brand: "Kontakt",
@@ -360,6 +369,12 @@ const I18N = {
       rate_limited: "Too many reports this hour.",
     },
     reportFail: "The report didn't go through, try again.",
+    callFriend: "call a friend", copyLink: "Copy the link and send it to your friend:",
+    waitFriend: "Waiting for your friend", linkCopied: "Link copied — send it to your friend.",
+    ringFriend: "Ringing — waiting for your friend to pick up.", tapToHear: "Tap the screen to hear.",
+    invitedGate: "You've been invited to talk. Accept the rules and we'll connect you.",
+    friendLeft: "Call ended", friendLeftHint: "They hung up.",
+    roomFull: "Line busy", roomFullHint: "Two people are already talking on this link.",
   },
 };
 const LANG_KEY = "kontakt-lang";
@@ -381,7 +396,7 @@ $("lang").addEventListener("click", () => {
   location.reload();
 });
 const handset = $("handset"), lamp = $("lamp"), stateEl = $("state"), sub = $("sub"),
-      mainBtn = $("main-btn"), callBtns = $("call-btns"), reportBtn = $("report-btn"), reportLabel = $("report-btn").querySelector("span"),
+      mainBtn = $("main-btn"), friendBtn = $("friend-btn"), callBtns = $("call-btns"), reportBtn = $("report-btn"), reportLabel = $("report-btn").querySelector("span"),
       hangupBtn = $("hangup-btn"), gate = $("gate"), cAge = $("c-age"), cTerms = $("c-terms");
 
 // Линия одна: G.711 со звучанием «32». Выбора битрейта в интерфейсе нет.
@@ -391,6 +406,14 @@ let me = { banned: false, cards: 0 };
 const TERMS_VERSION = "2"; // редакция правил: новая — согласие спрашивается заново
 let termsOk = false;
 try { termsOk = localStorage.getItem("kontakt-terms") === TERMS_VERSION; } catch {}
+// Звонок по ссылке ?call=<комната>: трубка та же, но после согласия с правилами сама звонит в комнату.
+// Комната одноразовая: после разговора «снять» снова ведёт в рулетку.
+let linkRoom = new URLSearchParams(location.search).get("call") || "";
+if (!/^[a-z0-9]{8,32}$/.test(linkRoom)) linkRoom = "";
+function newRoom() {
+  const abc = "abcdefghijklmnopqrstuvwxyz0123456789";
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)), b => abc[b % 36]).join("");
+}
 
 function lcd(kind, text, hint) {
   stateEl.textContent = text;
@@ -404,11 +427,25 @@ function setIdle(kind, text, hint) {
   gate.hidden = termsOk;
   handset.classList.toggle("entry", !termsOk);
   syncMain();
-  lcd(kind || "", text || T.idle, hint || (termsOk ? T.hintIdle : T.hintGate));
+  lcd(kind || "", text || T.idle, hint || (termsOk ? T.hintIdle : linkRoom ? T.invitedGate : T.hintGate));
 }
 function syncMain() {
-  if (me.banned) { mainBtn.hidden = true; return; }
-  mainBtn.disabled = !termsOk && !(cAge.checked && cTerms.checked);
+  if (me.banned) { mainBtn.hidden = friendBtn.hidden = true; return; }
+  if (!termsOk && cAge.checked && cTerms.checked) return acceptTerms();
+  mainBtn.disabled = !termsOk;
+}
+// Отметили оба пункта — согласие принято: правила уходят с ручки и освобождают место кнопке «позвонить
+// другу». По ссылке трубка тут же звонит сама (нажатие на галочку — жест, браузер даст звук).
+function acceptTerms() {
+  termsOk = true;
+  try { localStorage.setItem("kontakt-terms", TERMS_VERSION); } catch {}
+  gate.hidden = true;
+  handset.classList.remove("entry");
+  mainBtn.disabled = false;
+  if (call.state !== "idle") return;
+  friendBtn.hidden = mainBtn.hidden;
+  if (linkRoom) pickUp(linkRoom);
+  else sub.textContent = T.hintIdle;
 }
 cAge.onchange = cTerms.onchange = syncMain;
 
@@ -486,6 +523,7 @@ async function loadState() {
   if (cfg.maintenance) return setIdle("bad", T.maint, T.maintHint);
   setIdle();
   if (me.cards > 0) sub.textContent = T.yellowSub;
+  if (linkRoom && termsOk) pickUp(linkRoom);
 }
 
 async function pollStats() {
@@ -568,7 +606,13 @@ async function startAudio() {
     player = new AudioWorkletNode(ctx, "k-player", { numberOfInputs: 0, outputChannelCount: [1] });
     player.connect(ctx.destination);
   }
-  await ctx.resume();
+  // по ссылке трубка снимается сама, без нажатия, — тогда браузер держит звук выключенным до касания
+  if (ctx.state !== "running") await Promise.race([ctx.resume(), new Promise(r => setTimeout(r, 300))]);
+  if (ctx.state !== "running") {
+    const wake = () => ctx.resume().then(() => { if (call.state === "searching") sub.textContent = T.ringFriend; else if (call.state === "talking") tick(); });
+    document.addEventListener("pointerdown", wake, { once: true });
+    document.addEventListener("keydown", wake, { once: true });
+  }
   mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
   const src = ctx.createMediaStreamSource(mic);
   capture = new AudioWorkletNode(ctx, "k-capture", { outputChannelCount: [1] });
@@ -663,6 +707,7 @@ function onSIP(text) {
     sendRaw(build(`ACK ${call.ruri} SIP/2.0`, hdrs("ACK", 1, (/;tag=([^;>\s]+)/.exec(m.h.to[0]) || [])[1])));
     teardown(false);
     if (why === "banned") return showBanned();
+    if (why === "room-full") { linkRoom = ""; return setIdle("bad", T.roomFull, T.roomFullHint); }
     if (m.status === 503 && why === "maintenance") return setIdle("bad", T.maint, T.maintHint);
     return setIdle("bad", T.noAnswer, T.retry);
   }
@@ -677,6 +722,8 @@ function onSIP(text) {
     if (why === "banned") return showBanned();
     if (why === "yellow-card") { me.cards = (me.cards || 0) + 1; return setIdle("bad", T.yellowTitle, T.yellowHint); }
     if (why === "time-limit") return setIdle("", T.timeUp, T.timeUpHint);
+    if (why === "peer-left") return setIdle("", T.friendLeft, T.friendLeftHint);
+    if (why === "report-accepted") return setIdle("", T.reportAccepted, T.hintIdle);
     setIdle("bad", T.stationHung, T.retry);
   } else if (m.method === "OPTIONS") reply200(m);
 }
@@ -686,19 +733,24 @@ function onStation(state, reason) {
     call.state = "talking"; marker = true;
     talkStart = Date.now(); clearInterval(talkTimer);
     talkTimer = setInterval(tick, 1000);
-    lcd("talk", T.onLine, "00:00");
+    lcd("talk", T.onLine, ctx.state !== "running" ? T.tapToHear : "00:00");
+    if (call.room && linkRoom === call.room) { linkRoom = ""; history.replaceState(null, "", location.pathname); }
     handset.classList.remove("ring"); void handset.offsetWidth; handset.classList.add("ring");
   } else if (state === "searching") {
     if (call.state === "talking") lastTalkEnd = Date.now();
     call.state = "searching"; clearInterval(talkTimer);
-    const text = { "peer-left": T.peerLeft, "report-accepted": T.reportAccepted, "time-limit": T.timeUp }[reason];
-    lcd("search", text || T.searching, text ? T.afterHint : T.ringHint);
+    if (call.room) lcd("search", T.waitFriend, ctx.state !== "running" ? T.tapToHear : call.room === linkRoom ? T.ringFriend : T.linkCopied);
+    else {
+      const text = { "peer-left": T.peerLeft, "report-accepted": T.reportAccepted, "time-limit": T.timeUp }[reason];
+      lcd("search", text || T.searching, text ? T.afterHint : T.ringHint);
+    }
   }
   syncReport();
 }
 function tick() {
   const s = Math.floor((Date.now() - talkStart) / 1000);
-  sub.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  sub.textContent = ctx.state !== "running" ? T.tapToHear :
+    String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
   syncReport();
 }
 
@@ -709,13 +761,8 @@ function openMedia(path) {
   mediaWS.onmessage = e => onRTP(e.data);
 }
 
-async function pickUp() {
-  if (!termsOk) {
-    termsOk = true;
-    try { localStorage.setItem("kontakt-terms", TERMS_VERSION); } catch {}
-    gate.hidden = true;
-    handset.classList.remove("entry");
-  }
+async function pickUp(room) {
+  if (!termsOk) acceptTerms();
   if (!window.isSecureContext) return setIdle("bad", T.needHttps, T.needHttpsHint);
   showButtons("call");
   lcd("search", T.pickingUp, T.allowMic);
@@ -725,6 +772,7 @@ async function pickUp() {
   call.state = "dialing";
   call.id = rnd(10); call.fromTag = rnd(4); call.cseq = 1; call.toTag = null;
   call.ruri = `sip:${LINE}@kontakt`;
+  call.room = typeof room === "string" ? room : "";
   rtpSeq = crypto.getRandomValues(new Uint16Array(1))[0];
   rtpTs = crypto.getRandomValues(new Uint32Array(1))[0];
   rtpSsrc = crypto.getRandomValues(new Uint32Array(1))[0];
@@ -735,7 +783,7 @@ async function pickUp() {
     const sdp = "v=0\r\no=- " + Date.now() + " 1 IN IP4 0.0.0.0\r\ns=Kontakt\r\nc=IN IP4 0.0.0.0\r\nt=0 0\r\n" +
       "m=audio 9 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\na=ptime:20\r\na=sendrecv\r\n";
     sendRaw(build(`INVITE ${call.ruri} SIP/2.0`, [...hdrs("INVITE", 1), `Contact: <sip:anon@${host};transport=ws>`,
-      "Content-Type: application/sdp"], sdp));
+      ...(call.room ? [`X-Kontakt-Room: ${call.room}`] : []), "Content-Type: application/sdp"], sdp));
   };
   ws.onmessage = e => typeof e.data === "string" && onSIP(e.data);
   ws.onclose = () => { if (call.state !== "idle") { teardown(false); setIdle("bad", T.lost, T.lostHint); } };
@@ -774,7 +822,14 @@ reportBtn.onclick = async () => {
   setTimeout(() => { if (call.state === "searching") sub.textContent = text; }, 50);
 };
 
-mainBtn.onclick = pickUp;
+mainBtn.onclick = () => pickUp(linkRoom);
+// позвонить другу: новая комната, ссылка на неё — в буфер обмена, сами ждём в ней с гудками
+friendBtn.onclick = () => {
+  const room = newRoom(), url = location.origin + location.pathname + "?call=" + room;
+  const ask = () => window.prompt(T.copyLink, url);
+  try { navigator.clipboard.writeText(url).catch(ask); } catch { ask(); }
+  pickUp(room);
+};
 hangupBtn.onclick = () => { teardown(true); setIdle(); };
 initButtons();
 window.addEventListener("pagehide", () => teardown(true));

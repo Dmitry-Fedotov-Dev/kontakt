@@ -132,6 +132,7 @@ type phone struct {
 	wmu    sync.Mutex
 	media  *websocket.Conn
 	callID string
+	room   string // звонок по ссылке: заголовок X-Kontakt-Room
 	tag    string
 	toTag  string
 	cseq   int
@@ -198,10 +199,14 @@ func (p *phone) send(raw string) {
 
 func (p *phone) dial(line string) *sip.Msg {
 	sdp := "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\ns=-\r\nc=IN IP4 0.0.0.0\r\nt=0 0\r\nm=audio 9 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\n"
+	room := ""
+	if p.room != "" {
+		room = signal.RoomHeader + ": " + p.room + "\r\n"
+	}
 	p.send(fmt.Sprintf("INVITE sip:%s@kontakt SIP/2.0\r\nVia: SIP/2.0/WSS t.invalid;branch=%s\r\nMax-Forwards: 70\r\n"+
 		"From: <sip:anon@t.invalid>;tag=%s\r\nTo: <sip:%s@kontakt>\r\nCall-ID: %s\r\nCSeq: 1 INVITE\r\n"+
-		"Contact: <sip:anon@t.invalid;transport=ws>\r\nContent-Type: application/sdp\r\nContent-Length: %d\r\n\r\n%s",
-		line, sip.NewBranch(), p.tag, line, p.callID, len(sdp), sdp))
+		"Contact: <sip:anon@t.invalid;transport=ws>\r\n%sContent-Type: application/sdp\r\nContent-Length: %d\r\n\r\n%s",
+		line, sip.NewBranch(), p.tag, line, p.callID, room, len(sdp), sdp))
 	return p.final()
 }
 
@@ -955,4 +960,46 @@ func TestLegsPerIdentity(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// Звонок по ссылке: ноги одной комнаты соединяются только друг с другом (рулетка их не видит), третьего
+// не пускают, а положил трубку один — разговор кончается обоим, без шума и новых поисков.
+func TestRoomCall(t *testing.T) {
+	st := newStack(t, nil)
+	stranger := newPhone(t, st, "")
+	stranger.pickUp("32")
+	stranger.expectState("searching", "")
+
+	a, b := newPhone(t, st, ""), newPhone(t, st, "")
+	a.room, b.room = "k7f3q9zx2m1p", "k7f3q9zx2m1p"
+	a.pickUp("32")
+	a.expectState("searching", "")
+	time.Sleep(200 * time.Millisecond)
+	if s := st.sig.Stats(); s.Talking != 0 {
+		t.Fatalf("комнату соединили с рулеткой: %+v", s)
+	}
+	b.pickUp("32")
+	a.expectState("talking", "")
+	b.expectState("talking", "")
+	a.drain()
+	b.drain()
+	a.talk(25, 700)
+	if lv := b.level(25); lv < 1000 {
+		t.Fatalf("друг не слышит: уровень %.0f", lv)
+	}
+
+	c := newPhone(t, st, "")
+	c.room = a.room
+	if r := c.dial("32"); r.Status != 486 || !strings.Contains(r.Get("Reason"), signal.ReasonRoomFull) {
+		t.Fatalf("третьего пустили в комнату: %d %s", r.Status, r.Get("Reason"))
+	}
+	bad := newPhone(t, st, "")
+	bad.room = "../x"
+	if r := bad.dial("32"); r.Status != 400 {
+		t.Fatalf("кривое имя комнаты приняли: %d", r.Status)
+	}
+
+	b.inDialog("BYE", "")
+	a.expectBye(signal.ReasonPeerLeft)
+	waitFor(t, func() bool { s := st.sig.Stats(); return s.Online == 1 && s.Talking == 0 })
 }
