@@ -344,6 +344,7 @@ const I18N = {
     friendLeft: "Разговор окончен", friendLeftHint: "Собеседник положил трубку.",
     roomFull: "Линия занята", roomFullHint: "По этой ссылке уже говорят двое.",
     shareText: "Позвони мне — нажми на ссылку:",
+    noOne: "Никто не ответил", noOneHint: "Друг не открыл ссылку за 3 минуты. Нажмите «позвонить», чтобы попробовать снова.",
     roomGone: "Звонок завершён", roomGoneHint: "Абонент уже положил трубку. Нажмите «позвонить», чтобы позвонить самому.",
   },
   en: {
@@ -389,6 +390,7 @@ const I18N = {
     friendLeft: "Call ended", friendLeftHint: "They hung up.",
     roomFull: "Line busy", roomFullHint: "Two people are already talking on this link.",
     shareText: "Call me — tap the link:",
+    noOne: "No answer", noOneHint: "Your friend didn't open the link within 3 minutes. Press “call” to try again.",
     roomGone: "Call ended", roomGoneHint: "The caller has already hung up. Press “call” to call them yourself.",
   },
 };
@@ -621,7 +623,15 @@ async function startAudio() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
     player = new AudioWorkletNode(ctx, "k-player", { numberOfInputs: 0, outputChannelCount: [1] });
-    player.connect(ctx.destination);
+    // Выравнивание громкости собеседника: речь из чужого микрофона приходит на −30…−24 дБ, с телефона
+    // (громкость разговора, а не медиа) это было слишком тихо. Компрессор Chromium сам добавляет подъём;
+    // по замеру в Chrome (OfflineAudioContext, 15.10.2026) с ×1,4: речь −30/−24 → −17/−14 дБ,
+    // громкое −3 → −7 дБ (пик 0,66, без перегруза), шипение линии −51 → −38 дБ.
+    const comp = ctx.createDynamicsCompressor(), loud = ctx.createGain();
+    comp.threshold.value = -28; comp.knee.value = 6; comp.ratio.value = 3;
+    comp.attack.value = 0.003; comp.release.value = 0.25;
+    loud.gain.value = 1.4;
+    player.connect(comp); comp.connect(loud); loud.connect(ctx.destination);
   }
   // по ссылке трубка снимается сама, без нажатия, — тогда браузер держит звук выключенным до касания
   if (ctx.state !== "running") await Promise.race([ctx.resume(), new Promise(r => setTimeout(r, 300))]);
@@ -745,6 +755,7 @@ function onSIP(text) {
     if (why === "yellow-card") { me.cards = (me.cards || 0) + 1; return setIdle("bad", T.yellowTitle, T.yellowHint); }
     if (why === "time-limit") return setIdle("", T.timeUp, T.timeUpHint);
     if (why === "peer-left") { busy(); return setIdle("", T.friendLeft, T.friendLeftHint); }
+    if (why === "no-answer") { busy(); return setIdle("", T.noOne, T.noOneHint); }
     if (why === "report-accepted") return setIdle("", T.reportAccepted, T.hintIdle);
     setIdle("bad", T.stationHung, T.retry);
   } else if (m.method === "OPTIONS") reply200(m);

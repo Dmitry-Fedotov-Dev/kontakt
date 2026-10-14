@@ -29,7 +29,7 @@ func (s *Server) initMetrics() {
 			"accepted", ReasonBanned, "maintenance", ReasonMediaError, "no-identity", "only-pcma-pcmu", ReasonNoTokens, ReasonTooMany, ReasonRoomFull, ReasonBadRoom, ReasonRoomGone),
 		hangups: r.CounterVec("kontakt_signal_hangups_total",
 			"Ноги, покинувшие станцию, по причине: user — сам положил трубку, иначе причина станции.", "reason",
-			"user", ReasonBanned, ReasonYellow, ReasonMediaError, ReasonPeerLeft, ReasonReported, ReasonTimeLimit),
+			"user", ReasonBanned, ReasonYellow, ReasonMediaError, ReasonPeerLeft, ReasonReported, ReasonTimeLimit, ReasonNoAnswer),
 		pairs: r.Counter("kontakt_pairs_total", "Соединённые пары."),
 		tokens: r.Counter("kontakt_signal_tokens_spent_total",
 			"Жетоны, опущенные в монетоприёмник: положили трубку посреди разговора (веб-трубка)."),

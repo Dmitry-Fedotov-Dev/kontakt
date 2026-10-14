@@ -66,6 +66,7 @@ const (
 	ReasonRoomFull   = "room-full"      // в комнате звонка по ссылке уже двое
 	ReasonBadRoom    = "bad-room"       // имя комнаты не по формату
 	ReasonRoomGone   = "room-gone"      // пришёл по ссылке, а звонившего в комнате уже нет
+	ReasonNoAnswer   = "no-answer"      // позвонил по ссылке, а друг так её и не открыл (RoomWait)
 
 	// maxLegsPerID — трубок на одну куку (вкладка и приложение). Больше нормальному человеку не нужно,
 	// а без предела одна кука ставила в очередь тысячи ног: подбор пар перебирал их попарно (O(n²))
@@ -91,6 +92,9 @@ func validRoom(r string) bool {
 	}
 	return true
 }
+
+// RoomWait — сколько звонящий по ссылке ждёт друга, как гудки у телефона. Переменная — для тестов.
+var RoomWait = 3 * time.Minute
 
 // NoiseSeconds — сколько звучит «пустой эфир» после ухода собеседника.
 const NoiseSeconds = 2.0
@@ -357,6 +361,19 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 	s.m.calls.Inc("accepted")
 	log.Printf("☎  %s снял трубку (линия %s)", tr.Name(), leg.line)
 	s.Media.SetTone(ep.ID, "ring", 0, "")
+	if room != "" && inv.Get(JoinHeader) == "" { // позвонил сам: ждёт друга не дольше RoomWait
+		t := time.AfterFunc(RoomWait, func() {
+			leg.mu.Lock()
+			alone := leg.state == legQueued && leg.lastPeerID == ""
+			leg.mu.Unlock()
+			if alone {
+				s.End(leg, ReasonNoAnswer)
+			}
+		})
+		leg.mu.Lock()
+		leg.timers = append(leg.timers, t)
+		leg.mu.Unlock()
+	}
 	s.enqueue(leg, "")
 }
 

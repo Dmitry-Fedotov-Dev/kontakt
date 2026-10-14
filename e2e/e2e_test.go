@@ -1018,3 +1018,28 @@ func TestRoomCall(t *testing.T) {
 		t.Fatalf("по старой ссылке пустили: %d %s", r.Status, r.Get("Reason"))
 	}
 }
+
+// Позвонил по ссылке, а друг её не открыл: через RoomWait станция кладёт трубку с «no-answer».
+// С другом в разговоре таймер ожидания не срабатывает.
+func TestRoomNoAnswer(t *testing.T) {
+	old := signal.RoomWait
+	signal.RoomWait = 700 * time.Millisecond
+	t.Cleanup(func() { signal.RoomWait = old })
+	st := newStack(t, nil)
+
+	alone := newPhone(t, st, "")
+	alone.room = "n0answer1234"
+	alone.pickUp("32")
+	alone.expectBye(signal.ReasonNoAnswer)
+
+	a, b := newPhone(t, st, ""), newPhone(t, st, "")
+	a.room, b.room, b.join = "talking12345", "talking12345", true
+	a.pickUp("32")
+	b.pickUp("32")
+	a.expectState("talking", "")
+	select {
+	case r := <-a.byes:
+		t.Fatalf("разговор оборвался по таймеру ожидания: %s", r)
+	case <-time.After(1500 * time.Millisecond):
+	}
+}
