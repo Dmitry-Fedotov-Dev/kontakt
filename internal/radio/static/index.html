@@ -493,7 +493,7 @@ body:has(#txView[hidden]) #setInBox, body:has(#txView[hidden]) #setTrBox { displ
         <input class="name" id="name" maxlength="24" placeholder="название станции" autocomplete="off" aria-label="Название станции" data-i-ph="namePh" data-i-aria="nameAria">
         <button type="button" class="logoDel" id="logoDel" hidden aria-label="Убрать логотип" data-i-aria="logoRemove">✕</button>
       </div>
-      <input type="file" id="logoFile" accept="image/*,.gif,application/octet-stream" hidden>
+      <input type="file" id="logoFile" hidden>
       <a class="logoAuth" id="logoAuth" target="_blank" rel="noopener" hidden></a>
       <div class="hint" id="hostHint">&nbsp;</div>
       <!-- в эфире: сколько слушают и лайки за эфир — отдельной строкой, подсказку перебивают другие сообщения -->
@@ -2319,8 +2319,8 @@ async function gifLogo(file) {
   if (!r.ok) throw new Error(String(r.status));
   return (await r.json()).logo;
 }
-// accept не только image/*: на нём Chrome для Android открывает «Фото», где нет гифок из «Файлов»;
-// с не-картиночным типом открывается проводник со всеми файлами (не картинку отбракует toLogo).
+// Без accept: на image/* Chrome для Android открывает «Фото», где нет гифок из «Файлов», а со списком типов
+// проводник показывает гифки серыми. Проводник без фильтра; не картинку отбракует toLogo.
 $("logoFile").onchange = async e => {
   const f = e.target.files && e.target.files[0];
   e.target.value = "";
