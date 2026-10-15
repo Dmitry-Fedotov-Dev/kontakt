@@ -43,8 +43,13 @@ func TestMain(m *testing.M) {
 
 func castsForTest(t *testing.T) (*Hub, *httptest.Server, *Casts, http.Handler) {
 	t.Helper()
+	return castsForTestWith(t, Options{})
+}
+
+func castsForTestWith(t *testing.T, opt Options) (*Hub, *httptest.Server, *Casts, http.Handler) {
+	t.Helper()
 	t.Setenv("RADIO_FAKE_FFMPEG", "1")
-	h := NewHub(Options{})
+	h := NewHub(opt)
 	srv := httptest.NewServer(h.Handler())
 	t.Cleanup(srv.Close)
 	c, err := h.OpenCasts(t.TempDir(), "ws"+strings.TrimPrefix(srv.URL, "http")+"/ws/host", 1<<30)

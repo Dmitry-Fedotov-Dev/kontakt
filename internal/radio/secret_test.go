@@ -111,12 +111,9 @@ func TestKiwiList(t *testing.T) {
 // Секретная волна: в списке станций её нет, страница знает о ней по метатегу; настройка на 4625
 // будит зеркало — звук с KiwiSDR доходит слушателю; ушёл последний — зеркало отключается.
 func TestSecretWave(t *testing.T) {
-	old := secretIdle
-	secretIdle = 300 * time.Millisecond
-	t.Cleanup(func() { secretIdle = old })
 	kiwi, open, tuned := fakeKiwi(t)
 	list := kiwiListServer(t, kiwi.URL)
-	h := NewHub(Options{SecretList: list.URL})
+	h := NewHub(Options{SecretList: list.URL, SecretIdle: 300 * time.Millisecond})
 	srv := httptest.NewServer(h.Handler())
 	defer srv.Close()
 
@@ -163,7 +160,7 @@ func TestSecretWave(t *testing.T) {
 	}
 	for end := time.Now().Add(5 * time.Second); open.Load() > 0; time.Sleep(20 * time.Millisecond) {
 		if time.Now().After(end) {
-			t.Fatal("прогрев держит приёмник дольше secretIdle")
+			t.Fatal("прогрев держит приёмник дольше SecretIdle")
 		}
 	}
 

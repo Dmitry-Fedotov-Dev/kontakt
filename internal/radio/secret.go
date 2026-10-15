@@ -7,7 +7,7 @@ package radio
 // Звук берётся с публичных приёмников KiwiSDR (любительские SDR, открытые для прослушивания):
 // список — kiwisdr.com через rx.linkfanel.net, ближние к передатчику первыми. Многие приёмники
 // автоматических клиентов не пускают (молча закрывают соединение), у многих — лимит минут на IP в
-// сутки, поэтому: подключаемся только пока кто-то слушает, отключаемся через secretIdle после
+// сутки, поэтому: подключаемся только пока кто-то слушает, отключаемся через Options.SecretIdle после
 // последнего слушателя, неответившие приёмники пропускаем час.
 
 import (
@@ -40,7 +40,6 @@ const (
 )
 
 var (
-	secretIdle      = time.Minute            // столько ждём после последнего слушателя; переменная — для тестов
 	secretWarmEvery = 30 * time.Second       // прогрев от одного слушателя — не чаще
 	kiwiFirstSound  = 8 * time.Second        // столько ждём первый звук от приёмника
 	uvbSite         = [2]float64{57.8, 28.3} // передатчик (Псковская обл.) — ближние приёмники слышат лучше
@@ -86,10 +85,10 @@ func (h *Hub) stationFor(f int) *station {
 }
 
 // warm — страница, где выпала секретная волна, просит подготовить звук заранее: приёмник ищется
-// сейчас, а не когда докрутят до точки (поиск — секунды). Держим secretIdle.
+// сейчас, а не когда докрутят до точки (поиск — секунды). Держим Options.SecretIdle.
 func (w *secretWave) warm() {
 	w.mu.Lock()
-	w.warmTil = time.Now().Add(secretIdle)
+	w.warmTil = time.Now().Add(w.h.opt.SecretIdle)
 	w.mu.Unlock()
 	w.h.secretEvents.Inc("warm")
 	w.wake()
@@ -112,7 +111,7 @@ func (w *secretWave) listeners() int {
 	return len(w.st.subs)
 }
 
-// run — пока есть слушатели (и ещё secretIdle после последнего): звук с приёмника, обрыв — следующий.
+// run — пока есть слушатели (и ещё Options.SecretIdle после последнего): звук с приёмника, обрыв — следующий.
 func (w *secretWave) run() {
 	defer func() {
 		w.mu.Lock()
@@ -131,7 +130,7 @@ func (w *secretWave) run() {
 		if idleSince.IsZero() {
 			idleSince = time.Now()
 		}
-		return time.Since(idleSince) >= secretIdle
+		return time.Since(idleSince) >= w.h.opt.SecretIdle
 	}
 	for !stop() {
 		k := w.find(stop)

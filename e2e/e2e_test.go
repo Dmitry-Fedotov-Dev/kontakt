@@ -60,7 +60,9 @@ func writeConfig(t *testing.T, path string, mutate func(*config.Config)) {
 	}
 }
 
-func newStack(t *testing.T, mutate func(*config.Config)) *stack {
+// newStack — станция в процессе; tune — настройка signal до того, как он начнёт принимать звонки
+// (тайминги — полями сервера: глобальную переменную читали бы горутины, пережившие тест).
+func newStack(t *testing.T, mutate func(*config.Config), tune ...func(*signal.Server)) *stack {
 	t.Helper()
 	dir := t.TempDir()
 	st := &stack{t: t, cfgPath: filepath.Join(dir, "kontakt.json")}
@@ -90,6 +92,9 @@ func newStack(t *testing.T, mutate func(*config.Config)) *stack {
 	}
 	mod, _ := moderation.Open(filepath.Join(dir, "bans.json"))
 	st.sig = signal.New(cfg, mod, st.mc)
+	for _, f := range tune {
+		f(st.sig)
+	}
 	sigHTTP := httptest.NewServer(st.sig.HTTPHandler())
 	st.udp, err = st.sig.ServeUDP("127.0.0.1:0", "127.0.0.1")
 	if err != nil {
@@ -540,10 +545,7 @@ func TestNewcomerReportNoted(t *testing.T) {
 
 // Новичок набирает доверие разговорами: после засчитанного разговора его жалоба идёт в зачёт.
 func TestTrustAfterTalk(t *testing.T) {
-	old := signal.CountedTalk
-	signal.CountedTalk = 100 * time.Millisecond
-	t.Cleanup(func() { signal.CountedTalk = old })
-	st := newStack(t, func(c *config.Config) { c.TrustTalks = 1 })
+	st := newStack(t, func(c *config.Config) { c.TrustTalks = 1 }, func(s *signal.Server) { s.CountedTalk = 100 * time.Millisecond })
 	me, bad := identity.New(), identity.New()
 
 	a, x := newPhone(t, st, me), newPhone(t, st, "")
@@ -1021,13 +1023,10 @@ func TestRoomCall(t *testing.T) {
 	late.expectState("searching", "")
 }
 
-// Ждал в комнате, а второй так и не пришёл: через RoomWait станция кладёт трубку с «no-answer».
+// Ждал в комнате, а второй так и не пришёл: через Server.RoomWait станция кладёт трубку с «no-answer».
 // С другом в разговоре таймер ожидания не срабатывает.
 func TestRoomNoAnswer(t *testing.T) {
-	old := signal.RoomWait
-	signal.RoomWait = 700 * time.Millisecond
-	t.Cleanup(func() { signal.RoomWait = old })
-	st := newStack(t, nil)
+	st := newStack(t, nil, func(s *signal.Server) { s.RoomWait = 700 * time.Millisecond })
 
 	alone := newPhone(t, st, "")
 	alone.room = "n0answer1234"

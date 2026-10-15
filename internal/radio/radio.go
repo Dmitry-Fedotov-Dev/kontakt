@@ -152,6 +152,13 @@ type Options struct {
 	// SecretChance — шанс, что на визит страница спрячет секретную волну (0 — 0,13); до SecretSureUntil — 1
 	SecretChance    float64
 	SecretSureUntil time.Time
+
+	// Тайминги (0 — по умолчанию; тесты ставят короткие): SecretIdle — сколько секретная волна держит
+	// приёмник после последнего слушателя (минута), LetterEvery — письмо от одного человека не чаще
+	// (30 с), TitleEvery — название трека уходит приёмникам не чаще (2 с, titleChanged).
+	SecretIdle  time.Duration
+	LetterEvery time.Duration
+	TitleEvery  time.Duration
 }
 
 // MetricsHandler — /metrics для отдельного служебного адреса.
@@ -229,7 +236,7 @@ type Hub struct {
 type station struct {
 	freq        int
 	name, title string
-	titleAt     time.Time // под Hub.mu: когда название ушло приёмникам (titleEvery)
+	titleAt     time.Time // под Hub.mu: когда название ушло приёмникам (Options.TitleEvery)
 	titlePend   *string   // под Hub.mu: пришедшее раньше срока — уйдёт по таймеру, последнее
 
 	logo  string // под Hub.mu: хеш логотипа, "" — нет
@@ -286,6 +293,15 @@ func NewHub(opt Options) *Hub {
 	}
 	if opt.CountAfter <= 0 {
 		opt.CountAfter = 5 * time.Minute
+	}
+	if opt.SecretIdle <= 0 {
+		opt.SecretIdle = time.Minute
+	}
+	if opt.LetterEvery <= 0 {
+		opt.LetterEvery = 30 * time.Second
+	}
+	if opt.TitleEvery <= 0 {
+		opt.TitleEvery = 2 * time.Second
 	}
 	h := &Hub{opt: opt, st: map[int]*station{}, ls: map[*listener]struct{}{}, reg: metrics.NewRegistry(),
 		reportTimes: map[string][]time.Time{}, letterTimes: map[string]time.Time{}}
@@ -533,12 +549,12 @@ func (h *Hub) changed() {
 // (трек меняется чаще всего: 50 станций — раз в несколько секунд). Кому не влезло в очередь,
 // получит полный список на следующем тике.
 //
-// Не чаще раза в titleEvery: каждое название уходит всем приёмникам, и ведущий, меняющий его сотни
+// Не чаще раза в Options.TitleEvery: каждое название уходит всем приёмникам, и ведущий, меняющий его сотни
 // раз в секунду, заставлял сервер слать сотни × 1700 сообщений (усиление атаки). Пришедшее раньше
 // срока не теряется: последнее уходит, когда срок выйдет (листание очереди — это нормально).
 func (h *Hub) titleChanged(s *station, title string) {
 	h.mu.Lock()
-	if wait := titleEvery - time.Since(s.titleAt); wait > 0 {
+	if wait := h.opt.TitleEvery - time.Since(s.titleAt); wait > 0 {
 		first := s.titlePend == nil
 		s.titlePend = &title
 		h.mu.Unlock()
@@ -1204,6 +1220,3 @@ var batchWait = 100 * time.Millisecond
 // sameSite — сокет открывает страница с того же домена; порт может отличаться: страница —
 // с 443 (Caddy), прямой эфир — с DirectPort. Чужие сайты сокет с кукой посетителя не откроют.
 var sameSite = netutil.SameSite
-
-// titleEvery — название трека уходит приёмникам не чаще (titleChanged); переменная — для тестов.
-var titleEvery = 2 * time.Second

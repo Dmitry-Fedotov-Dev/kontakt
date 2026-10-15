@@ -12,10 +12,7 @@ import (
 // Студия видит то же, что ведущий в браузере: слушателей, лайки, письма; «не принимать письма»
 // работает — следующее письмо от того же слушателя до станции не доходит.
 func TestCastLettersAndLikes(t *testing.T) {
-	old := letterEvery
-	letterEvery = 0
-	defer func() { letterEvery = old }()
-	h, srv, _, api := castsForTest(t)
+	h, srv, _, api := castsForTestWith(t, Options{LetterEvery: time.Nanosecond}) // письма без паузы
 	call(t, api, "POST", "/stations/api/station", []byte(`{"f":"93.4","name":"X"}`))
 	call(t, api, "POST", "/stations/api/upload?f=934&name=a.mp3", []byte("audio"))
 	call(t, api, "POST", "/stations/api/on?f=934", nil)

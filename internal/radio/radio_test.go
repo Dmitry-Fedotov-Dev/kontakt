@@ -505,12 +505,10 @@ func TestSocketsUnderRadioPrefix(t *testing.T) {
 	}
 }
 
-// Письма к лайкам: доходят до ведущего без отправителя, не чаще letterEvery; от того, кого
+// Письма к лайкам: доходят до ведущего без отправителя, не чаще LetterEvery; от того, кого
 // ведущий заблокировал, не доходят (а отправитель думает, что отправил).
 func TestLettersReachHost(t *testing.T) {
-	defer func(d time.Duration) { letterEvery = d }(letterEvery)
-	letterEvery = 400 * time.Millisecond
-	h := NewHub(Options{})
+	h := NewHub(Options{LetterEvery: 400 * time.Millisecond})
 	srv := httptest.NewServer(h.Handler())
 	defer srv.Close()
 	host, _, _ := dial(t, srv, "/ws/host?f=1053&name=X")
@@ -545,7 +543,7 @@ func TestLettersReachHost(t *testing.T) {
 	}
 
 	host.WriteJSON(map[string]uint64{"block": got.Letter.ID})
-	time.Sleep(letterEvery)
+	time.Sleep(h.opt.LetterEvery)
 	l.WriteJSON(map[string]any{"like": true, "letter": "после блока"})
 	if a := strings.Join(lt.collect(500*time.Millisecond), " "); !strings.Contains(a, `"letter":"sent"`) {
 		t.Fatalf("заблокированный должен видеть «отправлено»: %s", a)
@@ -746,12 +744,9 @@ func TestListenerLimitStrict(t *testing.T) {
 	}
 }
 
-// Название трека уходит приёмникам не чаще titleEvery; последнее из пачки не теряется.
+// Название трека уходит приёмникам не чаще TitleEvery; последнее из пачки не теряется.
 func TestTitleCoalesced(t *testing.T) {
-	old := titleEvery
-	titleEvery = 300 * time.Millisecond
-	defer func() { titleEvery = old }()
-	h := NewHub(Options{})
+	h := NewHub(Options{TitleEvery: 300 * time.Millisecond})
 	srv := httptest.NewServer(h.Handler())
 	defer srv.Close()
 	host, _, _ := dial(t, srv, "/ws/host?f=1053&name=X")

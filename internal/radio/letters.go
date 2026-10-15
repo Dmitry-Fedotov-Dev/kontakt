@@ -23,9 +23,6 @@ const (
 	letterMemory = 200 // столько последних писем станции ведущий может заблокировать или обжаловать
 )
 
-// letterEvery — письмо от одного человека не чаще; переменная — для тестов.
-var letterEvery = 30 * time.Second
-
 // letterKey — по куке; без куки (без модерации) — по соединению.
 func letterKey(l *listener) string {
 	if l.id != "" {
@@ -54,21 +51,22 @@ func (h *Hub) letter(l *listener, text string) (res string, wait int) {
 		h.mu.Unlock()
 		return "self", 0
 	}
-	if last, ok := h.letterTimes[key]; ok && now.Sub(last) < letterEvery {
+	every := h.opt.LetterEvery
+	if last, ok := h.letterTimes[key]; ok && now.Sub(last) < every {
 		h.mu.Unlock()
-		return "too_fast", ceilSec(letterEvery - now.Sub(last))
+		return "too_fast", ceilSec(every - now.Sub(last))
 	}
 	h.letterTimes[key] = now
 	if len(h.letterTimes) > 10000 { // старые отметки больше не нужны
 		for k, t := range h.letterTimes {
-			if now.Sub(t) >= letterEvery {
+			if now.Sub(t) >= every {
 				delete(h.letterTimes, k)
 			}
 		}
 	}
 	if s.blocked[key] { // ведущий не принимает от него: тот думает, что отправил
 		h.mu.Unlock()
-		return "sent", ceilSec(letterEvery)
+		return "sent", ceilSec(every)
 	}
 	h.letterSeq++
 	id := h.letterSeq
@@ -78,7 +76,7 @@ func (h *Hub) letter(l *listener, text string) (res string, wait int) {
 	s.letterFrom[id] = key
 	h.mu.Unlock()
 	s.sayHost(map[string]any{"letter": map[string]any{"id": id, "text": text}})
-	return "sent", ceilSec(letterEvery)
+	return "sent", ceilSec(every)
 }
 
 // ceilSec — секунды с округлением вверх: «подождите 0 с» не бывает.

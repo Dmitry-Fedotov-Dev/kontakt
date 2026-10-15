@@ -9,7 +9,7 @@
 //	→ вы положили трубку (BYE) — конец.
 //
 // Звонок по ссылке — тот же INVITE с заголовком X-Kontakt-Room. Комната — общая линия двоих: кто пришёл
-// первым, ждёт в тишине (до RoomWait), второй соединяется сразу; третьего не пускают; кто положил
+// первым, ждёт в тишине (до Server.RoomWait), второй соединяется сразу; третьего не пускают; кто положил
 // трубку — кончает разговор обоим.
 //
 // Так работает и браузер, и любой обычный SIP-софтфон: набрал один раз — и крутишь рулетку.
@@ -65,7 +65,7 @@ const (
 	ReasonTooMany    = "too-many-calls" // у этой куки уже maxLegsPerID трубок
 	ReasonRoomFull   = "room-full"      // в комнате звонка по ссылке уже двое
 	ReasonBadRoom    = "bad-room"       // имя комнаты не по формату
-	ReasonNoAnswer   = "no-answer"      // ждал в комнате, а второй так и не пришёл (RoomWait)
+	ReasonNoAnswer   = "no-answer"      // ждал в комнате, а второй так и не пришёл (Server.RoomWait)
 
 	// maxLegsPerID — трубок на одну куку (вкладка и приложение). Больше нормальному человеку не нужно,
 	// а без предела одна кука ставила в очередь тысячи ног: подбор пар перебирал их попарно (O(n²))
@@ -88,10 +88,6 @@ func validRoom(r string) bool {
 	}
 	return true
 }
-
-// RoomWait — сколько звонящий по ссылке ждёт друга (пока страница открыта: закрыл — нога кончается сразу).
-// Переменная — для тестов.
-var RoomWait = 15 * time.Minute
 
 // NoiseSeconds — сколько звучит «пустой эфир» после ухода собеседника.
 const NoiseSeconds = 2.0
@@ -129,14 +125,16 @@ type pairRec struct {
 	report  bool
 }
 
-// CountedTalk — разговор не короче этого засчитывается обоим как сессия: так новичок
-// набирает доверие (см. moderation.Policy.TrustTalks). Переменная — для тестов.
-var CountedTalk = 30 * time.Second
-
 type Server struct {
 	Cfg   *config.Live
 	Mod   *moderation.Store
 	Media Media
+
+	// Тайминги — менять до начала работы (тесты ставят короткие). RoomWait — сколько ждущий в комнате
+	// ждёт второго (пока страница открыта: закрыл — нога кончается сразу). CountedTalk — разговор не
+	// короче засчитывается обоим как сессия: так новичок набирает доверие (moderation.Policy.TrustTalks).
+	RoomWait    time.Duration
+	CountedTalk time.Duration
 
 	mu       sync.Mutex
 	legs     map[string]*Leg
@@ -153,7 +151,8 @@ type Server struct {
 }
 
 func New(cfg *config.Live, mod *moderation.Store, media Media) *Server {
-	s := &Server{Cfg: cfg, Mod: mod, Media: media, legs: map[string]*Leg{}, perID: map[string]int{},
+	s := &Server{Cfg: cfg, Mod: mod, Media: media, RoomWait: 15 * time.Minute, CountedTalk: 30 * time.Second,
+		legs: map[string]*Leg{}, perID: map[string]int{},
 		lastPeer: map[string]*pairRec{}, blocked: map[[2]string]bool{}, reports: map[string][]time.Time{}}
 	s.initMetrics()
 	// Пороги модерации — из горячего конфига; по той же базе банит и радио (через /mod/*).
@@ -359,7 +358,7 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 	if room == "" {
 		s.Media.SetTone(ep.ID, "ring", 0, "") // рулетка — гудки; в комнате ждут второго в тишине
 	} else { // ждёт второго не дольше RoomWait (пришёл к ждущему — соединится сразу, таймер не сработает)
-		t := time.AfterFunc(RoomWait, func() {
+		t := time.AfterFunc(s.RoomWait, func() {
 			leg.mu.Lock()
 			alone := leg.state == legQueued && leg.lastPeerID == ""
 			leg.mu.Unlock()
@@ -585,7 +584,7 @@ func (s *Server) split(a, b *Leg, reasonA, reasonB string) {
 }
 
 // markEnded отмечает конец разговора (один раз, сколько бы горутин его ни заметили) и
-// засчитывает его обоим, если он был не короче CountedTalk.
+// засчитывает его обоим, если он был не короче s.CountedTalk.
 func (s *Server) markEnded(a, b *Leg) {
 	s.mu.Lock()
 	now := time.Now()
@@ -593,7 +592,7 @@ func (s *Server) markEnded(a, b *Leg) {
 	for _, p := range [][2]*Leg{{a, b}, {b, a}} {
 		if r := s.lastPeer[p[0].identity]; r != nil && r.peerLeg == p[1] && r.endedAt.IsZero() {
 			r.endedAt = now
-			if now.Sub(r.since) >= CountedTalk {
+			if now.Sub(r.since) >= s.CountedTalk {
 				counted = append(counted, p[0].identity)
 			}
 		}
