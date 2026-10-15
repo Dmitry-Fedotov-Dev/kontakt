@@ -8,6 +8,9 @@ package radio
 // больше logoFrames: лишние прореживаются, их время отходит оставшимся. Не влезло в logoGifMax —
 // прореживается ещё. Один кадр — обычный PNG.
 //
+// Telegram и другие сохраняют «гифки» видеороликом (.gif.mp4): такой ролик раскадровывает браузер и
+// шлёт на тот же адрес готовые кадры 64×64 (framesMagic, logoFromFrames) — палитру и GIF делает сервер.
+//
 // Гифка — сжатые LZW кадры: файл в несколько мегабайт разворачивается в гигабайты. Поэтому до
 // раскодирования кадры и размер считаются по структуре файла (gifScan), а одновременно
 // обрабатывается не больше gifJobs гифок.
@@ -42,6 +45,30 @@ const (
 )
 
 var errBadGIF = errors.New("логотип: гифка не читается или слишком большая")
+
+// framesMagic — тело POST /api/logo-gif с кадрами из видео: за ним кадры подряд, каждый — задержка
+// (uint16 LE, сотые секунды) и 64×64 пикселя RGBA.
+var framesMagic = []byte("KFRM")
+
+const frameBytes = 2 + logoSide*logoSide*4
+
+// logoFromFrames — кадры из видео (framesMagic) → значок.
+func logoFromFrames(b []byte) ([]byte, error) {
+	b = b[len(framesMagic):]
+	n := len(b) / frameBytes
+	if n < 1 || n > logoFrames || len(b)%frameBytes != 0 {
+		return nil, errBadGIF
+	}
+	frames := make([]*image.NRGBA, n)
+	delays := make([]int, n)
+	for i := range frames {
+		f := b[i*frameBytes:]
+		delays[i] = max(2, int(binary.LittleEndian.Uint16(f)))
+		frames[i] = image.NewNRGBA(image.Rect(0, 0, logoSide, logoSide))
+		copy(frames[i].Pix, f[2:frameBytes])
+	}
+	return encodeLogo(frames, delays)
+}
 
 func isGIF(b []byte) bool {
 	return bytes.HasPrefix(b, []byte("GIF87a")) || bytes.HasPrefix(b, []byte("GIF89a"))
@@ -185,6 +212,11 @@ func logoFromGIF(b []byte, crop func(w, h int) image.Rectangle) ([]byte, error) 
 			canvas = prev
 		}
 	}
+	return encodeLogo(frames, delays)
+}
+
+// encodeLogo — кадры 64×64 → GIF не больше logoGifMax (PNG, если кадр один).
+func encodeLogo(frames []*image.NRGBA, delays []int) ([]byte, error) {
 	if len(frames) == 1 {
 		var buf bytes.Buffer
 		if err := (&png.Encoder{CompressionLevel: png.BestCompression}).Encode(&buf, frames[0]); err != nil {
@@ -367,7 +399,8 @@ func encodeFrames(frames []*image.NRGBA, delays []int, pal color.Palette) ([]byt
 	return buf.Bytes(), err
 }
 
-// serveLogoGIF — POST /api/logo-gif?x=&y=&s= (квадрат обрезки в пикселях исходника), тело — гифка.
+// serveLogoGIF — POST /api/logo-gif?x=&y=&s= (квадрат обрезки в пикселях исходника), тело — гифка
+// или кадры из видео (framesMagic, без x, y, s).
 // Ответ — {"logo": "data:…"}: его ведущий шлёт в эфир, как PNG.
 func (h *Hub) serveLogoGIF(w http.ResponseWriter, r *http.Request) {
 	host := identity.FromRequest(r)
@@ -395,7 +428,12 @@ func (h *Hub) serveLogoGIF(w http.ResponseWriter, r *http.Request) {
 	x, _ := strconv.Atoi(q.Get("x"))
 	y, _ := strconv.Atoi(q.Get("y"))
 	s, _ := strconv.Atoi(q.Get("s"))
-	out, err := logoFromGIF(b, func(w, h int) image.Rectangle { return gifCrop(x, y, s, w, h) })
+	var out []byte
+	if bytes.HasPrefix(b, framesMagic) {
+		out, err = logoFromFrames(b)
+	} else {
+		out, err = logoFromGIF(b, func(w, h int) image.Rectangle { return gifCrop(x, y, s, w, h) })
+	}
 	if err != nil {
 		h.logoChanges.Inc("bad")
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)

@@ -76,6 +76,39 @@ func TestLogoFromGIF(t *testing.T) {
 	}
 }
 
+// Кадры из видео (.gif.mp4 из Telegram, раскадровал браузер) → GIF с теми же задержками; кривое тело — отказ.
+func TestLogoFromFrames(t *testing.T) {
+	body := append([]byte{}, framesMagic...)
+	for i := 0; i < 20; i++ {
+		f := make([]byte, frameBytes)
+		binary.LittleEndian.PutUint16(f, 10)
+		for p := 2; p < frameBytes; p += 4 {
+			f[p], f[p+1], f[p+2], f[p+3] = uint8(i*12), uint8(p), 200, 255
+		}
+		body = append(body, f...)
+	}
+	out, err := logoFromFrames(body)
+	if err != nil || !isGIF(out) {
+		t.Fatalf("ждали GIF: %v", err)
+	}
+	g, err := gif.DecodeAll(bytes.NewReader(out))
+	if err != nil || len(g.Image) < 2 {
+		t.Fatalf("кадров %v: %v", g, err)
+	}
+	total := 0
+	for _, d := range g.Delay {
+		total += d
+	}
+	if total != 200 {
+		t.Fatalf("длительность %d, ждали 200", total)
+	}
+	for _, bad := range [][]byte{framesMagic, body[:len(body)-1], append(append([]byte{}, framesMagic...), make([]byte, frameBytes*(logoFrames+1))...)} {
+		if _, err := logoFromFrames(bad); err == nil {
+			t.Fatalf("приняли кривое тело в %d байт", len(bad))
+		}
+	}
+}
+
 // Один кадр — обычный PNG.
 func TestLogoFromStaticGIF(t *testing.T) {
 	out, err := logoFromGIF(testGIF(t, 100, 100, 1), center)

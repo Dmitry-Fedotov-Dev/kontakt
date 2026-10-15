@@ -2321,10 +2321,57 @@ async function gifLogo(file) {
 }
 // Без accept: на image/* Chrome для Android открывает «Фото», где нет гифок из «Файлов», а со списком типов
 // проводник показывает гифки серыми. Проводник без фильтра; не картинку отбракует toLogo.
+// videoLogo — «гифка» видеороликом (Telegram сохраняет .gif.mp4): браузер раскадровывает его (до 60 кадров
+// с первых 12 с), обрезает квадрат по первому кадру и уменьшает до 64×64; GIF из кадров собирает сервер.
+async function videoLogo(file) {
+  const url = URL.createObjectURL(file);
+  const v = document.createElement("video");
+  v.muted = true; v.playsInline = true; v.preload = "auto";
+  const once = ev => new Promise((ok, fail) => {
+    v.addEventListener(ev, ok, { once: true }); v.addEventListener("error", fail, { once: true });
+    setTimeout(() => fail(new Error("timeout")), 10000);
+  });
+  try {
+    v.src = url;
+    await once("loadeddata");
+    const W = v.videoWidth, H = v.videoHeight, dur = v.duration;
+    if (!W || !H || !(dur > 0)) throw new Error("empty");
+    const span = Math.min(dur, 12), n = Math.max(1, Math.min(60, Math.round(span * 10))), dt = span / n;
+    const grab = async t => { v.currentTime = t; await once("seeked"); };
+    await grab(0);
+    const first = document.createElement("canvas"); first.width = W; first.height = H;
+    first.getContext("2d").drawImage(v, 0, 0);
+    first.naturalWidth = W; first.naturalHeight = H; // logoBox меряет картинку
+    const b = logoBox(first); // квадрат — внутри кадра, как у гифки: поля видео не дорисовываем
+    const s = Math.min(W, H, b.side), sx = Math.max(0, Math.min(W - s, b.sx)), sy = Math.max(0, Math.min(H - s, b.sy));
+    const c = document.createElement("canvas"); c.width = c.height = 64;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    const body = new Uint8Array(4 + n * (2 + 64 * 64 * 4));
+    body.set([75, 70, 82, 77]); // "KFRM"
+    const delay = Math.max(2, Math.round(dt * 100));
+    for (let i = 0, o = 4; i < n; i++) {
+      if (i) await grab(i * dt);
+      g.clearRect(0, 0, 64, 64);
+      g.drawImage(v, sx, sy, s, s, 0, 0, 64, 64);
+      body[o] = delay & 255; body[o + 1] = delay >> 8;
+      body.set(g.getImageData(0, 0, 64, 64).data, o + 2);
+      o += 2 + 64 * 64 * 4;
+    }
+    const r = await fetch(BASE + "/api/logo-gif", { method: "POST", body, cache: "no-store" });
+    if (!r.ok) throw new Error(String(r.status));
+    return (await r.json()).logo;
+  } finally { v.removeAttribute("src"); v.load(); URL.revokeObjectURL(url); }
+}
 $("logoFile").onchange = async e => {
   const f = e.target.files && e.target.files[0];
   e.target.value = "";
   if (!f) return;
+  if (f.type.startsWith("video/") || /\.(mp4|webm|mov)$/i.test(f.name)) {
+    try { setLogo(await videoLogo(f)); if (st.onAir) toast(TXT.logoSent); }
+    catch (err) { toast(err && err.message === "429" ? TXT.logoGifWait : TXT.logoBad); }
+    return;
+  }
   if (f.type === "image/gif" || /\.gif$/i.test(f.name)) {
     try { setLogo(await gifLogo(f)); if (st.onAir) toast(TXT.logoSent); return; }
     catch (err) {
