@@ -156,7 +156,7 @@ func TestLogoAdminPin(t *testing.T) {
 	host.Close()
 	waitStations(t, h, func(s []Station) bool { return len(s) == 0 })
 
-	h2 := NewHub(Options{LogosDir: dir}) // и после перезапуска радио
+	h2 := NewHub(Options{LogosDir: dir, HostLogos: true}) // и после перезапуска радио
 	srv2 := httptest.NewServer(h2.Handler())
 	defer srv2.Close()
 	other, _, err := d.Dial("ws"+strings.TrimPrefix(srv2.URL, "http")+"/ws/host?f=1000&name=Y", hdr)
@@ -175,6 +175,15 @@ func TestLogoAdminPin(t *testing.T) {
 	}
 	defer host2.Close()
 	waitStations(t, h2, func(s []Station) bool { return len(s) == 1 && s[0].Logo == g })
+	// браузер ведущего при переподключении сам шлёт свой логотип — закреплённый остаётся; выбранный вручную — ставится
+	own := base64.StdEncoding.EncodeToString(testLogo(t, 64, color.Black))
+	host2.WriteJSON(map[string]any{"logo": own, "auto": true})
+	time.Sleep(150 * time.Millisecond)
+	if g2 := h2.Stations()[0].Logo; g2 != g {
+		t.Fatalf("закреплённый логотип перебит автоматическим: %s", g2)
+	}
+	host2.WriteJSON(map[string]any{"logo": own})
+	waitStations(t, h2, func(s []Station) bool { return len(s) == 1 && s[0].Logo != g && s[0].Logo != "" })
 	for i := 0; i < 100; i++ { // память волны пишется на диск сразу после выхода в эфир — дождаться,
 		if _, ok := h2.waves.Get(934); ok { // иначе уборка временной папки гонится с записью
 			break

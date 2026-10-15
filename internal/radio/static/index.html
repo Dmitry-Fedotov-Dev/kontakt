@@ -2031,7 +2031,7 @@ function connectHost() {
     opened = true; retries = 0; reconnecting = false; st.onAir = true; $("name").disabled = true;
     $("likeCount").hidden = true; // у нового эфира свой счёт
     inbox.length = 0; lettersAll = 0; $("letterCount").hidden = true;
-    sendTitle(); if (hostLogoData) sendLogo(); renderHost();
+    sendTitle(); if (hostLogoData) sendLogo(true); renderHost();
     audioPath = "ws"; startRtc(); // эфир начинается по TCP сразу, UDP поднимается рядом
   };
   ws.onmessage = e => {
@@ -2210,8 +2210,9 @@ function renderLogo() {
   if (has) { $("logoImg").src = hostLogoData; markFree($("logoImg"), $("logoSlot")); }
   $("logoDel").hidden = !has;
 }
-function sendLogo() {
-  if (logoOK && hws && hws.readyState === 1) hws.send(JSON.stringify({ logo: hostLogoData }));
+// auto — прислали сами (вышли в эфир, получили доступ): закреплённый модератором логотип он не перебьёт.
+function sendLogo(auto) {
+  if (logoOK && hws && hws.readyState === 1) hws.send(JSON.stringify(auto ? { logo: hostLogoData, auto: true } : { logo: hostLogoData }));
 }
 // Доступ к логотипу через бота: ссылку показываем по нажатию «+», а открывает её сам человек —
 // окно, открытое после запроса к серверу, браузер счёл бы всплывающим. Пока ссылка на экране,
@@ -2227,7 +2228,7 @@ function gotLogoAccess(ok, live) {
   if (ok) {
     $("logoAuth").hidden = true;
     clearInterval(logoPoll); logoPoll = 0;
-    if (!was) { if (waiting) toast(TXT.logoGranted); sendLogo(); }
+    if (!was) { if (waiting) toast(TXT.logoGranted); sendLogo(true); }
   } else if (was && live) {
     toast(TXT.logoRevoked);
   }

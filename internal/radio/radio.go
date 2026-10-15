@@ -747,12 +747,16 @@ func (h *Hub) serveHost(w http.ResponseWriter, r *http.Request) {
 			var m struct {
 				Title *string `json:"title"`
 				Logo  *string `json:"logo"`
+				Auto  bool    `json:"auto"` // логотип из памяти браузера при выходе в эфир, а не выбран сейчас
 			}
 			if json.Unmarshal(data, &m) == nil && m.Title != nil {
 				h.titleChanged(s, clean(*m.Title, titleRunes))
 			}
 			if m.Logo != nil {
-				if h.canLogo(s.host) {
+				if m.Auto && h.logos.Pinned(s.host, s.freq) != "" {
+					// закреплённый модератором не перебивается тем, что браузер прислал сам при переподключении
+					// (так гифка 101.7 слетала на каждой выкладке); выбранный ведущим вручную — перебивает
+				} else if h.canLogo(s.host) {
 					h.setLogo(s, *m.Logo)
 				} else if h.bot != nil {
 					s.sayHost(map[string]bool{"logoAccess": false})
