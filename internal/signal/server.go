@@ -135,6 +135,7 @@ type Server struct {
 	// короче засчитывается обоим как сессия: так новичок набирает доверие (moderation.Policy.TrustTalks).
 	RoomWait    time.Duration
 	CountedTalk time.Duration
+	Ring        RingOptions // входящий звонок (ring.go)
 
 	mu       sync.Mutex
 	legs     map[string]*Leg
@@ -145,6 +146,7 @@ type Server struct {
 	reports  map[string][]time.Time
 
 	tokens tokenBank
+	ring   *ringHub
 
 	totalCalls atomic.Int64
 	m          *stationMetrics
@@ -152,6 +154,7 @@ type Server struct {
 
 func New(cfg *config.Live, mod *moderation.Store, media Media) *Server {
 	s := &Server{Cfg: cfg, Mod: mod, Media: media, RoomWait: 15 * time.Minute, CountedTalk: 30 * time.Second,
+		Ring: DefaultRingOptions(), ring: newRingHub(),
 		legs: map[string]*Leg{}, perID: map[string]int{},
 		lastPeer: map[string]*pairRec{}, blocked: map[[2]string]bool{}, reports: map[string][]time.Time{}}
 	s.initMetrics()
@@ -371,6 +374,7 @@ func (s *Server) newCall(inv *sip.Msg, tr Transport) {
 		leg.mu.Unlock()
 	}
 	s.enqueue(leg, "")
+	s.ringRoom(leg) // один в комнате — звоним хозяину линии
 }
 
 // roomFull — в комнате уже двое других людей, кроме id (под s.mu). Считаются люди, а не ноги: вторая
@@ -544,6 +548,8 @@ func (s *Server) connect(a, b *Leg) {
 	bWait := time.Since(b.queuedAt)
 	b.state, b.inQueue, b.peer, b.lastPeerID = legTalking, false, a, a.identity
 	b.mu.Unlock()
+	s.ring.stopLeg(a, "answered")
+	s.ring.stopLeg(b, "answered")
 	s.observeWait(aWait)
 	s.observeWait(bWait)
 	s.m.pairs.Inc()
@@ -626,6 +632,7 @@ func (s *Server) End(l *Leg, byeReason string, peerReason ...string) {
 	delete(s.legs, l.callID)
 	s.mu.Unlock()
 	s.releaseID(l.identity)
+	s.ring.stopLeg(l, "gone")
 	if peer != nil {
 		s.markEnded(l, peer)
 	}

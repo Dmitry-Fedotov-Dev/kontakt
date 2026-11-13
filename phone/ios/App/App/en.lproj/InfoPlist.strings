@@ -1,0 +1,3 @@
+/* название под иконкой и объяснение, зачем микрофон */
+CFBundleDisplayName = "Kontakt";
+NSMicrophoneUsageDescription = "The microphone is used only while you are on a call.";

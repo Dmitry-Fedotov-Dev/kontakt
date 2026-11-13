@@ -55,6 +55,12 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 .handset canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
 .handset.ring { animation: ring .09s steps(2) 6; }
 @keyframes ring { 50% { transform: rotate(1.4deg) translateX(1px); } }
+/* Входящий звонок: трубка качается вокруг своей середины — «дзынь-дзынь», пауза, снова. Класс burst ставит
+   и снимает тот же планировщик, что играет трель и вибрирует (ringCycle), — качание в такт звонку. */
+.handset.ringing { transform-origin: 50% 50%; }
+.handset.ringing.burst { animation: wobble .1s ease-in-out infinite alternate; }
+@keyframes wobble { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+.handset.ringing .lamp { background: var(--lamp); animation: blink .3s steps(1) infinite; }
 
 /* Ручка трубки: колонки 5–34, строки 25–63, и шейка до кольца микрофона (строка 69) — под две кнопки */
 .panel {
@@ -147,7 +153,7 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 @media (prefers-reduced-motion: reduce) {
-  .handset.ring { animation: none; }
+  .handset.ring, .handset.ringing.burst { animation: none; }
   .lamp.blink { animation: none; }
 }
 </style>
@@ -178,6 +184,10 @@ body:has(#donate:not([hidden])) .handset { height: min(calc(100dvh - 24px - 5.6e
         <button class="rbtn" id="copy-btn" type="button" hidden><img alt=""><span></span></button>
         <button class="rbtn" id="report-btn" type="button" aria-label="ban" data-i-aria="ban"><img alt=""><span data-i="ban">ban</span></button>
         <button class="rbtn" id="hangup-btn" type="button" aria-label="bye" data-i-aria="bye"><img alt=""><span data-i="bye">bye</span></button>
+      </div>
+      <div class="row2" id="ring-btns" hidden>
+        <button class="rbtn" id="answer-btn" type="button" aria-label="answer" data-i-aria="answer"><img alt=""><span data-i="answer">answer</span></button>
+        <button class="rbtn" id="decline-btn" type="button" aria-label="hang up" data-i-aria="bye"><img alt=""><span data-i="bye">hang up</span></button>
       </div>
       <p class="online" id="online">&nbsp;</p>
     </div>
@@ -277,7 +287,7 @@ const CAN_SHARE = !!navigator.share && matchMedia("(pointer: coarse)").matches;
 const RED = ["#C8302A", "#E2614F", "#7E1512"], GREEN = ["#4E9A36", "#8FD16A", "#2F6420"];
 let pressUntil = 0, pendingGroup = null, pendingTimer = 0;
 function initButtons() {
-  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"], [copyBtn, GREEN, CAN_SHARE ? "share" : "copy"]]) {
+  for (const [btn, col, icon] of [[mainBtn, GREEN, "pick"], [reportBtn, RED, "trash"], [hangupBtn, RED, "bye"], [copyBtn, GREEN, CAN_SHARE ? "share" : "copy"], [answerBtn, GREEN, "pick"], [declineBtn, RED, "bye"]]) {
     const img = btn.querySelector("img");
     btn.spriteUp = sprite(col[0], col[1], col[2], icon, false);
     btn.spriteDown = sprite(col[0], col[1], col[2], icon, true);
@@ -292,11 +302,12 @@ function initButtons() {
     });
   }
 }
-// showButtons — какая группа кнопок видна: "main" (позвонить), "call" (ban + bye), "none".
+// showButtons — какая группа кнопок видна: "main" (позвонить), "call" (ban + bye), "ring" (ответить +
+// положить — входящий звонок), "none".
 // Пока идёт анимация нажатия, смена откладывается до её конца: иначе нажатая кнопка
 // исчезала бы мгновенно и вдавленного состояния никто бы не увидел.
 function showButtons(group) {
-  const apply = () => { pendingGroup = null; mainBtn.hidden = group !== "main"; callBtns.hidden = group !== "call"; };
+  const apply = () => { pendingGroup = null; mainBtn.hidden = group !== "main"; callBtns.hidden = group !== "call"; ringBtns.hidden = group !== "ring"; };
   clearTimeout(pendingTimer);
   const wait = pressUntil - Date.now();
   if (wait > 0) { pendingGroup = group; pendingTimer = setTimeout(apply, wait); } else apply();
@@ -352,6 +363,10 @@ const I18N = {
     roomFull: "Линия занята", roomFullHint: "По этой ссылке уже говорят двое.",
     shareText: "Позвони мне — нажми на ссылку:",
     noOne: "Никто не ответил", noOneHint: "За 15 минут никто не пришёл. Нажмите «позвонить» — ссылка та же.",
+    incoming: "Вам звонят", incomingHint: "Друг на линии — нажмите «ответить».",
+    missed: "Пропущенный звонок", missedHint: "Друг ещё ждёт на линии — нажмите «позвонить».",
+    calling: "Вызов…", callingHint: "У друга звонит трубка. Ждём, пока ответит.",
+    declined: "Вызов отклонён", declinedHint: "Друг сейчас не может говорить.",
   },
   en: {
     brand: "Kontakt",
@@ -397,6 +412,10 @@ const I18N = {
     roomFull: "Line busy", roomFullHint: "Two people are already talking on this link.",
     shareText: "Call me — tap the link:",
     noOne: "No answer", noOneHint: "No one came in 15 minutes. Press “call” — the link stays the same.",
+    incoming: "Incoming call", incomingHint: "Your friend is on the line — press “answer”.",
+    missed: "Missed call", missedHint: "Your friend is still on the line — press “call”.",
+    calling: "Calling…", callingHint: "Your friend's phone is ringing. Waiting for an answer.",
+    declined: "Call declined", declinedHint: "Your friend can't talk right now.",
   },
 };
 const LANG_KEY = "kontakt-lang";
@@ -419,7 +438,8 @@ $("lang").addEventListener("click", () => {
 });
 const handset = $("handset"), lamp = $("lamp"), stateEl = $("state"), sub = $("sub"),
       mainBtn = $("main-btn"), copyBtn = $("copy-btn"), mainLabel = $("main-btn").querySelector("span"), callBtns = $("call-btns"), reportBtn = $("report-btn"), reportLabel = $("report-btn").querySelector("span"),
-      hangupBtn = $("hangup-btn"), gate = $("gate"), cAge = $("c-age"), cTerms = $("c-terms");
+      hangupBtn = $("hangup-btn"), gate = $("gate"), cAge = $("c-age"), cTerms = $("c-terms"),
+      ringBtns = $("ring-btns"), answerBtn = $("answer-btn"), declineBtn = $("decline-btn");
 
 // Линия одна: G.711 со звучанием «32». Выбора битрейта в интерфейсе нет.
 const LINE = "32";
@@ -486,6 +506,7 @@ function acceptTerms() {
   handset.classList.remove("entry");
   mainBtn.disabled = false;
   if (call.state !== "idle") return;
+  listenLine();
   if (linkRoom) dialRoom(linkRoom);
   else sub.textContent = T.hintIdle;
 }
@@ -565,6 +586,7 @@ async function loadState() {
   if (cfg.maintenance) return setIdle("bad", T.maint, T.maintHint);
   setIdle();
   if (me.cards > 0) sub.textContent = T.yellowSub;
+  listenLine();
   if (linkRoom && termsOk) dialRoom(linkRoom);
 }
 
@@ -894,6 +916,7 @@ function onSIP(text) {
     if (why === "time-limit") return setIdle("", T.timeUp, T.timeUpHint);
     if (why === "peer-left") { busy(); return setIdle("", T.friendLeft, T.friendLeftHint); }
     if (why === "no-answer") { busy(); return setIdle("", T.noOne, T.noOneHint); }
+    if (why === "declined") { busy(); return setIdle("", T.declined, T.declinedHint); }
     if (why === "report-accepted") return setIdle("", T.reportAccepted, T.hintIdle);
     setIdle("bad", T.stationHung, T.retry);
   } else if (m.method === "OPTIONS") reply200(m);
@@ -901,6 +924,7 @@ function onSIP(text) {
 
 function onStation(state, reason, codec) {
   if (state === "talking") {
+    stopBusy(); // длинные гудки «вызова» смолкают — ответили
     setCodec(codec);
     // ждал в комнате, и к нему пришли — звоночек; кто пришёл к ждущему, соединился сразу и его не слышит
     if (call.state === "searching" && call.room && Date.now() - waitSince > 1500) chime();
@@ -917,7 +941,11 @@ function onStation(state, reason, codec) {
     if (call.state !== "searching") waitSince = Date.now();
     call.state = "searching"; clearInterval(talkTimer); volumeTip(false);
     showLink(!!call.room); // ждём второго — ссылку видно на дисплее
-    if (call.room) lcd("search", T.waitFriend, ctx.state !== "running" ? T.tapToHear : T.linkCopied);
+    if (call.room && reason === "ringing") { // у хозяина линии звонит трубка: мы звоним, а не ждём
+      showLink(false); reportBtn.disabled = true;
+      lcd("search", T.calling, T.callingHint);
+      ringback();
+    } else if (call.room) lcd("search", T.waitFriend, ctx.state !== "running" ? T.tapToHear : T.linkCopied);
     else {
       const text = { "peer-left": T.peerLeft, "report-accepted": T.reportAccepted, "time-limit": T.timeUp }[reason];
       lcd("search", text || T.searching, text ? T.afterHint : T.ringHint);
@@ -1039,7 +1067,7 @@ function dialRoom(room, copy) {
   pickUp(room);
 }
 mainBtn.onclick = () => linkRoom ? dialRoom(linkRoom) : dialRoom(myRoom(), true);
-hangupBtn.onclick = () => { teardown(true); setIdle(); };
+hangupBtn.onclick = () => { stopBusy(); teardown(true); setIdle(); };
 
 // Звоночек «пришёл собеседник»: два мягких удара колокольчика вверх (E6 → A6), с затуханием.
 let waitSince = 0;
@@ -1080,6 +1108,128 @@ function stopBusy() {
   busyGain.gain.cancelScheduledValues(0); busyGain.gain.value = 0;
   busyGain = null;
 }
+// Длинные гудки «вызова», как у городской линии: 425 Гц, 1 с звук / 4 с тишина. Звонящий слышит их, пока
+// у друга звонит трубка; смолкают с ответом (stopBusy в «talking») или отбоем.
+function ringback() {
+  if (busyGain || !ctx) return;
+  const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + 0.05;
+  o.frequency.value = 425;
+  g.gain.setValueAtTime(0, ctx.currentTime);
+  for (let i = 0; i < 14; i++) { // 70 с — дольше, чем звонит трубка друга (CallFor)
+    const on = t + i * 5;
+    g.gain.setValueAtTime(0, on); g.gain.linearRampToValueAtTime(0.16, on + 0.02);
+    g.gain.setValueAtTime(0.16, on + 0.98); g.gain.linearRampToValueAtTime(0, on + 1);
+  }
+  o.connect(g); g.connect(out || ctx.destination);
+  o.start(); o.stop(t + 14 * 5);
+  o.onended = () => { if (busyGain === g) busyGain = null; g.disconnect(); };
+  busyGain = g;
+}
+
+// ================= входящий звонок =================
+// Трубка на рычаге слушает свою линию (api/ring?line=<своя комната>): звонит, когда друг открыл ссылку
+// и ждёт, или когда пришло оповещение (POST api/ring — cmd/kontakt-ring, хуки Claude Code).
+// Звонок — трель старого настольного телефона, вибрация и качание трубки, всё в одном такте ringCycle.
+let ringWS = null, ringWait = 2000, ringing = null;
+function listenLine() {
+  if (ringWS || me.banned || !termsOk) return;
+  const ws = new WebSocket(location.href.replace(/[^/]*$/, "").replace(/^http/, "ws") + "api/ring?line=" + myRoom());
+  ringWS = ws;
+  ws.onopen = () => { ringWait = 2000; };
+  ws.onmessage = e => { let m = {}; try { m = JSON.parse(e.data); } catch {} onRing(m); };
+  ws.onclose = e => {
+    ringWS = null;
+    if (e.code === 4029) return; // у куки слишком много трубок на рычаге — эта не слушает
+    setTimeout(listenLine, ringWait); ringWait = Math.min(ringWait * 2, 30000);
+  };
+}
+function ringSend(obj) { if (ringWS && ringWS.readyState === 1) ringWS.send(JSON.stringify(obj)); }
+function onRing(m) {
+  if (m.ring === "stop") {
+    if (!ringing || ringing.id !== m.id) return;
+    const r = ringing; stopRinging();
+    if (r.kind === "call" && m.reason === "timeout") return setIdle("bad", T.missed, T.missedHint);
+    if (r.kind === "notify") return setIdle("", r.from, r.text); // сообщение остаётся на дисплее
+    return setIdle();
+  }
+  if (m.ring !== "call" && m.ring !== "notify") return;
+  if (call.state !== "idle" || me.banned) return; // в разговоре не звоним: друг подождёт в комнате
+  startRinging(m);
+}
+
+const RING = { f: [1320, 1050], burst: 0.4, gap: 0.2, cycle: 3 }; // «дзынь-дзынь», пауза 2 с
+let ringTimers = [], ringNodes = [];
+function startRinging(m) {
+  stopRinging();
+  ringing = { id: m.id, kind: m.ring, from: m.from || "Kontakt", text: m.text || "" };
+  showButtons("ring");
+  gate.hidden = true;
+  answerBtn.querySelector("span").textContent = T.answer;
+  if (ringing.kind === "call") lcd("search", T.incoming, T.incomingHint);
+  else lcd("search", ringing.from, ringing.text);
+  handset.classList.add("ringing");
+  ringCycle();
+  ringTimers.push(setInterval(ringCycle, RING.cycle * 1000));
+  ringTimers.push(setTimeout(() => { if (ringing) onRing({ ring: "stop", id: ringing.id, reason: "timeout" }); }, 65000)); // стоп потерялся
+}
+function stopRinging() {
+  ringing = null;
+  ringTimers.forEach(t => { clearInterval(t); clearTimeout(t); }); ringTimers = [];
+  ringNodes.forEach(n => { try { n.stop(); } catch {} }); ringNodes = [];
+  handset.classList.remove("ringing", "burst");
+  vibrate(0);
+}
+// Один такт: два удара по 0,4 с через 0,2 с — звук, вибрация и качание вместе.
+function ringCycle() {
+  const at = [0, RING.burst + RING.gap];
+  vibrate([RING.burst * 1000, RING.gap * 1000, RING.burst * 1000]);
+  for (const a of at) {
+    ringTimers.push(setTimeout(() => handset.classList.add("burst"), a * 1000));
+    ringTimers.push(setTimeout(() => handset.classList.remove("burst"), (a + RING.burst) * 1000));
+  }
+  const c = sfxCtx(); if (!c || c.state !== "running") return; // звук браузер даст после первого касания
+  const t = c.currentTime + 0.03, g = c.createGain(), lp = c.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = 3500; // маленький динамик корпуса
+  g.connect(lp); lp.connect(c.destination);
+  g.gain.setValueAtTime(0, t);
+  for (const a of at) { // трель: два тона сменяются 20 раз в секунду, как у электронного звонка IP-телефона
+    for (let k = 0; k < RING.burst / 0.025; k++) {
+      const o = c.createOscillator(), og = c.createGain(), s0 = t + a + k * 0.025;
+      o.type = "square"; o.frequency.value = RING.f[k % 2];
+      og.gain.setValueAtTime(0.07, s0);
+      o.connect(og); og.connect(g);
+      o.start(s0); o.stop(s0 + 0.025);
+      ringNodes.push(o);
+    }
+    g.gain.setValueAtTime(0, t + a); g.gain.linearRampToValueAtTime(1, t + a + 0.01);
+    g.gain.setValueAtTime(1, t + a + RING.burst - 0.01); g.gain.linearRampToValueAtTime(0, t + a + RING.burst);
+  }
+  ringNodes = ringNodes.slice(-64); // закончившиеся узлы не копим
+}
+// Вибрация: в приложении — нативная (Capacitor Haptics, есть и на iPhone), в браузере — navigator.vibrate.
+function vibrate(p) {
+  const H = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Haptics;
+  if (H && p) { const ms = Array.isArray(p) ? p : [p]; let at = 0;
+    ms.forEach((d, i) => { if (i % 2 === 0) ringTimers.push(setTimeout(() => H.vibrate({ duration: d }).catch(() => {}), at)); at += d; });
+    return; }
+  try { navigator.vibrate && navigator.vibrate(p); } catch {}
+}
+answerBtn.onclick = () => {
+  const r = ringing; if (!r) return;
+  stopRinging();
+  if (r.kind === "call") return dialRoom(myRoom()); // в свою комнату — к ждущему другу
+  ringSend({ answer: r.id }); // прочитано: у остальных трубок линии смолкнет
+  setIdle("", r.from, r.text);
+};
+declineBtn.onclick = () => {
+  const r = ringing; if (!r) return;
+  stopRinging();
+  ringSend(r.kind === "call" ? { decline: r.id } : { answer: r.id });
+  setIdle();
+};
+// Звук трели браузер разрешает только после касания страницы: готовим его с первого же.
+document.addEventListener("pointerdown", () => sfxCtx(), { once: true });
+
 initButtons();
 window.addEventListener("pagehide", () => teardown(true));
 

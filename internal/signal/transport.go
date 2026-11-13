@@ -147,6 +147,7 @@ func (s *Server) ServeWS(w http.ResponseWriter, r *http.Request) {
 func (s *Server) HTTPHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/sip", s.ServeWS)
+	mux.HandleFunc("/api/ring", s.ServeRing)
 	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.Stats()) })
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		c := s.Cfg.Get()

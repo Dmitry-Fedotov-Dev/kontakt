@@ -30,7 +30,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: build
-        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/loadgen ./cmd/kontakt-node ./cmd/radio ./cmd/notify
+        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/ ./cmd/web ./cmd/signal ./cmd/media ./cmd/loadgen ./cmd/kontakt-node ./cmd/radio ./cmd/notify ./cmd/kontakt-ring
       - name: kontakt-node for OpenWrt
         # узел mesh обязан собираться для роутеров (docs/MESH.md, фаза 5): MIPS без FPU,
         # ARM. Собирается здесь, чтобы зависимость с cgo или без softfloat не пришла молча.

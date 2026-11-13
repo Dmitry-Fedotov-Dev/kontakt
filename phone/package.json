@@ -1,0 +1,24 @@
+{
+  "name": "kontakt-phone-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Контакт — трубка для Android и iOS: обёртка Capacitor вокруг https://openline.one/ (входящий звонок с вибрацией через Haptics)",
+  "scripts": {
+    "sync": "cap sync",
+    "assets": "capacitor-assets generate --iconBackgroundColor '#D5DBD6' --iconBackgroundColorDark '#1D2321' --splashBackgroundColor '#D5DBD6' --splashBackgroundColorDark '#1D2321'"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/ios": "8.5.2",
+    "@capacitor/splash-screen": "8.0.2",
+    "@capacitor/haptics": "8.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.5.2"
+  },
+  "allowScripts": {
+    "sharp@0.32.6": true
+  }
+}
