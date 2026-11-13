@@ -8,6 +8,7 @@
 #   scripts/deploy.sh env    root@1.2.3.4            # токен бота: локальный .env → /opt/kontakt/.env
 #   scripts/deploy.sh push   root@1.2.3.4            # новая версия рядом со старой, переключение,
 #                                                    # перезапуск; не поднялась — сам откатывает
+#                                                    # (на прод — CD: .github/workflows/deploy.yml, docs/DEPLOY_CD.md)
 #   scripts/deploy.sh rollback root@1.2.3.4          # вернуть предыдущую версию
 #   scripts/deploy.sh https  root@1.2.3.4 openline.one   # прямой HTTPS (Caddy, Let's Encrypt), без Cloudflare;
 #                                                    # открывает 80/443; DNS домена уже должен вести на сервер
@@ -31,9 +32,11 @@ host=${2:-}
 [ -n "$cmd" ] && [ -n "$host" ] || { sed -n '2,22p' "$0"; exit 1; }
 
 # ssh с проверкой ключа хоста при первом подключении (accept-new) и без пароля;
-# DEPLOY_SSH_OPTS="-p 2222 -i ~/.ssh/kontakt" — нестандартный порт или ключ
+# DEPLOY_SSH_OPTS="-p 2222 -i ~/.ssh/kontakt" — нестандартный порт или ключ;
+# DEPLOY_HOSTKEY_CHECK=yes — только заранее известный ключ хоста (CD: .github/workflows/deploy.yml).
+# Задаётся переменной, а не в DEPLOY_SSH_OPTS: из повторённых -o ssh берёт первый.
 read -ra extra <<<"${DEPLOY_SSH_OPTS:-}"
-SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "${extra[@]}" "$host")
+SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking="${DEPLOY_HOSTKEY_CHECK:-accept-new}" -o ConnectTimeout=15 "${extra[@]}" "$host")
 remote() { "${SSH[@]}" "$@"; }
 # root — как есть, иначе через sudo
 sudo_remote() { "${SSH[@]}" 'if [ "$(id -u)" = 0 ]; then bash -s; else sudo bash -s; fi'; }
