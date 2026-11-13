@@ -2,10 +2,10 @@
   "description": "Звонок на трубку «Контакта»: Stop — «готово», Notification — Claude ждёт разрешения. Звонок уходит в фоне.",
   "hooks": {
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/ring.sh\"", "timeout": 10 }] }
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/ring.sh\"", "timeout": 10 }] }
     ],
     "Notification": [
-      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/ring.sh\"", "timeout": 10 }] }
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/ring.sh\"", "timeout": 10 }] }
     ]
   }
 }

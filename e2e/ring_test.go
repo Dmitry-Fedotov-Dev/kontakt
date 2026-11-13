@@ -259,7 +259,7 @@ func TestRingClaudeHook(t *testing.T) {
 	st := newStack(t, nil, func(s *signal.Server) { s.Ring.NotifyGap = 0 })
 	const line = "c1aude000001"
 	home := listen(t, st, "", line)
-	script, _ := filepath.Abs("../claude/kontakt-ring/bin/ring.sh")
+	script, _ := filepath.Abs("../claude/kontakt-ring/hooks/ring.sh")
 	run := func(ev string) {
 		t.Helper()
 		cmd := exec.Command("sh", script)
@@ -308,11 +308,11 @@ func TestClaudePluginManifest(t *testing.T) {
 	readJSON(t, filepath.Join(dir, "hooks/hooks.json"), &hk)
 	for _, ev := range []string{"Stop", "Notification"} {
 		h := hk.Hooks[ev]
-		if len(h) != 1 || len(h[0].Hooks) != 1 || !strings.Contains(h[0].Hooks[0].Command, "${CLAUDE_PLUGIN_ROOT}/bin/ring.sh") {
+		if len(h) != 1 || len(h[0].Hooks) != 1 || !strings.Contains(h[0].Hooks[0].Command, "${CLAUDE_PLUGIN_ROOT}/hooks/ring.sh") {
 			t.Fatalf("хук %s: %+v", ev, h)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "bin/ring.sh")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "hooks/ring.sh")); err != nil {
 		t.Fatal(err)
 	}
 }
