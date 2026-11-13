@@ -13,6 +13,7 @@ type stationMetrics struct {
 	calls     *metrics.CounterVec
 	hangups   *metrics.CounterVec
 	pairs     *metrics.Counter
+	rings     *metrics.CounterVec
 	reports   *metrics.CounterVec
 	queueWait *metrics.Histogram
 }
@@ -29,8 +30,11 @@ func (s *Server) initMetrics() {
 			"accepted", ReasonBanned, "maintenance", ReasonMediaError, "no-identity", "only-pcma-pcmu", ReasonNoTokens, ReasonTooMany, ReasonRoomFull, ReasonBadRoom),
 		hangups: r.CounterVec("kontakt_signal_hangups_total",
 			"Ноги, покинувшие станцию, по причине: user — сам положил трубку, иначе причина станции.", "reason",
-			"user", ReasonBanned, ReasonYellow, ReasonMediaError, ReasonPeerLeft, ReasonReported, ReasonTimeLimit, ReasonNoAnswer),
+			"user", ReasonBanned, ReasonYellow, ReasonMediaError, ReasonPeerLeft, ReasonReported, ReasonTimeLimit, ReasonNoAnswer, ReasonDeclined),
 		pairs: r.Counter("kontakt_pairs_total", "Соединённые пары."),
+		rings: r.CounterVec("kontakt_signal_rings_total",
+			"Входящие звонки трубкам на рычаге: call — друг ждёт в комнате, notify — оповещение POST /api/ring.", "kind",
+			RingCall, RingNotify),
 		tokens: r.Counter("kontakt_signal_tokens_spent_total",
 			"Жетоны, опущенные в монетоприёмник: положили трубку посреди разговора (веб-трубка)."),
 		reports: r.CounterVec("kontakt_signal_reports_total",
@@ -60,6 +64,9 @@ func (s *Server) initMetrics() {
 			}
 			return out
 		})
+	r.Gauge("kontakt_signal_ring_listeners", "Трубки на рычаге, слушающие свою линию (/api/ring).", func() float64 {
+		return float64(s.ring.count())
+	})
 	r.Gauge("kontakt_queue_length", "Длина очереди: сколько абонентов ждут пару.", func() float64 {
 		s.mu.Lock()
 		defer s.mu.Unlock()

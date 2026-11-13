@@ -1,0 +1,26 @@
+{
+  "appId": "one.openline.kontakt",
+  "appName": "Kontakt",
+  "webDir": "www",
+  "server": {
+    "url": "https://openline.one/",
+    "allowNavigation": ["openline.one"],
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#D5DBD6"
+  },
+  "ios": {
+    "backgroundColor": "#D5DBD6",
+    "contentInset": "always",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "backgroundColor": "#D5DBD6",
+      "showSpinner": false
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "kontakt",
+  "owner": { "name": "Dmitry Fedotov" },
+  "plugins": [
+    {
+      "name": "kontakt-ring",
+      "source": "./claude/kontakt-ring",
+      "description": "Claude Code звонит вам на трубку «Контакта» или SIP-устройство, когда закончил или ждёт разрешения. Ноль токенов."
+    }
+  ]
+}

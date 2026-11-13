@@ -1,0 +1,55 @@
+# kontakt-ring — звонок-оповещение (cmd/kontakt-ring) и плагин Claude Code (claude/kontakt-ring).
+# Тег ring-vX.Y.Z → GitHub Release: бинарники для Windows, macOS, Linux (amd64/arm64) и архив плагина.
+# Без тега (push в main с изменениями) — только сборка всех платформ и тесты пакета.
+name: ring
+
+on:
+  push:
+    branches: [main]
+    tags: ["ring-v*"]
+    paths: ["cmd/kontakt-ring/**", "internal/ringer/**", "internal/sip/**", "claude/**", ".claude-plugin/**", ".github/workflows/ring.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -race -count=2 ./internal/ringer
+      - name: Сборка
+        run: |
+          mkdir -p out
+          for t in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            ext=""; [ "${t%/*}" = windows ] && ext=.exe
+            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -trimpath -ldflags "-s -w" \
+              -o "out/kontakt-ring-${t%/*}-${t#*/}$ext" ./cmd/kontakt-ring
+          done
+          (cd claude && zip -qr ../out/kontakt-ring-claude-plugin.zip kontakt-ring)
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kontakt-ring-${{ github.run_number }}
+          path: out/*
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/ring-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > notes.md <<NOTES
+          kontakt-ring ${TAG#ring-v} — Claude Code звонит вам на трубку «Контакта» или SIP-устройство.
+
+          Плагин Claude Code (хуки, ноль токенов):
+
+              /plugin marketplace add Dmitry-Fedotov-Dev/kontakt
+              /plugin install kontakt-ring@kontakt
+
+          Бинарник нужен только для звонка напрямую на SIP-устройство (KONTAKT_SIP): положите
+          kontakt-ring-<система>-<процессор> в PATH под именем kontakt-ring. Подробно — docs/CLAUDE_RING.md.
+          NOTES
+          gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --title "kontakt-ring ${TAG#ring-v}" --notes-file notes.md

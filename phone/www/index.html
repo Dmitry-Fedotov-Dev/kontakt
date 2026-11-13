@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kontakt</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #D5DBD6; color: #2A0806; font: 600 18px/1.4 ui-monospace, monospace;
+         display: grid; place-items: center; text-align: center; padding: 24px; box-sizing: border-box; }
+  button { margin-top: 18px; font: inherit; color: #F3E9D2; background: #A3201C; border: 0; padding: 10px 20px;
+           box-shadow: 0 0 0 3px #2A0806; }
+  small { display: block; margin-top: 8px; color: #6B100D; font-weight: 400; font-size: 14px; }
+  @media (prefers-color-scheme: dark) { body { background: #1D2321; color: #F3E9D2; } small { color: #E0CFAE; } }
+</style>
+</head>
+<body>
+  <div>
+    <div id="t">Нет связи со станцией</div>
+    <small id="s">Проверьте интернет и попробуйте ещё раз.</small>
+    <button id="b" onclick="location.href='https://openline.one/'">Ещё раз</button>
+  </div>
+<script>
+  // Страница на случай, когда станция недоступна: приложение показывает её вместо ошибки.
+  if (!/^(ru|uk|be|kk|ky)\b/i.test(navigator.language || "")) {
+    document.documentElement.lang = "en";
+    document.getElementById("t").textContent = "No connection to the station";
+    document.getElementById("s").textContent = "Check your internet and try again.";
+    document.getElementById("b").textContent = "Try again";
+  }
+</script>
+</body>
+</html>

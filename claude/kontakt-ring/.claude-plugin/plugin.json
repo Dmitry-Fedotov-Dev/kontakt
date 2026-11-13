@@ -1,0 +1,10 @@
+{
+  "name": "kontakt-ring",
+  "version": "1.0.0",
+  "description": "Claude Code звонит вам на трубку «Контакта» (телефон, ПК) или SIP-устройство, когда закончил или ждёт разрешения. Хуки, ноль токенов.",
+  "author": { "name": "Dmitry Fedotov" },
+  "homepage": "https://openline.one",
+  "repository": "https://github.com/Dmitry-Fedotov-Dev/kontakt",
+  "license": "AGPL-3.0-or-later",
+  "keywords": ["notification", "phone", "sip", "hooks"]
+}
