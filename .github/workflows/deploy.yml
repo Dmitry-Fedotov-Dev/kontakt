@@ -1,0 +1,86 @@
+# CD: выкладка на боевой сервер (openline.one) тем же scripts/deploy.sh push, что и руками.
+# Когда: CI на main прошёл зелёным (push в main, слияние PR) — выкладывается ровно тот коммит, который
+# проверил CI. Руками — Actions → deploy → Run workflow (action: push | rollback | status).
+# deploy.sh сам откатывает версию, если она не поднялась за 30 с; после выкладки — проверка снаружи:
+# /healthz и /api/ring через Caddy.
+#
+# Один раз (владелец), подробно — docs/DEPLOY_CD.md:
+#   Settings → Environments → production (по желанию — Required reviewers: выкладка по кнопке «Approve»);
+#   секреты окружения: DEPLOY_SSH_KEY (закрытый ключ, только для CI), DEPLOY_KNOWN_HOSTS (ssh-keyscan
+#   сервера, сверенный по отпечатку); переменная DEPLOY_HOST = root@152.53.204.216, SITE_URL = https://openline.one.
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "push — выложить main, rollback — вернуть прошлую версию, status — состояние сервера"
+        type: choice
+        options: [push, rollback, status]
+        default: push
+
+# одна выкладка за раз; новая ждёт конца прошлой, а не обрывает её посреди переключения
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ vars.SITE_URL || 'https://openline.one' }}
+    env:
+      ACTION: ${{ inputs.action || 'push' }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      SITE_URL: ${{ vars.SITE_URL || 'https://openline.one' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # после CI — именно проверенный коммит, а не то, что успело прийти в main позже
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-go@v7
+        if: env.ACTION == 'push'
+        with:
+          go-version-file: go.mod
+      - name: Ключ SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          [ -n "$DEPLOY_HOST" ] || { echo "::error::нет переменной DEPLOY_HOST (окружение production)"; exit 1; }
+          [ -n "$KEY" ] || { echo "::error::нет секрета DEPLOY_SSH_KEY"; exit 1; }
+          # ключ хоста — только заранее сверенный: accept-new из deploy.sh поверил бы первому встречному
+          [ -n "$KNOWN" ] || { echo "::error::нет секрета DEPLOY_KNOWN_HOSTS (ssh-keyscan сервера)"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts_deploy
+          echo "DEPLOY_SSH_OPTS=-i $HOME/.ssh/deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_deploy" >> "$GITHUB_ENV"
+          echo "DEPLOY_HOSTKEY_CHECK=yes" >> "$GITHUB_ENV"
+      - name: deploy.sh ${{ env.ACTION }}
+        run: scripts/deploy.sh "$ACTION" "$DEPLOY_HOST"
+      - name: Проверка снаружи
+        if: env.ACTION != 'status'
+        run: |
+          for i in $(seq 20); do curl -fsS "$SITE_URL/healthz" >/dev/null && break; sleep 3; done
+          curl -fsS "$SITE_URL/healthz"
+          # входящий звонок: случайная линия — никто не слушает, но станция отвечает {"listeners":0}
+          line=cd$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')
+          out=$(curl -fsS -d "line=$line" "$SITE_URL/api/ring")
+          echo "api/ring: $out"
+          [ "$out" = '{"listeners":0}' ] || { echo "::error::/api/ring отвечает не так: $out"; exit 1; }
+      - name: Прибрать ключ
+        if: always()
+        run: rm -f ~/.ssh/deploy ~/.ssh/known_hosts_deploy

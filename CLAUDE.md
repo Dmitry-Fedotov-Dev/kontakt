@@ -69,7 +69,9 @@ KONTAKT_URL=https://… go test ./e2e -run TestLive  # живая станция
 ## Где остановились (05.10.2026)
 
 Боевой сервер: **https://openline.one** — netcup, Debian 13, 2 vCPU / 4 ГБ, `152.53.204.216`.
-Выкладка — `scripts/deploy.sh push root@152.53.204.216` (с Windows — из Git Bash). HTTPS — Caddy
+Выкладка — CD: после зелёного CI на `main` её делает `.github/workflows/deploy.yml` тем же
+`scripts/deploy.sh push` (настройка — `docs/DEPLOY_CD.md`); руками — `scripts/deploy.sh push root@152.53.204.216`
+(с Windows — из Git Bash). HTTPS — Caddy
 прямо на сервере, Cloudflare не используем (блокируют в РФ); DNS — у Porkbun. SSH только по
 ключу. Бот работает на сервере — локальный стенд запускать с `NOTIFY=0`. Второй сервер —
 Сингапур (позже), под «радио по mesh» (`docs/MESH.md`, фаза 2а, ждёт решений владельца).
@@ -138,6 +140,8 @@ push. Не сделано: выбор нового Master'а (лучше Raft), 
 - **«Вам звонят» — и заголовок превью приглашения (`inviteTitle`), и надпись трубки**: проверять превью по
   `content="…"`, а не подстрокой по странице.
 - **Новое оповещение гасит прежнее**: слушатель сначала получает `stop`/`gone`, потом `notify` — в тестах ждать оба.
+- **ssh берёт первый из повторённых `-o`**: `StrictHostKeyChecking` в `DEPLOY_SSH_OPTS` не перебьёт
+  `accept-new` из `deploy.sh` — для CD это `DEPLOY_HOSTKEY_CHECK=yes`.
 - **Хук Claude Code с кодом 2 блокирует Stop** — `kontakt-ring -hook` и `ring.sh` всегда выходят с 0, звонок — в фоне.
 - **Радио за web живёт под `/radio/`**: пути страницы — от `BASE` (из `location.pathname`), а
   абсолютные ссылки (og:url, og:image) сервер строит с `X-Forwarded-Prefix`. Абсолютный `/ws/…`
